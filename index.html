@@ -8,882 +8,798 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg: #0f1a16; --card: #162420; --accent: #d4a039; --blue: #2a6b5a;
-  --orange: #d4a039; --red: #c0392b; --border: #253830;
-  --text: #e8e6e0; --dim: #9baa9f; --muted: #6b7f73;
+  --bg:#0f1a16; --card:#162420; --card2:#1a2e28; --accent:#d4a039;
+  --accent2:#f0d080; --green:#1a3c34; --green2:#2a6b5a; --green3:#3d8b70;
+  --orange:#e67e22; --red:#c0392b; --blue:#2a6b5a;
+  --border:#253830; --text:#e8e6e0; --dim:#9baa9f; --muted:#6b7f73;
 }
-* { margin:0; padding:0; box-sizing:border-box; }
-body { background:var(--bg); color:var(--text); font-family:'IBM Plex Sans',sans-serif; min-height:100vh; }
-.header {
-  background:linear-gradient(135deg,#1a3c34 0%,#0f1a12 100%);
-  padding:24px 32px; border-bottom:1px solid rgba(212,160,57,.3);
-}
-.header h1 {
-  font-size:22px; font-weight:800;
-  background:linear-gradient(90deg,#d4a039,#f0d080);
-  -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
-}
-.header-sub { font-size:13px; color:var(--dim); margin-top:2px; }
-.main { max-width:1000px; margin:0 auto; padding:24px; }
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh}
+.hdr{background:linear-gradient(135deg,#1a3c34,#0f1a12);padding:20px 28px;border-bottom:1px solid rgba(212,160,57,.25);display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.hdr img{height:56px;border-radius:8px;background:#fff;padding:3px}
+.hdr h1{font-size:20px;font-weight:800;background:linear-gradient(90deg,#d4a039,#f0d080);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hdr-sub{font-size:12px;color:var(--dim)}
+.hdr-right{margin-left:auto;text-align:right}
+.hdr-right div:first-child{font-size:11px;color:var(--accent);font-weight:700}
+.hdr-right div:last-child{font-size:10px;color:var(--muted)}
+.main{max-width:1080px;margin:0 auto;padding:20px}
 
 /* Steps */
-.steps { display:flex; gap:8px; margin-bottom:24px; }
-.step {
-  flex:1; padding:12px 16px; background:var(--card); border:1px solid var(--border);
-  border-radius:10px; text-align:center; opacity:0.5; transition:all .3s;
-}
-.step.active { opacity:1; border-color:var(--accent); }
-.step.done { opacity:1; border-color:#8b7025; background:#1a2a1e; }
-.step-num { font-size:20px; font-weight:800; color:var(--accent); font-family:'JetBrains Mono',monospace; }
-.step-label { font-size:11px; color:var(--dim); margin-top:2px; }
+.steps{display:flex;gap:6px;margin-bottom:20px}
+.stp{flex:1;padding:10px;background:var(--card);border:1px solid var(--border);border-radius:8px;text-align:center;opacity:.4;transition:.3s}
+.stp.on{opacity:1;border-color:var(--accent)} .stp.ok{opacity:1;border-color:var(--green2);background:#0d2818}
+.stp b{font-size:18px;color:var(--accent);font-family:'JetBrains Mono',monospace}
+.stp span{display:block;font-size:10px;color:var(--dim);margin-top:2px}
 
-/* Upload zones */
-.upload-zone {
-  background:var(--card); border:2px dashed var(--border); border-radius:12px;
-  padding:24px; text-align:center; cursor:pointer; transition:all .2s; margin-bottom:12px;
-}
-.upload-zone:hover, .upload-zone.dragover { border-color:var(--accent); background:#1a2a1e; }
-.upload-zone.loaded { border-color:#d4a039; border-style:solid; }
-.upload-zone h3 { font-size:14px; margin-bottom:4px; }
-.upload-zone p { font-size:12px; color:var(--muted); }
-.upload-zone .status { font-size:12px; color:var(--accent); margin-top:8px; font-weight:600; }
-input[type=file] { display:none; }
+/* Upload */
+.uz{background:var(--card);border:2px dashed var(--border);border-radius:10px;padding:20px;text-align:center;cursor:pointer;transition:.2s;margin-bottom:10px}
+.uz:hover,.uz.drag{border-color:var(--accent);background:#1a2a1e}
+.uz.loaded{border-color:var(--green2);border-style:solid}
+.uz h3{font-size:13px;margin-bottom:2px} .uz p{font-size:11px;color:var(--muted)}
+.uz .st{font-size:11px;color:var(--accent);margin-top:6px;font-weight:600}
+input[type=file]{display:none}
+.drow{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+.drow label{font-size:12px;color:var(--dim)}
+.drow input[type=date]{background:#0f1a16;border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-family:inherit;font-size:12px}
+.btn{padding:10px 24px;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;font-family:inherit;transition:.2s}
+.btn1{background:var(--accent);color:#1a3c34} .btn1:hover{background:#b8882e} .btn1:disabled{background:#253830;color:var(--muted);cursor:not-allowed}
+.btn2{background:var(--green);color:var(--accent);border:1px solid var(--border)} .btn2:hover{background:var(--green2)}
+#log{font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;max-height:100px;overflow-y:auto;padding:6px;background:#0a1210;border-radius:4px;margin-top:6px}
 
-/* Date inputs */
-.date-row { display:flex; gap:12px; margin-bottom:16px; align-items:center; }
-.date-row label { font-size:13px; color:var(--dim); }
-.date-row input {
-  background:#0f1a16; border:1px solid var(--border); border-radius:6px;
-  color:var(--text); padding:8px 12px; font-family:inherit; font-size:13px;
-}
+/* Tabs for 5 pages */
+.ptabs{display:flex;gap:3px;margin-bottom:16px;flex-wrap:wrap}
+.ptab{padding:8px 14px;border:1px solid var(--border);border-radius:6px 6px 0 0;cursor:pointer;font-size:11px;font-weight:600;background:transparent;color:var(--muted);border-bottom:2px solid transparent;transition:.2s;font-family:inherit}
+.ptab:hover{color:var(--dim)} .ptab.on{background:var(--card);color:var(--accent);border-bottom-color:var(--accent)}
+.pcon{display:none} .pcon.on{display:block}
 
-/* Buttons */
-.btn {
-  padding:12px 28px; border:none; border-radius:8px; cursor:pointer;
-  font-size:14px; font-weight:700; font-family:inherit; transition:all .2s;
-}
-.btn-primary { background:#d4a039; color:#1a3c34; }
-.btn-primary:hover { background:#b8882e; }
-.btn-primary:disabled { background:#253830; color:var(--muted); cursor:not-allowed; }
-.btn-pdf { background:#1a3c34; color:#d4a039; margin-left:12px; }
-.btn-pdf:hover { background:#2a5c4a; }
+/* KPIs */
+.krow{display:flex;gap:8px;margin:12px 0;flex-wrap:wrap}
+.kbox{flex:1;min-width:120px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;border-top:3px solid var(--accent)}
+.kbox .kl{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.7px}
+.kbox .kv{font-size:16px;font-weight:700;color:var(--accent);margin-top:3px;font-family:'JetBrains Mono',monospace}
+.kbox .ks{font-size:9px;color:var(--dim);margin-top:1px}
 
-/* Results */
-.kpi-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; margin:16px 0; }
-.kpi-card {
-  background:var(--card); border:1px solid var(--border); border-radius:8px;
-  padding:12px; border-top:3px solid #d4a039;
-}
-.kpi-label { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.8px; }
-.kpi-value { font-size:18px; font-weight:700; color:#d4a039; margin-top:4px; font-family:'JetBrains Mono',monospace; }
-.kpi-sub { font-size:10px; color:var(--dim); margin-top:2px; }
+/* Chart card */
+.cc{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;margin:10px 0}
+.cc h4{font-size:12px;font-weight:700;margin-bottom:6px;color:var(--text)}
+.row{display:flex;gap:10px} .row>*{flex:1;min-width:0}
 
-.chart-container { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; margin:12px 0; }
-.chart-title { font-size:13px; font-weight:700; margin-bottom:8px; }
+/* Table */
+.tbl{width:100%;border-collapse:collapse;font-size:11px;margin:8px 0}
+.tbl th{background:var(--green);color:var(--accent);padding:6px 8px;text-align:left;font-size:10px}
+.tbl td{padding:5px 8px;border-bottom:1px solid var(--border)}
+.tbl tr:nth-child(even) td{background:rgba(26,60,52,.3)}
+.tbl .tot td{font-weight:700;border-top:2px solid var(--accent)}
 
-.section-title { font-size:14px; font-weight:700; color:var(--dim); text-transform:uppercase; letter-spacing:1px; margin:20px 0 10px; }
+/* Ficha */
+.ficha{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:12px 16px;font-size:11px;margin:10px 0}
+.ficha li{margin-bottom:3px;color:var(--dim)}
 
-#log { font-size:11px; color:var(--muted); font-family:'JetBrains Mono',monospace; max-height:120px; overflow-y:auto; padding:8px; background:#0f1a16; border-radius:6px; margin-top:8px; }
+/* Section label */
+.slbl{font-size:12px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.8px;margin:16px 0 8px}
 
-/* PDF canvas (hidden) */
-#pdf-render { position:absolute; left:-9999px; top:0; width:794px; }
-.pdf-page {
-  width:794px; height:1123px; background:#fff; padding:24px;
-  font-family:'IBM Plex Sans',Arial,sans-serif; color:#333; position:relative;
-  page-break-after:always;
-}
-.pdf-header { background:#1a3c34; color:#fff; padding:12px 20px; border-radius:6px; margin-bottom:16px; }
-.pdf-header h2 { font-size:16px; font-weight:700; }
-.pdf-header p { font-size:11px; opacity:.8; }
-.pdf-kpi-row { display:flex; gap:8px; margin-bottom:12px; }
-.pdf-kpi {
-  flex:1; background:#f0f7ff; border:1px solid #d0e0f0; border-radius:6px;
-  padding:8px 10px; text-align:center;
-}
-.pdf-kpi .label { font-size:8px; color:#666; text-transform:uppercase; }
-.pdf-kpi .val { font-size:14px; font-weight:700; color:#1a5276; margin-top:2px; }
-.pdf-kpi .sub { font-size:8px; color:#999; }
-.pdf-footer { position:absolute; bottom:12px; left:24px; right:24px; font-size:8px; color:#999; border-top:1px solid #ddd; padding-top:4px; }
-.pdf-table { width:100%; border-collapse:collapse; font-size:10px; margin:8px 0; }
-.pdf-table th { background:#1a3c34; color:#fff; padding:6px 8px; text-align:left; }
-.pdf-table td { padding:5px 8px; border-bottom:1px solid #eee; }
-.pdf-table tr:nth-child(even) td { background:#f8f9fa; }
-.pdf-ficha { background:#f8f9fa; border:1px solid #ddd; border-radius:6px; padding:12px; font-size:10px; }
-.pdf-ficha li { margin-bottom:4px; color:#555; }
+/* Meteo box */
+.metbox{background:rgba(212,160,57,.08);border:1px solid rgba(212,160,57,.2);border-radius:6px;padding:8px 12px;font-size:11px;color:var(--accent);margin:8px 0}
 
-@media(max-width:700px) {
-  .main { padding:12px; }
-  .steps { flex-wrap:wrap; }
-  .kpi-grid { grid-template-columns:1fr 1fr; }
-  .date-row { flex-direction:column; }
-}
+.footer{padding:12px 28px;border-top:1px solid var(--border);font-size:10px;color:var(--muted);text-align:center}
+
+@media(max-width:700px){.main{padding:12px}.steps,.krow{flex-wrap:wrap}.row{flex-direction:column}.hdr-right{display:none}}
 </style>
 </head>
 <body>
-
-<div class="header">
-  <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
-    <img src="data:image/jpeg;base64,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" alt="Amixalan Business Group" style="height:64px;border-radius:8px;background:#fff;padding:4px">
-    <div style="flex:1">
-      <h1>Informe FV — Edificio Gorraiz</h1>
-      <div class="header-sub">123.84 kWp · Autoconsumo SIN excedentes · Generador de informes PDF</div>
-    </div>
-    <div style="text-align:right">
-      <div style="font-size:11px;color:#d4a039;font-weight:700">AMIXALAN BUSINESS GROUP</div>
-      <div style="font-size:10px;color:#9baa9f">Monitorización fotovoltaica</div>
-    </div>
-  </div>
+<div class="hdr">
+  <img id="logo" alt="Amixalan">
+  <div style="flex:1"><h1>Informe FV — Edificio Gorraiz</h1><div class="hdr-sub">123.84 kWp · Autoconsumo SIN excedentes · Generador de informes</div></div>
+  <div class="hdr-right"><div>AMIXALAN BUSINESS GROUP</div><div>Monitorización fotovoltaica</div></div>
 </div>
-
 <div class="main">
-  <!-- Progress steps -->
   <div class="steps">
-    <div class="step active" id="s1"><div class="step-num">1</div><div class="step-label">Subir datos</div></div>
-    <div class="step" id="s2"><div class="step-num">2</div><div class="step-label">Configurar</div></div>
-    <div class="step" id="s3"><div class="step-num">3</div><div class="step-label">Resultados</div></div>
-    <div class="step" id="s4"><div class="step-num">4</div><div class="step-label">Descargar PDF</div></div>
+    <div class="stp on" id="s1"><b>1</b><span>Subir datos</span></div>
+    <div class="stp" id="s2"><b>2</b><span>Procesando</span></div>
+    <div class="stp" id="s3"><b>3</b><span>Resultados</span></div>
+    <div class="stp" id="s4"><b>4</b><span>PDF</span></div>
   </div>
 
-  <!-- STEP 1: Upload -->
-  <div id="panel-upload">
-    <div class="upload-zone" id="zone-inv-a" onclick="document.getElementById('file-inv-a').click()">
-      <h3>📂 Inversor A — Ficheros de producción (.xlsx)</h3>
-      <p>Selecciona uno o varios ficheros .xlsx del Inversor A</p>
-      <div class="status" id="status-inv-a"></div>
-      <input type="file" id="file-inv-a" accept=".xlsx" multiple>
-    </div>
-
-    <div class="upload-zone" id="zone-inv-b" onclick="document.getElementById('file-inv-b').click()">
-      <h3>📂 Inversor B — Ficheros de producción (.xlsx)</h3>
-      <p>Selecciona ficheros .xlsx del Inversor B si existe</p>
-      <div class="status" id="status-inv-b"></div>
-      <input type="file" id="file-inv-b" accept=".xlsx" multiple>
-    </div>
-
-    <div class="upload-zone" id="zone-ibr" onclick="document.getElementById('file-ibr').click()">
-      <h3>📂 Consumo i-DE (.xlsx)</h3>
-      <p>Fichero de consumo horario descargado de i-DE (hoja "Horarias")</p>
-      <div class="status" id="status-ibr"></div>
-      <input type="file" id="file-ibr" accept=".xlsx">
-    </div>
-
-    <div class="date-row">
-      <label>Desde:</label>
-      <input type="date" id="fecha-desde">
-      <label>Hasta:</label>
-      <input type="date" id="fecha-hasta">
-      <span style="font-size:11px;color:var(--muted)">(vacío = todo el rango disponible)</span>
-    </div>
-
-    <button class="btn btn-primary" id="btn-generate" onclick="generate()" disabled>
-      ⚡ Generar informe
-    </button>
+  <!-- UPLOAD -->
+  <div id="pUpload">
+    <div class="uz" id="zA" onclick="$('fA').click()"><h3>📂 Inversor A — Ficheros de producción (.xlsx)</h3><p>Selecciona uno o varios ficheros .xlsx del Inversor A</p><div class="st" id="stA"></div><input type="file" id="fA" accept=".xlsx" multiple></div>
+    <div class="uz" id="zB" onclick="$('fB').click()"><h3>📂 Inversor B — Ficheros de producción (.xlsx)</h3><p>Selecciona uno o varios ficheros .xlsx del Inversor B</p><div class="st" id="stB"></div><input type="file" id="fB" accept=".xlsx" multiple></div>
+    <div class="uz" id="zI" onclick="$('fI').click()"><h3>📂 Consumo i-DE (.xlsx)</h3><p>Fichero de consumo horario descargado de i-DE (hoja "Horarias")</p><div class="st" id="stI"></div><input type="file" id="fI" accept=".xlsx"></div>
+    <div class="drow"><label>Desde:</label><input type="date" id="dDesde"><label>Hasta:</label><input type="date" id="dHasta"><span style="font-size:10px;color:var(--muted)">(vacío = todo el rango)</span></div>
+    <button class="btn btn1" id="btnGo" onclick="generate()" disabled>⚡ Generar informe</button>
     <div id="log"></div>
   </div>
 
-  <!-- STEP 3: Results -->
-  <div id="panel-results" style="display:none">
-    <div class="section-title">Resultados clave</div>
-    <div class="kpi-grid" id="kpi-grid"></div>
-
-    <div class="chart-container">
-      <div class="chart-title">Producción diaria (kWh)</div>
-      <canvas id="chart-daily" height="200"></canvas>
+  <!-- RESULTS -->
+  <div id="pResults" style="display:none">
+    <div class="ptabs">
+      <button class="ptab on" data-p="p1">Pág 1 · Producción</button>
+      <button class="ptab" data-p="p2">Pág 2 · Inversores</button>
+      <button class="ptab" data-p="p3">Pág 3 · Consumo</button>
+      <button class="ptab" data-p="p4">Pág 4 · Acumulados</button>
+      <button class="ptab" data-p="p5">Pág 5 · Avanzado</button>
     </div>
 
-    <div style="display:flex;gap:12px">
-      <div class="chart-container" style="flex:1">
-        <div class="chart-title">Perfil horario medio FV (kWh/h)</div>
-        <canvas id="chart-hourly" height="180"></canvas>
+    <!-- PAGE 1 -->
+    <div class="pcon on" id="p1">
+      <div class="slbl">Resultados clave</div>
+      <div class="krow" id="k1"></div>
+      <div class="cc"><h4>Producción diaria (kWh) + Irradiancia GHI</h4><canvas id="c1daily" height="220"></canvas></div>
+      <div id="meteoBox"></div>
+      <div id="conclusionBox" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin:10px 0;font-size:11px;color:var(--dim)">
+        <b style="color:var(--accent)">Conclusión</b><br>
+        <span id="conclusionText"></span>
       </div>
-      <div class="chart-container" style="flex:1">
-        <div class="chart-title">Reparto inversores</div>
-        <canvas id="chart-donut" height="180"></canvas>
+    </div>
+
+    <!-- PAGE 2 -->
+    <div class="pcon" id="p2">
+      <div class="slbl">Detalle técnico</div>
+      <div class="cc"><h4>Perfil horario medio de producción FV (kWh/h)</h4><canvas id="c2hourly" height="180"></canvas></div>
+      <div class="row">
+        <div class="cc"><h4>Reparto por inversor</h4><canvas id="c2donut" height="180"></canvas></div>
+        <div class="cc"><h4>Equilibrio inversores (kWh/día)</h4><canvas id="c2scatter" height="180"></canvas></div>
+      </div>
+      <div class="slbl">Ahorro por periodos (P1-P6)</div>
+      <table class="tbl" id="tblAhorro"></table>
+      <div class="ficha"><b>Ficha rápida de la instalación</b><ul id="fichaUl"></ul></div>
+    </div>
+
+    <!-- PAGE 3 -->
+    <div class="pcon" id="p3">
+      <div class="slbl">Balance energético</div>
+      <div class="krow" id="k3"></div>
+      <div class="cc"><h4>Consumo diario — total vs red vs FV</h4><canvas id="c3daily" height="200"></canvas></div>
+      <div class="row">
+        <div class="cc"><h4>Consumo medio por día de la semana</h4><canvas id="c3week" height="180"></canvas></div>
+        <div class="cc"><h4>Perfil horario medio del consumo</h4><canvas id="c3hourly" height="180"></canvas></div>
+        <div class="cc"><h4>Cobertura FV</h4><canvas id="c3donut" height="180"></canvas></div>
+      </div>
+      <div style="font-size:10px;color:var(--muted);margin-top:6px;padding:0 4px">
+        Nota: el Excel del contador muestra la energía comprada a red. Al ser una instalación SIN excedentes,
+        el consumo total del edificio se reconstruye sumando la producción FV medida a la energía comprada.
       </div>
     </div>
 
-    <div class="chart-container">
-      <div class="chart-title">Consumo diario: Red vs FV (kWh)</div>
-      <canvas id="chart-cons" height="200"></canvas>
+    <!-- PAGE 4 -->
+    <div class="pcon" id="p4">
+      <div class="slbl">Acumulados desde puesta en marcha</div>
+      <div class="row">
+        <div class="cc"><h4>Producción mensual + previsión (kWh)</h4><canvas id="c4prod" height="220"></canvas></div>
+        <div class="cc"><h4>Consumo mensual Punta/Llano/Valle</h4><canvas id="c4cons" height="220"></canvas></div>
+      </div>
+      <div class="cc"><h4>Ahorro mensual acumulado (€)</h4><canvas id="c4ahorro" height="180"></canvas></div>
     </div>
 
-    <div class="chart-container">
-      <div class="chart-title">Ahorro por periodos (P1-P6)</div>
-      <canvas id="chart-ahorro" height="160"></canvas>
+    <!-- PAGE 5 -->
+    <div class="pcon" id="p5">
+      <div class="slbl">Análisis avanzado</div>
+      <div class="row">
+        <div class="cc" style="flex:2"><h4>Mapa de calor: producción FV hora × día</h4><canvas id="c5heat" height="250"></canvas></div>
+        <div class="cc" style="flex:1"><h4>Retorno de la inversión</h4><div id="paybackBox"></div></div>
+      </div>
+      <div class="row">
+        <div class="cc"><h4>Perfil día tipo laborable: consumo vs FV</h4><canvas id="c5perfil" height="200"></canvas></div>
+        <div class="cc"><h4>Energía mensual: aprovechada vs perdida</h4><canvas id="c5curt" height="200"></canvas></div>
+      </div>
     </div>
 
-    <div style="margin-top:16px">
-      <button class="btn btn-pdf" onclick="generatePDF()">📄 Descargar PDF</button>
-      <button class="btn" style="background:var(--card);color:var(--text);border:1px solid var(--border);margin-left:8px" onclick="reset()">↩ Nuevo informe</button>
+    <div style="margin-top:14px;display:flex;gap:10px">
+      <button class="btn btn1" onclick="genPDF()">📄 Descargar PDF (5 páginas)</button>
+      <button class="btn btn2" onclick="reset()">↩ Nuevo informe</button>
     </div>
   </div>
 </div>
-
-<!-- Hidden PDF render area -->
-<div id="pdf-render"></div>
+<div class="footer">Amixalan Business Group — Fuentes: inversores + contador horario + factura Goiener · Modalidad: SIN excedentes (vertido cero)</div>
 
 <script>
-// ═══ CONSTANTS ═══
-const CFG = {
-  potencia_kwp: 123.84,
-  modalidad: "Autoconsumo SIN excedentes (vertido cero)",
-  modulos: "288 módulos de 430 Wp",
-  inversores: "2 × 50 kW (KSTAR G50KT)",
-  cubierta: "Este-Oeste",
-  prod_anual_est: 141793,
-  inversion: 80432.64,
-  precios: { P1:0.194, P2:0.160, P3:0.160, P4:0.139, P5:0.139, P6:0.139 },
-  IE: 0.051127,
-  IVA: 0.21,
-  factor_emisiones: 0.2,
-  consumo_vivienda: 250,
-  umbral_pv: 0.1,
-};
+const $=id=>document.getElementById(id);
+const LOGO_B64="data:image/jpeg;base64,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";
+$("logo").src=LOGO_B64;
 
-// ═══ STATE ═══
-let RAW = { invA: [], invB: [], ibr: [] };
-let RESULT = null;
+const CFG={kwp:123.84,mod:'Autoconsumo SIN excedentes (vertido cero)',modulos:'288 módulos de 430 Wp',inversores:'2 × 50 kW (KSTAR G50KT)',cubierta:'Este-Oeste',prodAnual:141793,inv:80432.64,
+  precios:{P1:.194,P2:.160,P3:.160,P4:.139,P5:.139,P6:.139},IE:.051127,IVA:.21,factor_e:.2,umbral_pv:.1,umbral_cero:.5};
+const PERFIL_SOLAR={1:.045,2:.060,3:.085,4:.095,5:.115,6:.125,7:.130,8:.115,9:.095,10:.070,11:.040,12:.025};
+const TEMP_REF={1:5,2:6.2,3:9,4:10.8,5:14.5,6:18.3,7:20.8,8:20.9,9:17.5,10:13.3,11:8.5,12:5.5};
+const HDD_BASE=15,CDD_BASE=24;
+function hddCdd(m){const t=TEMP_REF[m]||12;return[Math.max(0,HDD_BASE-t),Math.max(0,t-CDD_BASE)]}
+function diasMes(m){return[31,28,31,30,31,30,31,31,30,31,30,31][(m-1)%12]}
+let RAW={A:[],B:[],I:[]},R=null,CHARTS={},METEO=null;
+function log(m){const e=$('log');e.innerHTML+=m+'<br>';e.scrollTop=9e9}
+function fn(x,d=0){return d?x.toLocaleString('es-ES',{minimumFractionDigits:d,maximumFractionDigits:d}):x.toLocaleString('es-ES',{maximumFractionDigits:0})}
+function fd(x){return fn(x,1)}
+function dk(d){return d.toISOString().slice(0,10)}
+function hk(d){return d.toISOString().slice(0,13)}
+function ym(d){return d.toISOString().slice(0,7)}
 
-// ═══ LOGGING ═══
-function log(msg) {
-  const el = document.getElementById('log');
-  el.innerHTML += msg + '<br>';
-  el.scrollTop = el.scrollHeight;
-}
-
-// ═══ FILE HANDLERS ═══
-document.getElementById('file-inv-a').addEventListener('change', e => loadInversor(e.target.files, 'A'));
-document.getElementById('file-inv-b').addEventListener('change', e => loadInversor(e.target.files, 'B'));
-document.getElementById('file-ibr').addEventListener('change', e => loadIBR(e.target.files[0]));
-
-function checkReady() {
-  const ready = RAW.invA.length > 0 && RAW.ibr.length > 0;
-  document.getElementById('btn-generate').disabled = !ready;
-}
-
-function parseExcelDate(v) {
-  if (v instanceof Date) return v;
-  if (typeof v === 'number') {
-    // Excel serial date
-    const d = new Date((v - 25569) * 86400000);
-    return d;
-  }
-  if (typeof v === 'string') {
-    // Try multiple formats
-    let d = new Date(v);
-    if (!isNaN(d)) return d;
-    // DD/MM/YYYY HH:mm
-    const m = v.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\s*(\d{1,2})?:?(\d{2})?:?(\d{2})?/);
-    if (m) {
-      d = new Date(m[3], m[2]-1, m[1], m[4]||0, m[5]||0, m[6]||0);
-      if (!isNaN(d)) return d;
-    }
-  }
+// ── Parse Excel date ──
+function pDate(v){
+  if(v instanceof Date)return v;
+  if(typeof v==='number'){return new Date((v-25569)*864e5)}
+  if(typeof v==='string'){let d=new Date(v);if(!isNaN(d))return d;
+    const m=v.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\s*(\d{1,2})?:?(\d{2})?/);
+    if(m){d=new Date(m[3],m[2]-1,m[1],m[4]||0,m[5]||0);if(!isNaN(d))return d}}
   return null;
 }
 
-function loadInversor(files, label) {
-  const key = label === 'A' ? 'invA' : 'invB';
-  RAW[key] = [];
-  let loaded = 0;
-  const total = files.length;
+// ── File loading ──
+$('fA').onchange=e=>loadInv(e.target.files,'A');
+$('fB').onchange=e=>loadInv(e.target.files,'B');
+$('fI').onchange=e=>loadIBR(e.target.files[0]);
+function chk(){$('btnGo').disabled=!(RAW.A.length&&RAW.I.length)}
 
-  Array.from(files).forEach(file => {
-    const reader = new FileReader();
-    reader.onload = function(e) {
-      try {
-        const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(ws, { defval: 0 });
-
-        rows.forEach(row => {
-          // Find columns
-          let ts = null, pot = 0, acum = 0, diaria = 0;
-          for (const [k, v] of Object.entries(row)) {
-            const kl = k.toLowerCase();
-            if (kl.includes('tiempo') || kl === 'tiempo') ts = parseExcelDate(v);
-            if (kl.includes('potencia total c') || kl.includes('potencia total ac')) pot = parseFloat(v) || 0;
-            if (kl.includes('producción acumulada') || kl.includes('produccion acumulada')) acum = parseFloat(v) || 0;
-            if (kl.includes('producción diaria') || kl.includes('produccion diaria')) diaria = parseFloat(v) || 0;
-          }
-          if (ts) RAW[key].push({ ts, pot, acum, diaria });
-        });
-      } catch(err) {
-        log(`⚠ Error leyendo ${file.name}: ${err.message}`);
-      }
-      loaded++;
-      if (loaded === total) {
-        RAW[key].sort((a,b) => a.ts - b.ts);
-        const days = new Set(RAW[key].map(r => r.ts.toDateString())).size;
-        document.getElementById(`status-inv-${label.toLowerCase()}`).textContent =
-          `✓ ${total} fichero(s), ${RAW[key].length} registros, ${days} días`;
-        document.getElementById(`zone-inv-${label.toLowerCase()}`).classList.add('loaded');
-        log(`Inversor ${label}: ${RAW[key].length} registros, ${days} días`);
-        checkReady();
-      }
-    };
-    reader.readAsArrayBuffer(file);
-  });
+function loadInv(files,L){
+  const k=L;RAW[k]=[];let done=0;const n=files.length;
+  Array.from(files).forEach(f=>{const r=new FileReader();r.onload=e=>{
+    try{const wb=XLSX.read(e.target.result,{type:'array',cellDates:true});
+      const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:0});
+      rows.forEach(row=>{let ts=null,pot=0,acum=0,dia=0;
+        for(const[c,v]of Object.entries(row)){const cl=c.toLowerCase();
+          if(cl.includes('tiempo'))ts=pDate(v);
+          if(cl.includes('potencia total c')||cl.includes('potencia total ac'))pot=+v||0;
+          if(cl.includes('producción acumulada')||cl.includes('produccion acumulada'))acum=+v||0;
+          if(cl.includes('producción diaria')||cl.includes('produccion diaria'))dia=+v||0;
+        }
+        if(ts)RAW[k].push({ts,pot,acum,dia});
+      });
+    }catch(er){log('⚠ '+f.name+': '+er.message)}
+    if(++done===n){RAW[k].sort((a,b)=>a.ts-b.ts);
+      const days=new Set(RAW[k].map(r=>r.ts.toDateString())).size;
+      $('st'+k).textContent=`✓ ${n} fichero(s), ${RAW[k].length} reg, ${days} días`;
+      $('z'+k).classList.add('loaded');log(`Inv ${k}: ${RAW[k].length} reg, ${days} días`);chk()}
+  };r.readAsArrayBuffer(f)});
 }
 
-function loadIBR(file) {
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    try {
-      const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
-      // Find "Horarias" sheet
-      let sheetName = wb.SheetNames.find(s => s.toLowerCase().includes('horaria')) || wb.SheetNames[0];
-      const ws = wb.Sheets[sheetName];
-      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+function loadIBR(file){const r=new FileReader();r.onload=e=>{
+  try{const wb=XLSX.read(e.target.result,{type:'array',cellDates:true});
+    let sn=wb.SheetNames.find(s=>s.toLowerCase().includes('horaria'))||wb.SheetNames[0];
+    const rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:''});
+    let hr=2;for(let i=0;i<Math.min(10,rows.length);i++){if(rows[i].some(c=>String(c).toLowerCase().includes('fecha'))){hr=i;break}}
+    RAW.I=[];for(let i=hr+1;i<rows.length;i++){const rw=rows[i];if(!rw||rw.length<5)continue;
+      const ts=pDate(rw[1]);if(!ts)continue;
+      const consumo=(+rw[4]||0)/1000,gen=(+rw[5]||0)/1000;
+      let periodo='P6';const pm=String(rw[3]||'').match(/(\d)/);if(pm)periodo='P'+pm[1];
+      RAW.I.push({ts,consumo,gen,periodo});}
+    RAW.I.sort((a,b)=>a.ts-b.ts);const days=new Set(RAW.I.map(r=>r.ts.toDateString())).size;
+    $('stI').textContent=`✓ ${RAW.I.length} reg, ${days} días`;$('zI').classList.add('loaded');
+    log(`IBR: ${RAW.I.length} reg, ${days} días`);chk();
+  }catch(er){log('⚠ IBR: '+er.message)}
+};r.readAsArrayBuffer(file)}
 
-      // Find header row (look for "Fecha" or "Consumo")
-      let headerRow = 2; // default for i-DE format
-      for (let i = 0; i < Math.min(10, rows.length); i++) {
-        const r = rows[i].map(c => String(c).toLowerCase());
-        if (r.some(c => c.includes('fecha') || c.includes('consumo'))) { headerRow = i; break; }
-      }
+// ── Processing ──
+function filt(arr,d,h){return arr.filter(r=>{if(d&&r.ts<d)return false;if(h&&r.ts>h)return false;return true})}
 
-      RAW.ibr = [];
-      for (let i = headerRow + 1; i < rows.length; i++) {
-        const r = rows[i];
-        if (!r || r.length < 5) continue;
-        const ts = parseExcelDate(r[1]); // Column B = timestamp
-        if (!ts) continue;
-        const consumo = (parseFloat(r[4]) || 0) / 1000; // Column E = Wh → kWh
-        const gen = (parseFloat(r[5]) || 0) / 1000; // Column F = generation Wh → kWh
-        // Period: column D
-        let periodo = 'P6';
-        const rawP = String(r[3] || '');
-        const pm = rawP.match(/(\d)/);
-        if (pm) periodo = 'P' + pm[1];
-        RAW.ibr.push({ ts, consumo, gen, periodo });
-      }
-      RAW.ibr.sort((a,b) => a.ts - b.ts);
-      const days = new Set(RAW.ibr.map(r => r.ts.toDateString())).size;
-      document.getElementById('status-ibr').textContent =
-        `✓ ${RAW.ibr.length} registros, ${days} días`;
-      document.getElementById('zone-ibr').classList.add('loaded');
-      log(`Consumo i-DE: ${RAW.ibr.length} registros, ${days} días`);
-      checkReady();
-    } catch(err) {
-      log(`⚠ Error leyendo consumo: ${err.message}`);
-    }
-  };
-  reader.readAsArrayBuffer(file);
+function procProd(A,B){
+  const dm={};
+  A.forEach(r=>{const d=dk(r.ts);if(!dm[d])dm[d]={date:d,A:0,B:0};dm[d].A=Math.max(dm[d].A,r.dia)});
+  B.forEach(r=>{const d=dk(r.ts);if(!dm[d])dm[d]={date:d,A:0,B:0};dm[d].B=Math.max(dm[d].B,r.dia)});
+  const daily=Object.values(dm).map(d=>({...d,total:d.A+d.B})).sort((a,b)=>a.date.localeCompare(b.date));
+
+  // Hourly
+  const hm={};
+  const procH=(arr,k)=>{const s=[...arr].sort((a,b)=>a.ts-b.ts);const bh={};
+    s.forEach(r=>{const h=hk(r.ts);if(!hm[h])hm[h]={hour:h,h:r.ts.getHours(),date:dk(r.ts),A:0,B:0};
+      if(!bh[h])bh[h]=[];bh[h].push(r)});
+    for(const[h,recs]of Object.entries(bh)){
+      if(recs.length<2){if(hm[h])hm[h][k]=(recs[0].pot||0)/1000}
+      else{let d=recs[recs.length-1].acum-recs[0].acum;
+        if(d<=0)d=recs.reduce((s,r)=>s+r.pot,0)/recs.length/1000;
+        if(hm[h])hm[h][k]=Math.max(0,d)}}};
+  procH(A,'A');procH(B,'B');
+  const hourly=Object.values(hm).map(h=>({...h,total:h.A+h.B})).sort((a,b)=>a.hour.localeCompare(b.hour));
+  return{daily,hourly};
 }
 
-// ═══ PROCESSING ENGINE ═══
-function dateKey(d) { return d.toISOString().slice(0,10); }
-function hourKey(d) { return d.toISOString().slice(0,13); }
-function fmtNum(n) { return n.toLocaleString('es-ES', {maximumFractionDigits:0}); }
-function fmtDec(n,d=1) { return n.toLocaleString('es-ES', {minimumFractionDigits:d,maximumFractionDigits:d}); }
-
-function filterByDate(arr, desde, hasta) {
-  return arr.filter(r => {
-    if (desde && r.ts < desde) return false;
-    if (hasta && r.ts > hasta) return false;
-    return true;
-  });
+function procCons(ibr,ph){
+  const pvH={};ph.forEach(h=>{pvH[h.hour]=h.total});
+  const hourly=ibr.map(r=>{const h=hk(r.ts),pv=pvH[h]||0;
+    return{ts:r.ts,date:dk(r.ts),h:r.ts.getHours(),red:r.consumo,gen:r.gen,pv,
+      total:r.consumo+pv,periodo:r.periodo,wd:r.ts.getDay()}});
+  const dm={};hourly.forEach(r=>{if(!dm[r.date])dm[r.date]={date:r.date,total:0,red:0,pv:0,wd:r.wd};
+    dm[r.date].total+=r.total;dm[r.date].red+=r.red;dm[r.date].pv+=r.pv});
+  const daily=Object.values(dm).sort((a,b)=>a.date.localeCompare(b.date));
+  return{hourly,daily};
 }
 
-function processProduction(invA, invB) {
-  // Daily aggregation
-  const dailyMap = {};
-  invA.forEach(r => {
-    const dk = dateKey(r.ts);
-    if (!dailyMap[dk]) dailyMap[dk] = { date: dk, invA: 0, invB: 0 };
-    dailyMap[dk].invA = Math.max(dailyMap[dk].invA, r.diaria);
-  });
-  invB.forEach(r => {
-    const dk = dateKey(r.ts);
-    if (!dailyMap[dk]) dailyMap[dk] = { date: dk, invA: 0, invB: 0 };
-    dailyMap[dk].invB = Math.max(dailyMap[dk].invB, r.diaria);
-  });
-  const daily = Object.values(dailyMap).map(d => ({
-    ...d, total: d.invA + d.invB
-  })).sort((a,b) => a.date.localeCompare(b.date));
-
-  // Hourly aggregation (for profile)
-  const hourlyMap = {};
-  const processHourly = (arr, key) => {
-    const sorted = [...arr].sort((a,b) => a.ts - b.ts);
-    sorted.forEach(r => {
-      const hk = hourKey(r.ts);
-      if (!hourlyMap[hk]) hourlyMap[hk] = { hour: hk, h: r.ts.getHours(), invA: 0, invB: 0 };
-    });
-    // Group by hour, compute delta acum
-    const byHour = {};
-    sorted.forEach(r => {
-      const hk = hourKey(r.ts);
-      if (!byHour[hk]) byHour[hk] = [];
-      byHour[hk].push(r);
-    });
-    for (const [hk, recs] of Object.entries(byHour)) {
-      if (recs.length < 2) {
-        if (hourlyMap[hk]) hourlyMap[hk][key] = (recs[0].pot || 0) / 1000;
-      } else {
-        let delta = recs[recs.length-1].acum - recs[0].acum;
-        if (delta <= 0) delta = recs.reduce((s,r) => s + r.pot, 0) / recs.length / 1000;
-        if (hourlyMap[hk]) hourlyMap[hk][key] = Math.max(0, delta);
-      }
-    }
-  };
-  processHourly(invA, 'invA');
-  processHourly(invB, 'invB');
-
-  const hourly = Object.values(hourlyMap).map(h => ({
-    ...h, total: h.invA + h.invB
-  })).sort((a,b) => a.hour.localeCompare(b.hour));
-
-  return { daily, hourly };
-}
-
-function processConsumption(ibr, prodHourly) {
-  // Build PV lookup by hour
-  const pvByHour = {};
-  prodHourly.forEach(h => { pvByHour[h.hour] = h.total; });
-
-  const consHourly = ibr.map(r => {
-    const hk = hourKey(r.ts);
-    const pvKwh = pvByHour[hk] || 0;
-    return {
-      ts: r.ts, date: dateKey(r.ts), h: r.ts.getHours(),
-      red: r.consumo, gen: r.gen, pv: pvKwh,
-      total: r.consumo + pvKwh, periodo: r.periodo,
-      weekday: r.ts.getDay(), // 0=Sun
-    };
-  });
-
-  // Daily
-  const dailyMap = {};
-  consHourly.forEach(r => {
-    if (!dailyMap[r.date]) dailyMap[r.date] = { date: r.date, total: 0, red: 0, pv: 0 };
-    dailyMap[r.date].total += r.total;
-    dailyMap[r.date].red += r.red;
-    dailyMap[r.date].pv += r.pv;
-  });
-  const consDaily = Object.values(dailyMap).sort((a,b) => a.date.localeCompare(b.date));
-
-  return { hourly: consHourly, daily: consDaily };
-}
-
-function calcKPIs(prod, cons) {
-  const pd = prod.daily;
-  const ch = cons.hourly;
-
-  // Production KPIs
-  const totalProd = pd.reduce((s,d) => s + d.total, 0);
-  const daysWithPV = pd.filter(d => d.total > 0).length;
-  const avgDaily = daysWithPV > 0 ? totalProd / daysWithPV : 0;
-  const bestDay = pd.reduce((m,d) => d.total > m.total ? d : m, { total:0, date:'-' });
-  const yieldKwp = totalProd / CFG.potencia_kwp;
-  const invATotal = pd.reduce((s,d) => s + d.invA, 0);
-  const invBTotal = pd.reduce((s,d) => s + d.invB, 0);
-
-  // Savings by period
-  const ahorroPeriodos = {};
-  ['P1','P2','P3','P4','P5','P6'].forEach(p => { ahorroPeriodos[p] = { kwh: 0, precio: CFG.precios[p], ahorro: 0 }; });
-  ch.forEach(r => {
-    const p = r.periodo || 'P6';
-    if (ahorroPeriodos[p]) ahorroPeriodos[p].kwh += r.pv;
-  });
-  let totalAhorroEnergia = 0;
-  for (const p in ahorroPeriodos) {
-    ahorroPeriodos[p].ahorro = ahorroPeriodos[p].kwh * ahorroPeriodos[p].precio;
-    totalAhorroEnergia += ahorroPeriodos[p].ahorro;
-  }
-  const totalAhorroFactura = totalAhorroEnergia * (1 + CFG.IE) * (1 + CFG.IVA);
-
-  // Consumption KPIs
-  const totalCons = ch.reduce((s,r) => s + r.total, 0);
-  const totalRed = ch.reduce((s,r) => s + r.red, 0);
-  const totalPV = ch.reduce((s,r) => s + r.pv, 0);
-  const pctCubierto = totalCons > 0 ? (totalPV / totalCons * 100) : 0;
-
-  // Hourly profile for chart
-  const hourlyProfile = Array(24).fill(0).map(() => ({ count: 0, total: 0 }));
-  prod.hourly.forEach(h => { hourlyProfile[h.h].total += h.total; hourlyProfile[h.h].count++; });
-  const avgHourly = hourlyProfile.map(h => h.count > 0 ? h.total / h.count : 0);
-
+function calcKPIs(prod,cons){
+  const pd=prod.daily,ch=cons.hourly;
+  const tP=pd.reduce((s,d)=>s+d.total,0),dPV=pd.filter(d=>d.total>0).length;
+  const avg=dPV?tP/dPV:0,best=pd.reduce((m,d)=>d.total>m.total?d:m,{total:0,date:'-'});
+  const yld=tP/CFG.kwp,iA=pd.reduce((s,d)=>s+d.A,0),iB=pd.reduce((s,d)=>s+d.B,0);
+  // Ahorro periodos
+  const ap={};['P1','P2','P3','P4','P5','P6'].forEach(p=>{ap[p]={kwh:0,pr:CFG.precios[p],ah:0}});
+  ch.forEach(r=>{const p=r.periodo||'P6';if(ap[p])ap[p].kwh+=r.pv});
+  let tAE=0;for(const p in ap){ap[p].ah=ap[p].kwh*ap[p].pr;tAE+=ap[p].ah}
+  const tAF=tAE*(1+CFG.IE)*(1+CFG.IVA);
+  // Consumo
+  const tC=ch.reduce((s,r)=>s+r.total,0),tR=ch.reduce((s,r)=>s+r.red,0),tPV=ch.reduce((s,r)=>s+r.pv,0);
+  const pct=tC?tPV/tC:0;
+  // Hourly profile PV
+  const hp=Array(24).fill(null).map(()=>({c:0,t:0}));
+  prod.hourly.forEach(h=>{hp[h.h].t+=h.total;hp[h.h].c++});
+  const avgH=hp.map(h=>h.c?h.t/h.c:0);
+  // Weekly consumption
+  const wk=Array(7).fill(null).map(()=>({c:0,red:0,pv:0}));
+  cons.daily.forEach(d=>{const w=(d.wd+6)%7;wk[w].red+=d.red;wk[w].pv+=d.pv;wk[w].c++}); // Mon=0
+  const weekly=wk.map(w=>({red:w.c?w.red/w.c:0,pv:w.c?w.pv/w.c:0}));
+  // Hourly profile consumption by day type
+  const hpC={LV:Array(24).fill(0),S:Array(24).fill(0),D:Array(24).fill(0),cLV:Array(24).fill(0),cS:Array(24).fill(0),cD:Array(24).fill(0)};
+  ch.forEach(r=>{const wd=r.wd,h=r.h;
+    if(wd>=1&&wd<=5){hpC.LV[h]+=r.total;hpC.cLV[h]++}
+    else if(wd===6){hpC.S[h]+=r.total;hpC.cS[h]++}
+    else{hpC.D[h]+=r.total;hpC.cD[h]++}});
+  const hpCons={LV:hpC.LV.map((v,i)=>hpC.cLV[i]?v/hpC.cLV[i]:0),S:hpC.S.map((v,i)=>hpC.cS[i]?v/hpC.cS[i]:0),D:hpC.D.map((v,i)=>hpC.cD[i]?v/hpC.cD[i]:0)};
+  // Pico diario consumo
+  const picoD=cons.daily.reduce((m,d)=>d.total>m.total?d:m,{total:0,date:'-'});
   // Payback
-  const ahorroAnual = daysWithPV > 0 ? totalAhorroFactura * 365 / daysWithPV : 0;
-  const paybackYears = ahorroAnual > 0 ? CFG.inversion / ahorroAnual : 99;
+  const aAnual=dPV>=30?tAF/dPV*365:0;const pbY=aAnual?CFG.inv/aAnual:99;
+  const diasPV=dPV;
+  return{tP,dPV,avg,best,yld,iA,iB,ap,tAE,tAF,tC,tR,tPV,pct,avgH,weekly,hpCons,picoD,aAnual,pbY,diasPV,co2:tP*CFG.factor_e/1000,prod,cons};
+}
 
-  return {
-    totalProd, daysWithPV, avgDaily, bestDay,
-    yieldKwp, invATotal, invBTotal,
-    ahorroPeriodos, totalAhorroEnergia, totalAhorroFactura,
-    totalCons, totalRed, totalPV, pctCubierto,
-    avgHourly, ahorroAnual, paybackYears,
-    co2: totalProd * CFG.factor_emisiones / 1000,
-    prod, cons,
-  };
+// ── Evolution (Page 4 data) ──
+function calcEvol(prodD,consH,consD){
+  const ev={};
+  // Prod mensual
+  if(prodD.length&&prodD.some(d=>d.total>0)){
+    const pm={};prodD.forEach(d=>{const m=d.date.slice(0,7);if(!pm[m])pm[m]={mes:m,kwh:0,A:0,B:0,dias:0,mn:+d.date.slice(5,7)};
+      pm[m].kwh+=d.total;pm[m].A+=d.A;pm[m].B+=d.B;pm[m].dias++});
+    let arr=Object.values(pm).sort((a,b)=>a.mes.localeCompare(b.mes));
+    arr.forEach(m=>{m.esp=CFG.prodAnual*(PERFIL_SOLAR[m.mn]||.083);m.pr=m.esp?m.kwh/m.esp*100:0;m.fc=false});
+    // PR medio (meses >=15 dias)
+    const buenos=arr.filter(m=>m.dias>=15);const prM=buenos.length?buenos.reduce((s,m)=>s+m.pr,0)/buenos.length/100:(arr.reduce((s,m)=>s+m.pr,0)/arr.length/100);
+    const prC=Math.max(.3,Math.min(1.5,prM));
+    // Forecast
+    const ult=arr[arr.length-1];let [uy,um]=[+ult.mes.slice(0,4),+ult.mes.slice(5,7)];
+    for(let i=1;arr.length<12;i++){um++;if(um>12){um=1;uy++}
+      const ms=uy+'-'+String(um).padStart(2,'0');
+      const esp=CFG.prodAnual*(PERFIL_SOLAR[um]||.083);
+      arr.push({mes:ms,kwh:esp*prC,A:esp*prC*.55,B:esp*prC*.45,dias:0,mn:um,esp,pr:prC*100,fc:true})}
+    ev.prodM=arr;ev.prM=prC;ev.hayProd=true;
+  }else{ev.hayProd=false;ev.prodM=[]}
+
+  // Cons mensual
+  if(consH.length){
+    const cm={};consH.forEach(r=>{const m=ym(r.ts);if(!cm[m])cm[m]={mes:m,total:0,red:0,pv:0,P:0,L:0,V:0,dias:new Set(),fc:false,mn:r.ts.getMonth()+1};
+      cm[m].total+=r.total;cm[m].red+=r.red;cm[m].pv+=r.pv;cm[m].dias.add(dk(r.ts));
+      const fr=r.periodo;if(fr==='P1')cm[m].P+=r.red;else if(fr==='P2'||fr==='P3')cm[m].L+=r.red;else cm[m].V+=r.red});
+    let ca=Object.values(cm).sort((a,b)=>a.mes.localeCompare(b.mes));
+    ca.forEach(m=>m.nDias=m.dias.size);
+    // HDD/CDD trend model (needs >=3 complete months)
+    const comp=ca.filter(m=>m.nDias>=20);
+    let trend=null;
+    if(comp.length>=3){
+      comp.forEach(m=>{const[h,c]=hddCdd(m.mn);m.hdd=h;m.cdd=c;m.kwhDia=m.total/m.nDias});
+      // Simple regression: kwhDia = a + b*HDD
+      const n=comp.length,sx=comp.reduce((s,m)=>s+m.hdd,0),sy=comp.reduce((s,m)=>s+m.kwhDia,0);
+      const sxy=comp.reduce((s,m)=>s+m.hdd*m.kwhDia,0),sxx=comp.reduce((s,m)=>s+m.hdd*m.hdd,0);
+      const b=(n*sxy-sx*sy)/(n*sxx-sx*sx||1),a=(sy-b*sx)/n;
+      trend={a,b};
+      ca.forEach(m=>{const[h]=hddCdd(m.mn);m.modelo=(a+b*h)*diasMes(m.mn)});
+      // Forecast consumo
+      const ult=ca[ca.length-1];let[uy2,um2]=[+ult.mes.slice(0,4),+ult.mes.slice(5,7)];
+      const ratP=comp.reduce((s,m)=>s+m.P,0),ratL=comp.reduce((s,m)=>s+m.L,0),ratV=comp.reduce((s,m)=>s+m.V,0);
+      const ratT=ratP+ratL+ratV||1;
+      for(let i=1;ca.length<18;i++){um2++;if(um2>12){um2=1;uy2++}
+        const ms=uy2+'-'+String(um2).padStart(2,'0');const[h]=hddCdd(um2);
+        const tot=Math.max(0,(a+b*h)*diasMes(um2));
+        ca.push({mes:ms,total:tot,red:tot*.95,pv:tot*.05,P:tot*ratP/ratT,L:tot*ratL/ratT,V:tot*ratV/ratT,nDias:diasMes(um2),fc:true,mn:um2,modelo:tot})}
+    }
+    ev.consM=ca;ev.trend=trend;ev.hayCons=true;
+  }else{ev.hayCons=false;ev.consM=[]}
+
+  // Ahorro mensual
+  if(consH.length){
+    const am={};consH.forEach(r=>{const m=ym(r.ts);if(!am[m])am[m]={mes:m,ah:0,ahT:0,fc:false};
+      const pr=CFG.precios[r.periodo]||.139;const pv=Math.min(r.pv,r.total);
+      am[m].ah+=pv*pr;am[m].ahT+=pv*pr*(1+CFG.IE)*(1+CFG.IVA)});
+    let aa=Object.values(am).sort((a,b)=>a.mes.localeCompare(b.mes));
+    // Forecast savings if we have prod forecast
+    if(ev.hayProd){const realM=new Set(aa.map(m=>m.mes));
+      ev.prodM.filter(m=>m.fc&&!realM.has(m.mes)).forEach(m=>{
+        const prM=Object.values(CFG.precios).reduce((s,p)=>s+p,0)/6;
+        const ahM=m.kwh*.85*prM;aa.push({mes:m.mes,ah:ahM,ahT:ahM*(1+CFG.IE)*(1+CFG.IVA),fc:true})})}
+    aa.sort((a,b)=>a.mes.localeCompare(b.mes));
+    let acum=0;aa.forEach(m=>{acum+=m.ahT;m.acum=acum});
+    ev.ahorroM=aa;ev.hayAhorro=true;
+  }else{ev.hayAhorro=false;ev.ahorroM=[]}
+  return ev;
+}
+
+// ── Analysis (Page 5 data) ──
+function calcAnalysis(prodH,consH){
+  const an={};
+  // Heatmap
+  if(prodH.length){
+    const hm={};prodH.forEach(r=>{const d=r.date,h=r.h;if(!hm[d])hm[d]={};hm[d][h]=(hm[d][h]||0)+r.total});
+    const dates=Object.keys(hm).sort();an.heatDates=dates;an.heatData=hm;an.hayHeat=dates.length>0;
+  }else an.hayHeat=false;
+  // Perfil tipo laborable
+  if(consH.length){
+    const lv=consH.filter(r=>r.wd>=1&&r.wd<=5);
+    if(lv.length){const p=Array(24).fill(null).map(()=>({cons:0,pv:0,red:0,c:0}));
+      lv.forEach(r=>{p[r.h].cons+=r.total;p[r.h].pv+=r.pv;p[r.h].red+=r.red;p[r.h].c++});
+      an.perfil=p.map(h=>({cons:h.c?h.cons/h.c:0,pv:h.c?h.pv/h.c:0,red:h.c?h.red/h.c:0,
+        auto:Math.min(h.c?h.cons/h.c:0,h.c?h.pv/h.c:0),curt:Math.max(0,(h.c?h.pv/h.c:0)-(h.c?h.cons/h.c:0))}));
+      an.hayPerfil=true;}
+    else an.hayPerfil=false;
+  }else an.hayPerfil=false;
+  // Curtailment mensual
+  if(consH.length){const cm={};consH.forEach(r=>{const m=ym(r.ts);if(!cm[m])cm[m]={mes:m,used:0,curt:0,pvT:0};
+    const used=Math.min(r.pv,r.total);cm[m].used+=used;cm[m].curt+=Math.max(0,r.pv-used);cm[m].pvT+=r.pv});
+    an.curtM=Object.values(cm).filter(m=>m.pvT>0).sort((a,b)=>a.mes.localeCompare(b.mes));
+    an.curtM.forEach(m=>m.pct=m.pvT?m.curt/m.pvT*100:0);an.hayCurt=an.curtM.length>0;
+  }else an.hayCurt=false;
+  // Payback
+  if(consH.length){const tAh=consH.reduce((s,r)=>{const pr=CFG.precios[r.periodo]||.139;return s+Math.min(r.pv,r.total)*pr*(1+CFG.IE)*(1+CFG.IVA)},0);
+    const dPV=new Set(consH.filter(r=>r.pv>CFG.umbral_pv).map(r=>dk(r.ts))).size;
+    const pct=CFG.inv?tAh/CFG.inv*100:0;const canP=dPV>=30;
+    const aA=canP?tAh/dPV*365:0;const yrs=aA?CFG.inv/aA:99;
+    an.pb={inv:CFG.inv,ahAcum:tAh,aAnual:aA,pct,anos:yrs,dias:dPV,canP,anoAmort:canP?Math.round(new Date().getFullYear()+yrs):0};
+    an.hayPB=true;}
+  else an.hayPB=false;
+  return an;
+}
+
+// ── Meteo ──
+async function fetchMeteo(d1,d2){
+  try{log('Descargando meteo Open-Meteo...');
+    const u=`https://api.open-meteo.com/v1/forecast?latitude=42.83&longitude=-1.58&start_date=${d1}&end_date=${d2}&daily=shortwave_radiation_sum,temperature_2m_max,temperature_2m_min,sunshine_duration&timezone=Europe/Madrid`;
+    let r=await fetch(u);if(!r.ok)r=await fetch(u.replace('api.open-meteo.com/v1/forecast','archive-api.open-meteo.com/v1/archive'));
+    const j=await r.json();if(!j.daily)return null;
+    const m=j.daily.time.map((t,i)=>({date:t,ghi:(j.daily.shortwave_radiation_sum[i]||0)/1000,
+      tMax:j.daily.temperature_2m_max[i],tMin:j.daily.temperature_2m_min[i],sol:(j.daily.sunshine_duration[i]||0)/3600}));
+    const ag=m.reduce((s,x)=>s+x.ghi,0)/m.length,as=m.reduce((s,x)=>s+x.sol,0)/m.length;
+    log(`✓ Meteo: ${m.length} días | GHI: ${ag.toFixed(2)} kWh/m²/d | Sol: ${as.toFixed(1)} h/d`);return m;
+  }catch(e){log('⚠ Meteo: '+e.message);return null}
 }
 
 // ═══ MAIN GENERATE ═══
-function generate() {
-  log('Procesando...');
-  const desde = document.getElementById('fecha-desde').value ? new Date(document.getElementById('fecha-desde').value + 'T00:00:00') : null;
-  const hasta = document.getElementById('fecha-hasta').value ? new Date(document.getElementById('fecha-hasta').value + 'T23:59:59') : null;
-
-  if (desde && hasta && desde > hasta) {
-    log('⚠ ERROR: "Desde" es posterior a "Hasta"');
-    return;
-  }
-
-  const invA = filterByDate(RAW.invA, desde, hasta);
-  const invB = filterByDate(RAW.invB, desde, hasta);
-  const ibr = filterByDate(RAW.ibr, desde, hasta);
-
-  log(`Filtrado: Inv A=${invA.length}, Inv B=${invB.length}, IBR=${ibr.length}`);
-
-  if (invA.length === 0) { log('⚠ No hay datos de inversor A en el rango'); return; }
-
-  const prod = processProduction(invA, invB);
-  const cons = processConsumption(ibr, prod.hourly);
-  RESULT = calcKPIs(prod, cons);
-
-  log(`✓ Producción: ${fmtDec(RESULT.totalProd)} kWh | Consumo: ${fmtNum(RESULT.totalCons)} kWh`);
-  log(`✓ Ahorro energía: ${fmtNum(RESULT.totalAhorroEnergia)} € | Total factura: ${fmtNum(RESULT.totalAhorroFactura)} €`);
-
-  setStep(3);
-  renderResults();
+async function generate(){
+  log('Procesando...');setStep(2);
+  const d0=$('dDesde').value?new Date($('dDesde').value+'T00:00:00'):null;
+  const d1=$('dHasta').value?new Date($('dHasta').value+'T23:59:59'):null;
+  if(d0&&d1&&d0>d1){log('⚠ Desde > Hasta');return}
+  const iA=filt(RAW.A,d0,d1),iB=filt(RAW.B,d0,d1),ibr=filt(RAW.I,d0,d1);
+  log(`Filtrado: InvA=${iA.length}, InvB=${iB.length}, IBR=${ibr.length}`);
+  if(!iA.length){log('⚠ Sin datos Inv A');return}
+  // Filtered (pages 1-3)
+  const prod=procProd(iA,iB),cons=procCons(ibr,prod.hourly);
+  const kpis=calcKPIs(prod,cons);
+  // Full history (pages 4-5)
+  const prodAll=procProd(RAW.A,RAW.B),consAll=procCons(RAW.I,prodAll.hourly);
+  const evol=calcEvol(prodAll.daily,consAll.hourly,consAll.daily);
+  const analysis=calcAnalysis(prodAll.hourly,consAll.hourly);
+  // Meteo
+  const mD1=prod.daily[0]?.date||'',mD2=prod.daily[prod.daily.length-1]?.date||'';
+  METEO=await fetchMeteo(mD1,mD2);
+  R={...kpis,evol,analysis,meteo:METEO};
+  log(`✓ Producción: ${fd(R.tP)} kWh | Ahorro: ${fn(R.tAF)} €`);
+  setStep(3);render();
 }
 
-// ═══ RENDER RESULTS ═══
-function renderResults() {
-  const R = RESULT;
-  document.getElementById('panel-upload').style.display = 'none';
-  document.getElementById('panel-results').style.display = 'block';
-
-  // KPIs
-  const eStr = R.totalProd >= 1000 ? fmtDec(R.totalProd/1000,2) + ' MWh' : fmtDec(R.totalProd) + ' kWh';
-  const kpis = [
-    { label: 'Energía producida', value: eStr, sub: 'Producción total' },
-    { label: 'Media diaria', value: fmtDec(R.avgDaily) + ' kWh/día', sub: R.daysWithPV + ' días' },
-    { label: 'Mejor día', value: fmtDec(R.bestDay.total) + ' kWh', sub: R.bestDay.date },
-    { label: 'Rendimiento', value: fmtDec(R.yieldKwp) + ' kWh/kWp', sub: CFG.potencia_kwp + ' kWp' },
-    { label: 'Ahorro energía', value: fmtNum(R.totalAhorroEnergia) + ' €', sub: 'P1-P6' },
-    { label: 'Ahorro factura', value: fmtNum(R.totalAhorroFactura) + ' €', sub: 'IE+IVA incl.' },
-  ];
-  document.getElementById('kpi-grid').innerHTML = kpis.map(k =>
-    `<div class="kpi-card"><div class="kpi-label">${k.label}</div><div class="kpi-value">${k.value}</div><div class="kpi-sub">${k.sub}</div></div>`
-  ).join('');
-
-  // Charts
-  renderDailyChart();
-  renderHourlyChart();
-  renderDonutChart();
-  renderConsChart();
-  renderAhorroChart();
+// ═══ RENDER ═══
+function render(){
+  $('pUpload').style.display='none';$('pResults').style.display='block';
+  destroyCharts();renderP1();renderP2();renderP3();renderP4();renderP5();
 }
+function destroyCharts(){for(const k in CHARTS){try{CHARTS[k].destroy()}catch(e){}}CHARTS={}}
 
-function renderDailyChart() {
-  const ctx = document.getElementById('chart-daily').getContext('2d');
-  const pd = RESULT.prod.daily;
-  new Chart(ctx, {
-    type: pd.length <= 5 ? 'bar' : 'line',
-    data: {
-      labels: pd.map(d => d.date.slice(5)),
-      datasets: [{
-        label: 'Producción (kWh)',
-        data: pd.map(d => d.total),
-        backgroundColor: '#2a6b5a',
-        borderColor: '#2a6b5a',
-        borderWidth: 1.5,
-        fill: false,
-        tension: 0.3,
-        pointRadius: pd.length > 20 ? 0 : 3,
-      }]
-    },
-    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
-  });
-}
-
-function renderHourlyChart() {
-  const ctx = document.getElementById('chart-hourly').getContext('2d');
-  const colors = RESULT.avgHourly.map(v => v > Math.max(...RESULT.avgHourly) * 0.5 ? '#d4a039' : '#e8d49a');
-  new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: Array.from({length:24}, (_,i) => i+'h'),
-      datasets: [{ data: RESULT.avgHourly, backgroundColor: colors, borderWidth: 0 }]
-    },
-    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
-  });
-}
-
-function renderDonutChart() {
-  const ctx = document.getElementById('chart-donut').getContext('2d');
-  const a = RESULT.invATotal, b = RESULT.invBTotal;
-  new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      labels: ['Inversor A', 'Inversor B'],
-      datasets: [{ data: [a, b], backgroundColor: ['#1a3c34', '#d4a039'], borderWidth: 2, borderColor: '#111827' }]
-    },
-    options: { responsive: true, cutout: '55%', plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', font: { size: 11 } } } } }
-  });
-}
-
-function renderConsChart() {
-  const ctx = document.getElementById('chart-cons').getContext('2d');
-  const cd = RESULT.cons.daily;
-  new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: cd.map(d => d.date.slice(5)),
-      datasets: [
-        { label: 'Red', data: cd.map(d => d.red), backgroundColor: '#3d6b5a', stack: 'a' },
-        { label: 'FV', data: cd.map(d => d.pv), backgroundColor: '#d4a039', stack: 'a' },
-      ]
-    },
-    options: { responsive: true, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } } }
-  });
-}
-
-function renderAhorroChart() {
-  const ctx = document.getElementById('chart-ahorro').getContext('2d');
-  const ap = RESULT.ahorroPeriodos;
-  const periodos = Object.keys(ap);
-  new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: periodos,
-      datasets: [
-        { label: 'kWh FV', data: periodos.map(p => ap[p].kwh), backgroundColor: '#2a6b5a', yAxisID: 'y' },
-        { label: 'Ahorro €', data: periodos.map(p => ap[p].ahorro), backgroundColor: '#d4a039', yAxisID: 'y1' },
-      ]
-    },
-    options: {
-      responsive: true,
-      scales: {
-        y: { beginAtZero: true, position: 'left', title: { display: true, text: 'kWh' } },
-        y1: { beginAtZero: true, position: 'right', title: { display: true, text: '€' }, grid: { drawOnChartArea: false } }
-      }
-    }
-  });
-}
-
-
-// Logo Amixalan base64
-const LOGO_B64 = "data:image/jpeg;base64,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";
-
-// ═══ PDF GENERATION ═══
-async function generatePDF() {
-  setStep(4);
-  log('Generando PDF...');
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF('p', 'mm', 'a4');
-  const R = RESULT;
-  const W = 210, H = 297, M = 15;
-
-  const desde = R.prod.daily[0]?.date || '';
-  const hasta = R.prod.daily[R.prod.daily.length-1]?.date || '';
-  const periodo = `${desde} → ${hasta}`;
-
-  function header(title, sub) {
-    doc.setFillColor(26, 60, 52);
-    doc.roundedRect(M, 10, W-2*M, 18, 3, 3, 'F');
-    // Logo in header
-    try { doc.addImage(LOGO_B64, 'JPEG', M+2, 11.5, 15, 15); } catch(e) {}
-    doc.setTextColor(255); doc.setFontSize(13); doc.setFont(undefined, 'bold');
-    doc.text(title, M+20, 21);
-    doc.setFontSize(9); doc.setFont(undefined, 'normal');
-    doc.text(sub, M+20, 26);
-    doc.setTextColor(0);
-  }
-
-  function footer(page) {
-    doc.setFontSize(7); doc.setTextColor(150);
-    doc.text(`Fuentes: inversores (KSTAR) + contador horario + factura Goiener.  Modalidad: SIN excedentes (vertido cero).`, M, H-8);
-    doc.text(`Pág ${page}`, W-M-10, H-8);
-    doc.setTextColor(0);
-  }
-
-  // Helper: capture chart to image
-  async function chartToImg(canvasId, w, h) {
-    const canvas = document.getElementById(canvasId);
-    if (!canvas) return null;
-    return canvas.toDataURL('image/png');
-  }
-
-  // ═══ PAGE 1: Production ═══
-  header('Producción fotovoltaica — Edificio Gorraiz', `Periodo: ${periodo}  ·  Modalidad: ${CFG.modalidad}`);
-
-  // KPIs
-  let y = 34;
-  doc.setFontSize(11); doc.setFont(undefined, 'bold'); doc.text('Resultados clave', M, y); y += 6;
-  const eStr = R.totalProd >= 1000 ? fmtDec(R.totalProd/1000,2) + ' MWh' : fmtDec(R.totalProd) + ' kWh';
-  const kpiData = [
-    ['Energía producida', eStr],
-    ['Media diaria', fmtDec(R.avgDaily) + ' kWh/día'],
-    ['Mejor día', fmtDec(R.bestDay.total) + ' kWh'],
-    ['Rendimiento', fmtDec(R.yieldKwp) + ' kWh/kWp'],
-    ['Ahorro energía', fmtNum(R.totalAhorroEnergia) + ' €'],
-    ['Ahorro factura', fmtNum(R.totalAhorroFactura) + ' €'],
-  ];
-  const kw = (W - 2*M) / 6;
-  kpiData.forEach(([label, val], i) => {
-    const x = M + i * kw;
-    doc.setFillColor(240, 245, 235); doc.roundedRect(x, y, kw-2, 16, 2, 2, 'F');
-    doc.setFontSize(6); doc.setFont(undefined, 'normal'); doc.setTextColor(100);
-    doc.text(label.toUpperCase(), x+2, y+5);
-    doc.setFontSize(10); doc.setFont(undefined, 'bold'); doc.setTextColor(26, 60, 52);
-    doc.text(val, x+2, y+12);
-  });
-  doc.setTextColor(0); y += 22;
-
-  // Daily chart
-  const imgDaily = await chartToImg('chart-daily');
-  if (imgDaily) doc.addImage(imgDaily, 'PNG', M, y, W-2*M, 70);
-  y += 76;
-
+function renderP1(){
+  const e=R.tP>=1000?fn(R.tP/1000,2)+' MWh':fd(R.tP)+' kWh';
+  const kpis=[['Energía producida',e,'Producción total'],['Media diaria',fd(R.avg)+' kWh/día',R.dPV+' días'],
+    ['Mejor día',fd(R.best.total)+' kWh',R.best.date],['Rendimiento',fd(R.yld)+' kWh/kWp',CFG.kwp+' kWp'],
+    ['Ahorro energía',fn(R.tAE)+' €','P1-P6'],['Ahorro factura',fn(R.tAF)+' €','IE+IVA incl.']];
+  $('k1').innerHTML=kpis.map(([l,v,s])=>`<div class="kbox"><div class="kl">${l}</div><div class="kv">${v}</div><div class="ks">${s}</div></div>`).join('');
+  // Daily chart + GHI
+  const pd=R.prod.daily,ds=[{label:'Producción (kWh)',data:pd.map(d=>d.total),borderColor:'#2a6b5a',backgroundColor:'rgba(42,107,90,.3)',
+    borderWidth:1.5,fill:true,tension:.3,pointRadius:pd.length>20?0:3,yAxisID:'y'}];
+  const sc={y:{beginAtZero:true,position:'left',title:{display:true,text:'kWh/día',color:'#9baa9f',font:{size:10}}}};
+  if(METEO){const gm={};METEO.forEach(m=>gm[m.date]=m.ghi);
+    ds.push({label:'GHI (kWh/m²)',data:pd.map(d=>gm[d.date]||null),borderColor:'#d4a039',borderWidth:1.5,borderDash:[5,3],
+      fill:false,tension:.4,pointRadius:0,yAxisID:'y1'});
+    sc.y1={beginAtZero:true,position:'right',title:{display:true,text:'GHI (kWh/m²)',color:'#d4a039',font:{size:10}},grid:{drawOnChartArea:false},ticks:{color:'#d4a039'}}}
+  CHARTS.c1=new Chart($('c1daily'),{type:pd.length<=5?'bar':'line',data:{labels:pd.map(d=>d.date.slice(5)),datasets:ds},
+    options:{responsive:true,plugins:{legend:{display:!!METEO,labels:{color:'#9baa9f',font:{size:10}}}},scales:sc}});
+  // Meteo box
   // Conclusion
-  doc.setFillColor(248,249,250); doc.roundedRect(M, y, W-2*M, 28, 2, 2, 'F');
-  doc.setFontSize(10); doc.setFont(undefined, 'bold'); doc.text('Conclusión', M+4, y+7);
-  doc.setFontSize(8); doc.setFont(undefined, 'normal'); doc.setTextColor(80);
-  const conclusion = `La planta produce con estabilidad. El ahorro se calcula cruzando producción horaria y precios por periodo (P1-P6). Referencia de proyecto (memoria visada): ${fmtNum(CFG.prod_anual_est)} kWh/año.`;
-  doc.text(conclusion, M+4, y+14, { maxWidth: W-2*M-8 });
-  doc.setTextColor(0);
-  footer(1);
+  const concl=`La planta produce con estabilidad. En este periodo se han generado ${R.tP>=1000?fn(R.tP/1000,2)+' MWh':fd(R.tP)+' kWh'} `+
+    `con un rendimiento de ${fd(R.yld)} kWh/kWp. El ahorro se calcula cruzando producción horaria y precios por periodo (P1–P6). `+
+    `Referencia de proyecto (memoria visada): ${fn(CFG.prodAnual)} kWh/año.`;
+  $('conclusionText').textContent=concl;
+  if(METEO){const ag=METEO.reduce((s,m)=>s+m.ghi,0)/METEO.length,as=METEO.reduce((s,m)=>s+m.sol,0)/METEO.length;
+    const at=(METEO.reduce((s,m)=>s+m.tMax,0)+METEO.reduce((s,m)=>s+m.tMin,0))/(METEO.length*2);
+    $('meteoBox').innerHTML=`<div class="metbox">🌤️ Datos meteorológicos (Open-Meteo): GHI medio: ${ag.toFixed(2)} kWh/m²/día | Sol: ${as.toFixed(1)} h/día | Temp media: ${at.toFixed(1)}°C</div>`}
+}
 
-  // ═══ PAGE 2: Inverters & Savings ═══
-  doc.addPage();
-  header('Detalle de instalación, inversores y ahorro', `Periodo: ${periodo}  ·  Modalidad: ${CFG.modalidad}`);
-  y = 34;
-
-  // Hourly profile chart
-  const imgHourly = await chartToImg('chart-hourly');
-  if (imgHourly) doc.addImage(imgHourly, 'PNG', M, y, (W-2*M)/2-2, 50);
-
-  // Donut chart
-  const imgDonut = await chartToImg('chart-donut');
-  if (imgDonut) doc.addImage(imgDonut, 'PNG', W/2+2, y, (W-2*M)/2-2, 50);
-  y += 56;
-
-  // P1-P6 savings table
-  doc.setFontSize(10); doc.setFont(undefined, 'bold'); doc.text('Ahorro por periodos (P1-P6)', M, y); y += 6;
-  doc.setFontSize(8); doc.setFont(undefined, 'bold');
-  doc.setFillColor(26,60,77); doc.setTextColor(255);
-  doc.rect(M, y, W-2*M, 6, 'F');
-  doc.text('Periodo', M+2, y+4); doc.text('FV (kWh)', M+35, y+4);
-  doc.text('€/kWh', M+70, y+4); doc.text('Ahorro (€)', M+105, y+4);
-  doc.setTextColor(0); doc.setFont(undefined, 'normal'); y += 7;
-  const ap = R.ahorroPeriodos;
-  let totalAh = 0;
-  for (const p of ['P1','P2','P3','P4','P5','P6']) {
-    doc.text(p, M+2, y+4);
-    doc.text(fmtNum(ap[p].kwh), M+35, y+4);
-    doc.text(ap[p].precio.toFixed(3), M+70, y+4);
-    doc.text(fmtNum(ap[p].ahorro), M+105, y+4);
-    totalAh += ap[p].ahorro;
-    if (['P1','P3','P5'].includes(p)) { doc.setFillColor(248,249,250); doc.rect(M, y, W-2*M, 6, 'F'); }
-    doc.text(p, M+2, y+4);
-    doc.text(fmtNum(ap[p].kwh), M+35, y+4);
-    doc.text(ap[p].precio.toFixed(3), M+70, y+4);
-    doc.text(fmtNum(ap[p].ahorro), M+105, y+4);
-    y += 6;
-  }
-  doc.setDrawColor(0); doc.line(M, y, W-M, y); y += 2;
-  doc.setFont(undefined, 'bold');
-  doc.text('TOTAL término energía', M+2, y+4);
-  doc.text(fmtNum(totalAh) + ' €', M+105, y+4);
-  y += 12;
-
+function renderP2(){
+  // Hourly profile
+  const pk=Math.max(...R.avgH);const cols=R.avgH.map(v=>v>pk*.5?'#d4a039':'#e8d49a');
+  // Smoothing (3-point moving average like scipy uniform_filter)
+  const smooth=R.avgH.map((v,i,a)=>{const s=Math.max(0,i-1),e=Math.min(a.length-1,i+1);return(a[s]+a[i]+a[e])/((e-s)+1)});
+  const peakH=R.avgH.indexOf(Math.max(...R.avgH));
+  CHARTS.c2h=new Chart($('c2hourly'),{type:'bar',data:{labels:Array.from({length:24},(_,i)=>i+'h'),
+    datasets:[{data:R.avgH,backgroundColor:cols,borderWidth:0,order:2},
+      {label:'Tendencia',data:smooth,type:'line',borderColor:'#1a237e',borderWidth:1.5,pointRadius:0,tension:.3,fill:false,order:1}]},
+    options:{responsive:true,plugins:{legend:{display:false},
+      annotation:undefined,
+      tooltip:{callbacks:{title:ctx=>{const i=ctx[0].dataIndex;return i===peakH?'← Hora pico: '+fd(R.avgH[peakH])+' kWh':i+'h'}}}},
+      scales:{y:{beginAtZero:true}}}});
+  // Donut
+  CHARTS.c2d=new Chart($('c2donut'),{type:'doughnut',data:{labels:['Inversor A','Inversor B'],
+    datasets:[{data:[R.iA,R.iB],backgroundColor:['#1a3c34','#d4a039'],borderWidth:2,borderColor:'#162420'}]},
+    options:{responsive:true,cutout:'55%',plugins:{legend:{position:'bottom',labels:{color:'#9baa9f',font:{size:10}}}}}});
+  // Scatter
+  const sd=R.prod.daily.filter(d=>d.A>0||d.B>0);
+  CHARTS.c2s=new Chart($('c2scatter'),{type:'scatter',data:{datasets:[{data:sd.map(d=>({x:d.A,y:d.B})),
+    backgroundColor:'rgba(212,160,57,.5)',borderColor:'#d4a039',pointRadius:4}]},
+    options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{title:{display:true,text:'Inv A (kWh)',font:{size:10}},beginAtZero:true},
+      y:{title:{display:true,text:'Inv B (kWh)',font:{size:10}},beginAtZero:true}}}});
+  // P1-P6 table
+  let h='<tr><th>Periodo</th><th>FV (kWh)</th><th>€/kWh</th><th>Ahorro (€)</th></tr>';
+  let tK=0,tA=0;for(const p of['P1','P2','P3','P4','P5','P6']){const a=R.ap[p];tK+=a.kwh;tA+=a.ah;
+    h+=`<tr><td>${p}</td><td>${fn(a.kwh)}</td><td>${a.pr.toFixed(3)}</td><td>${fn(a.ah)}</td></tr>`}
+  h+=`<tr class="tot"><td>TOTAL</td><td>${fn(tK)}</td><td></td><td>${fn(tA)} €</td></tr>`;
+  $('tblAhorro').innerHTML=h;
   // Ficha
-  doc.setFontSize(10); doc.setFont(undefined, 'bold'); doc.text('Ficha rápida de la instalación', M, y); y += 5;
-  doc.setFillColor(248,249,250); doc.roundedRect(M, y, W-2*M, 44, 2, 2, 'F');
-  doc.setFontSize(8); doc.setFont(undefined, 'normal');
-  const ficha = [
-    `Potencia pico: ${CFG.potencia_kwp} kWp`, `Generadores: ${CFG.modulos}`,
-    `Inversores: ${CFG.inversores}`, `Cubierta con captación ${CFG.cubierta}`,
-    CFG.modalidad, `Producción anual estimada: ${fmtNum(CFG.prod_anual_est)} kWh/año`,
-  ];
-  ficha.forEach((line, i) => { doc.text('• ' + line, M+4, y+6+i*6); });
-  footer(2);
-
-  // ═══ PAGE 3: Consumption ═══
-  doc.addPage();
-  header('Consumo eléctrico y cobertura fotovoltaica', `Periodo: ${periodo}  ·  Modalidad: ${CFG.modalidad}`);
-  y = 34;
-
-  // Consumption KPIs
-  doc.setFontSize(11); doc.setFont(undefined, 'bold'); doc.text('Balance energético', M, y); y += 6;
-  const consKpis = [
-    ['Consumo total', fmtNum(R.totalCons) + ' kWh'],
-    ['Desde red', fmtNum(R.totalRed) + ' kWh'],
-    ['Desde FV', fmtNum(R.totalPV) + ' kWh'],
-    ['Cobertura FV', fmtDec(R.pctCubierto) + '%'],
-  ];
-  const ckw = (W-2*M) / 4;
-  consKpis.forEach(([label, val], i) => {
-    const x = M + i * ckw;
-    doc.setFillColor(240, 245, 235); doc.roundedRect(x, y, ckw-2, 14, 2, 2, 'F');
-    doc.setFontSize(6); doc.setFont(undefined, 'normal'); doc.setTextColor(100);
-    doc.text(label.toUpperCase(), x+2, y+5);
-    doc.setFontSize(10); doc.setFont(undefined, 'bold'); doc.setTextColor(26, 60, 52);
-    doc.text(val, x+2, y+11);
-  });
-  doc.setTextColor(0); y += 20;
-
-  // Consumption chart
-  const imgCons = await chartToImg('chart-cons');
-  if (imgCons) doc.addImage(imgCons, 'PNG', M, y, W-2*M, 70);
-  y += 76;
-
-  // Ahorro chart
-  const imgAhorro = await chartToImg('chart-ahorro');
-  if (imgAhorro) doc.addImage(imgAhorro, 'PNG', M, y, W-2*M, 55);
-
-  footer(3);
-
-  // Save
-  const fname = `Informe_FV_Gorraiz_${desde.replace(/-/g,'')}_${hasta.replace(/-/g,'')}.pdf`;
-  doc.save(fname);
-  log(`✓ PDF descargado: ${fname}`);
+  $('fichaUl').innerHTML=[`Potencia pico: ${CFG.kwp} kWp`,`Generadores: ${CFG.modulos}`,`Inversores: ${CFG.inversores}`,
+    `Cubierta: ${CFG.cubierta}`,CFG.mod,`Producción anual estimada: ${fn(CFG.prodAnual)} kWh/año`].map(l=>`<li>${l}</li>`).join('');
 }
 
-// ═══ UI HELPERS ═══
-function setStep(n) {
-  for (let i = 1; i <= 4; i++) {
-    const el = document.getElementById('s'+i);
-    el.classList.remove('active', 'done');
-    if (i < n) el.classList.add('done');
-    if (i === n) el.classList.add('active');
+function renderP3(){
+  const sk=v=>v>=1000?fn(v/1000,2)+' MWh':fn(v)+' kWh';
+  const kpis=[['Consumo total',sk(R.tC),'Red + FV'],['Comprado a red',sk(R.tR),'Balance contador'],['Aportado por FV',sk(R.tPV),'Producción inversores'],
+    ['% cubierto FV',fd(R.pct*100)+' %','Autoconsumo'],['Pico diario',fn(R.picoD.total)+' kWh',R.picoD.date]];
+  $('k3').innerHTML=kpis.map(([l,v,s])=>`<div class="kbox"><div class="kl">${l}</div><div class="kv">${v}</div><div class="ks">${s}</div></div>`).join('');
+  // Daily cons
+  const cd=R.cons.daily;
+  CHARTS.c3d=new Chart($('c3daily'),{type:'line',data:{labels:cd.map(d=>d.date.slice(5)),datasets:[
+    {label:'Consumo total',data:cd.map(d=>d.total),borderColor:'#2a6b5a',borderWidth:1.2,fill:false,tension:.3,pointRadius:0},
+    {label:'Red',data:cd.map(d=>d.red),borderColor:'#e67e22',borderWidth:1,fill:false,tension:.3,pointRadius:0},
+    {label:'FV',data:cd.map(d=>d.pv),borderColor:'#27ae60',borderWidth:1,fill:false,tension:.3,pointRadius:0}]},
+    options:{responsive:true,scales:{y:{beginAtZero:true}},plugins:{legend:{labels:{color:'#9baa9f',font:{size:10}}}}}});
+  // Weekly
+  const dias=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+  CHARTS.c3w=new Chart($('c3week'),{type:'bar',data:{labels:dias,datasets:[
+    {label:'Red',data:R.weekly.map(w=>w.red),backgroundColor:'#2a6b5a',stack:'a'},
+    {label:'FV',data:R.weekly.map(w=>w.pv),backgroundColor:'#d4a039',stack:'a'}]},
+    options:{responsive:true,scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true}},plugins:{legend:{labels:{color:'#9baa9f',font:{size:9}}}}}});
+  // Hourly profile
+  CHARTS.c3h=new Chart($('c3hourly'),{type:'line',data:{labels:Array.from({length:24},(_,i)=>i+'h'),datasets:[
+    {label:'L-V',data:R.hpCons.LV,borderColor:'#2a6b5a',borderWidth:1.2,tension:.3,pointRadius:2},
+    {label:'Sáb',data:R.hpCons.S,borderColor:'#d4a039',borderWidth:1,tension:.3,pointRadius:2},
+    {label:'Dom',data:R.hpCons.D,borderColor:'#3d8b70',borderWidth:1,tension:.3,pointRadius:2}]},
+    options:{responsive:true,scales:{y:{beginAtZero:true}},plugins:{legend:{labels:{color:'#9baa9f',font:{size:9}}}}}});
+  // Coverage donut
+  CHARTS.c3dn=new Chart($('c3donut'),{type:'doughnut',data:{labels:['FV','Red'],
+    datasets:[{data:[R.pct,1-R.pct],backgroundColor:['#d4a039','#2a6b5a'],borderWidth:2,borderColor:'#162420'}]},
+    options:{responsive:true,cutout:'55%',plugins:{legend:{position:'bottom',labels:{color:'#9baa9f',font:{size:10}}}}}});
+}
+
+function renderP4(){
+  const ev=R.evol;
+  // Prod mensual
+  if(ev.hayProd){const pm=ev.prodM;
+    CHARTS.c4p=new Chart($('c4prod'),{type:'bar',data:{labels:pm.map(m=>m.mes.slice(2)),datasets:[
+      {label:'Real',data:pm.map(m=>m.fc?0:m.kwh),backgroundColor:'#2a6b5a',stack:'a'},
+      {label:'Proyección',data:pm.map(m=>m.fc?m.kwh:0),backgroundColor:'rgba(42,107,90,.35)',stack:'a'},
+      {label:'Esperada (memoria)',data:pm.map(m=>m.esp),type:'line',borderColor:'#d4a039',borderWidth:2,pointRadius:3,fill:false,tension:0}]},
+    options:{responsive:true,scales:{y:{beginAtZero:true}},
+      plugins:{legend:{labels:{color:'#9baa9f',font:{size:9}}},
+        tooltip:{callbacks:{afterLabel:ctx=>{const m=pm[ctx.dataIndex];return m&&!m.fc?'PR: '+fn(m.pr,0)+'%':'Proyección'}}}}}})}
+  // Add projection text box below chart
+  const totalAnual=pm.reduce((s,m)=>s+m.kwh,0);
+  const prMedio=ev.prM?fn(ev.prM*100,0)+'%':'—';
+  const c4info=document.createElement('div');c4info.style.cssText='font-size:10px;color:var(--accent);text-align:right;padding:4px 8px';
+  c4info.innerHTML='Proy. anual: <b>'+fn(totalAnual/1000,1)+' MWh</b> | PR medio: <b>'+prMedio+'</b>';
+  $('c4prod').parentElement.appendChild(c4info);
+  // Cons mensual
+  if(ev.hayCons){const cm=ev.consM;
+    const ds=[{label:'Valle',data:cm.map(m=>m.fc?0:m.V),backgroundColor:'#27ae60',stack:'a'},
+      {label:'Llano',data:cm.map(m=>m.fc?0:m.L),backgroundColor:'#d4a039',stack:'a'},
+      {label:'Punta',data:cm.map(m=>m.fc?0:m.P),backgroundColor:'#c0392b',stack:'a'},
+      {label:'Valle (proy)',data:cm.map(m=>m.fc?m.V:0),backgroundColor:'rgba(39,174,96,.35)',stack:'a'},
+      {label:'Llano (proy)',data:cm.map(m=>m.fc?m.L:0),backgroundColor:'rgba(212,160,57,.35)',stack:'a'},
+      {label:'Punta (proy)',data:cm.map(m=>m.fc?m.P:0),backgroundColor:'rgba(192,57,43,.35)',stack:'a'}];
+    if(ev.trend){ds.push({label:'Modelo HDD',data:cm.map(m=>m.modelo||null),type:'line',borderColor:'#e8e6e0',borderWidth:1.5,borderDash:[4,3],pointRadius:0,fill:false})}
+    CHARTS.c4c=new Chart($('c4cons'),{type:'bar',data:{labels:cm.map(m=>m.mes.slice(2)),datasets:ds},
+      options:{responsive:true,scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true}},plugins:{legend:{labels:{color:'#9baa9f',font:{size:8}}}}}})}
+  // Ahorro acum
+  if(ev.hayAhorro){const am=ev.ahorroM;
+    CHARTS.c4a=new Chart($('c4ahorro'),{type:'line',data:{labels:am.map(m=>m.mes.slice(2)),datasets:[
+      {label:'Ahorro mensual (€)',data:am.map(m=>m.ahT),type:'bar',backgroundColor:am.map(m=>m.fc?'rgba(212,160,57,.35)':'#d4a039')},
+      {label:'Acumulado (€)',data:am.map(m=>m.acum),borderColor:'#2a6b5a',borderWidth:2,fill:false,tension:.3,pointRadius:2}]},
+    options:{responsive:true,scales:{y:{beginAtZero:true}},plugins:{legend:{labels:{color:'#9baa9f',font:{size:9}}}}}})}
+
+}
+
+function renderP5(){
+  const an=R.analysis;
+  // Heatmap (custom canvas)
+  if(an.hayHeat){const cv=$('c5heat'),ctx=cv.getContext('2d');
+    const dates=an.heatDates,nD=dates.length,nH=24;
+    const W=cv.width=cv.parentElement.clientWidth-28,H=cv.height=250;
+    const ml=40,mt=10,mr=50,mb=30;const cw=(W-ml-mr)/nD,ch=(H-mt-mb)/18; // hours 4-22
+    // Find max
+    let mx=0;dates.forEach(d=>{for(let h=4;h<22;h++)mx=Math.max(mx,(an.heatData[d]||{})[h]||0)});
+    // Color scale
+    const cScale=v=>{const t=mx?v/mx:0;
+      const r=Math.round(26+t*200),g=Math.round(30+t*100*(1-t)),b=Math.round(52*(1-t));
+      return`rgb(${r},${g},${b})`};
+    ctx.fillStyle='#162420';ctx.fillRect(0,0,W,H);
+    dates.forEach((d,i)=>{for(let h=4;h<22;h++){const v=(an.heatData[d]||{})[h]||0;
+      ctx.fillStyle=cScale(v);ctx.fillRect(ml+i*cw,mt+(h-4)*ch,cw+.5,ch+.5)}});
+    // Y axis
+    ctx.fillStyle='#9baa9f';ctx.font='9px DM Sans';
+    for(let h=4;h<=22;h+=2)ctx.fillText(h+'h',5,mt+(h-4)*ch+ch/2+3);
+    // X axis
+    dates.forEach((d,i)=>{if(i%Math.ceil(nD/8)===0){ctx.save();ctx.translate(ml+i*cw+cw/2,H-5);
+      ctx.fillText(d.slice(5),0,0);ctx.restore()}});
+    // Legend
+    for(let i=0;i<20;i++){ctx.fillStyle=cScale(mx*i/20);ctx.fillRect(W-40,mt+i*9,20,10)}
+    ctx.fillStyle='#9baa9f';ctx.fillText('0',W-16,mt+8);ctx.fillText(fd(mx),W-16,mt+180);
   }
+  // Payback
+  if(an.hayPB){const pb=an.pb;const fc=pb.pct>50?'#27ae60':pb.pct>25?'#d4a039':'#c0392b';
+    const fillH=Math.min(100,pb.pct);
+    let h=`<div style="display:flex;gap:16px;padding:10px;align-items:stretch">
+      <div style="width:50px;position:relative;background:#f0f0f0;border:1.5px solid #ccc;border-radius:4px;min-height:180px">
+        <div style="position:absolute;bottom:0;left:0;right:0;height:${fillH}%;background:${fc};opacity:.85;border-radius:0 0 3px 3px"></div>
+        ${[25,50,75,100].map(p=>`<div style="position:absolute;bottom:${p}%;right:-22px;font-size:7px;color:#666">${p}%</div>
+          <div style="position:absolute;bottom:${p}%;left:100%;width:6px;height:1px;background:#999"></div>`).join('')}
+      </div>
+      <div style="flex:1">
+        <div style="font-size:32px;font-weight:800;color:${fc};font-family:'JetBrains Mono'">${fd(pb.pct)}%</div>
+        <div style="font-size:11px;color:var(--dim);margin-bottom:10px">recuperado</div>
+        <div style="font-size:10px;color:var(--dim);line-height:1.8">
+          <div>Inversión: <b>${fn(pb.inv)} €</b></div>
+          <div>Ahorro en ${pb.dias} días: <b>${fn(pb.ahAcum)} €</b></div>`;
+    if(pb.canP)h+=`<div>Ahorro anual proy.: <b>${fn(pb.aAnual)} €/año</b></div>
+          <div>Payback estimado: <b>${fd(pb.anos)} años</b></div>
+          <div>Amortización: <b>~${pb.anoAmort}</b></div>`;
+    else h+='<div>Insuficientes datos para proyectar</div>';
+    h+='</div></div></div>';$('paybackBox').innerHTML=h;
+  }
+  // Perfil tipo
+  if(an.hayPerfil){const pf=an.perfil;const hrs=Array.from({length:24},(_,i)=>i+'h');
+    CHARTS.c5p=new Chart($('c5perfil'),{type:'line',data:{labels:hrs,datasets:[
+      {label:'Consumo edificio',data:pf.map(p=>p.cons),borderColor:'#2a6b5a',backgroundColor:'rgba(42,107,90,.1)',borderWidth:2,fill:true,tension:.3,pointRadius:0},
+      {label:'Producción FV',data:pf.map(p=>p.pv),borderColor:'#d4a039',backgroundColor:'rgba(212,160,57,.1)',borderWidth:2,fill:true,tension:.3,pointRadius:0},
+      {label:'Autoconsumo',data:pf.map(p=>p.auto),backgroundColor:'rgba(39,174,96,.35)',borderColor:'#27ae60',borderWidth:1,fill:true,tension:.3,pointRadius:0},
+      {label:'Energía perdida (vertido 0)',data:pf.map(p=>p.curt>0.01?p.pv:null),backgroundColor:'rgba(231,76,60,.3)',borderColor:'#e74c3c',borderWidth:1,fill:'-1',tension:.3,pointRadius:0}]},
+    options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'kWh/h (media)',font:{size:10}}}},
+      plugins:{legend:{labels:{color:'#9baa9f',font:{size:9}}}}}})}
+  // Curtailment
+  if(an.hayCurt){const cm=an.curtM;
+    CHARTS.c5c=new Chart($('c5curt'),{type:'bar',data:{labels:cm.map(m=>m.mes.slice(2)),datasets:[
+      {label:'Autoconsumo',data:cm.map(m=>m.used/1000),backgroundColor:'#27ae60'},
+      {label:'Energía perdida',data:cm.map(m=>m.curt/1000),backgroundColor:'rgba(192,57,43,.7)'}]},
+    options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'MWh',font:{size:10}}}},
+      plugins:{legend:{labels:{color:'#9baa9f',font:{size:9}}},
+        tooltip:{callbacks:{afterLabel:ctx=>{if(ctx.datasetIndex===1){const m=cm[ctx.dataIndex];return m.pct>0?fn(m.pct,1)+'% perdido':''}return''}}}}}});
+    // Summary
+    const tLost=cm.reduce((s,m)=>s+m.curt,0),tPvAll=cm.reduce((s,m)=>s+m.pvT,0);
+    if(tLost>0&&tPvAll>0){const prM=Object.values(CFG.precios).reduce((s,p)=>s+p,0)/6;
+      const eurLost=tLost*prM*(1+CFG.IE)*(1+CFG.IVA);
+      const inf=document.createElement('div');inf.style.cssText='font-size:10px;color:var(--red);text-align:right;padding:4px 8px';
+      inf.innerHTML='Total perdido: <b>'+fn(tLost/1000,1)+' MWh ('+fn(tLost/tPvAll*100,1)+'%)</b> ≈ '+fn(eurLost)+' €/año no aprovechados';
+      $('c5curt').parentElement.appendChild(inf)}}
 }
 
-function reset() {
-  RAW = { invA: [], invB: [], ibr: [] };
-  RESULT = null;
-  document.getElementById('panel-results').style.display = 'none';
-  document.getElementById('panel-upload').style.display = 'block';
-  document.getElementById('log').innerHTML = '';
-  ['inv-a','inv-b','ibr'].forEach(id => {
-    document.getElementById('status-'+id).textContent = '';
-    document.getElementById('zone-'+id).classList.remove('loaded');
-  });
-  document.getElementById('btn-generate').disabled = true;
-  setStep(1);
+// ═══ TAB SWITCHING ═══
+document.querySelectorAll('.ptab').forEach(b=>{b.onclick=()=>{
+  document.querySelectorAll('.ptab').forEach(t=>t.classList.remove('on'));
+  document.querySelectorAll('.pcon').forEach(c=>c.classList.remove('on'));
+  b.classList.add('on');$(b.dataset.p).classList.add('on')}});
+
+// ═══ PDF ═══
+async function genPDF(){
+  setStep(4);log('Generando PDF de 5 páginas...');
+  const{jsPDF}=window.jspdf;const doc=new jsPDF('p','mm','a4');
+  const W=210,H=297,M=15;
+  const per=R.prod.daily[0]?.date+' → '+R.prod.daily[R.prod.daily.length-1]?.date;
+
+  function hdr(t,s){doc.setFillColor(26,60,52);doc.roundedRect(M,10,W-2*M,18,3,3,'F');
+    try{doc.addImage(LOGO_B64,'JPEG',M+2,11.5,15,15)}catch(e){}
+    doc.setTextColor(255);doc.setFontSize(12);doc.setFont(undefined,'bold');doc.text(t,M+20,20);
+    doc.setFontSize(8);doc.setFont(undefined,'normal');doc.text(s,M+20,25);doc.setTextColor(0)}
+  function ftr(p){doc.setFontSize(6);doc.setTextColor(150);
+    doc.text('Amixalan Business Group — Fuentes: inversores + contador horario + factura Goiener. Modalidad: SIN excedentes.',M,H-8);
+    doc.text('Pág '+p,W-M-8,H-8);doc.setTextColor(0)}
+  async function addChart(id,x,y,w,h){const cv=$(id);if(cv&&cv.tagName==='CANVAS'){doc.addImage(cv.toDataURL('image/png'),'PNG',x,y,w,h)}}
+
+  // Switch to each tab to ensure charts are rendered
+  for(const p of['p1','p2','p3','p4','p5']){
+    document.querySelectorAll('.pcon').forEach(c=>c.classList.remove('on'));$(p).classList.add('on');
+    await new Promise(r=>setTimeout(r,200))}
+  // Back to p1
+  document.querySelectorAll('.pcon').forEach(c=>c.classList.remove('on'));$('p1').classList.add('on');
+  document.querySelectorAll('.ptab').forEach(t=>t.classList.remove('on'));
+  document.querySelector('[data-p=p1]').classList.add('on');
+
+  // PAGE 1
+  hdr('Producción fotovoltaica — Edificio Gorraiz','Periodo: '+per+' · '+CFG.mod);
+  let y=34;
+  // KPIs
+  const e=R.tP>=1000?fn(R.tP/1000,2)+' MWh':fd(R.tP)+' kWh';
+  const k1=[['Energía',e],['Media/día',fd(R.avg)+' kWh'],['Mejor día',fd(R.best.total)+' kWh'],['Rend.',fd(R.yld)+' kWh/kWp'],['Ahorro E',fn(R.tAE)+' €'],['Ahorro F',fn(R.tAF)+' €']];
+  const kw=(W-2*M)/6;k1.forEach(([l,v],i)=>{const x=M+i*kw;doc.setFillColor(240,245,235);doc.roundedRect(x,y,kw-2,14,2,2,'F');
+    doc.setFontSize(6);doc.setFont(undefined,'normal');doc.setTextColor(100);doc.text(l.toUpperCase(),x+2,y+5);
+    doc.setFontSize(9);doc.setFont(undefined,'bold');doc.setTextColor(26,60,52);doc.text(v,x+2,y+11)});
+  doc.setTextColor(0);y+=18;
+  await addChart('c1daily',M,y,W-2*M,65);y+=68;
+  if(METEO){const ag=METEO.reduce((s,m)=>s+m.ghi,0)/METEO.length;
+    doc.setFillColor(245,240,225);doc.roundedRect(M,y,W-2*M,8,2,2,'F');
+    doc.setFontSize(7);doc.setFont(undefined,'bold');doc.setTextColor(26,60,52);
+    doc.text(`Datos meteo (Open-Meteo): GHI medio ${ag.toFixed(2)} kWh/m²/día`,M+4,y+5);doc.setTextColor(0);y+=10}
+  // Conclusion
+  doc.setFillColor(248,249,250);doc.roundedRect(M,y,W-2*M,20,2,2,'F');
+  doc.setFontSize(9);doc.setFont(undefined,'bold');doc.text('Conclusión',M+4,y+6);
+  doc.setFontSize(7);doc.setFont(undefined,'normal');doc.setTextColor(80);
+  const eS=R.tP>=1000?fn(R.tP/1000,2)+' MWh':fd(R.tP)+' kWh';
+  doc.text(`La planta produce con estabilidad. Producción: ${eS}, rendimiento: ${fd(R.yld)} kWh/kWp. Referencia (memoria visada): ${fn(CFG.prodAnual)} kWh/año.`,M+4,y+12,{maxWidth:W-2*M-8});
+  doc.setTextColor(0);
+  ftr(1);
+
+  // PAGE 2
+  doc.addPage();hdr('Detalle inversores y ahorro','Periodo: '+per);y=34;
+  await addChart('c2hourly',M,y,(W-2*M)/2-2,45);await addChart('c2donut',W/2+2,y,(W-2*M)/2-2,45);y+=50;
+  await addChart('c2scatter',M,y,(W-2*M)/2-2,45);y+=50;
+  // Table
+  doc.setFontSize(9);doc.setFont(undefined,'bold');doc.text('Ahorro por periodos',M,y);y+=5;
+  doc.setFontSize(7);doc.setFillColor(26,60,52);doc.setTextColor(255);
+  doc.rect(M,y,W-2*M,5,'F');doc.text('Periodo',M+2,y+3.5);doc.text('FV (kWh)',M+35,y+3.5);doc.text('€/kWh',M+70,y+3.5);doc.text('Ahorro (€)',M+105,y+3.5);
+  doc.setTextColor(0);doc.setFont(undefined,'normal');y+=6;
+  for(const p of['P1','P2','P3','P4','P5','P6']){const a=R.ap[p];
+    doc.text(p,M+2,y+3.5);doc.text(fn(a.kwh),M+35,y+3.5);doc.text(a.pr.toFixed(3),M+70,y+3.5);doc.text(fn(a.ah),M+105,y+3.5);y+=5}
+  ftr(2);
+
+  // PAGE 3
+  doc.addPage();hdr('Consumo eléctrico y cobertura FV','Periodo: '+per);y=34;
+  await addChart('c3daily',M,y,W-2*M,55);y+=58;
+  await addChart('c3week',M,y,(W-2*M)/3-2,50);await addChart('c3hourly',M+(W-2*M)/3,y,(W-2*M)/3-2,50);
+  await addChart('c3donut',M+2*(W-2*M)/3,y,(W-2*M)/3-2,50);
+  ftr(3);
+
+  // PAGE 4
+  doc.addPage();hdr('Acumulados desde puesta en marcha','Producción + consumo + ahorro acumulado');y=34;
+  await addChart('c4prod',M,y,(W-2*M)/2-2,60);await addChart('c4cons',W/2+2,y,(W-2*M)/2-2,60);y+=65;
+  await addChart('c4ahorro',M,y,W-2*M,55);
+  ftr(4);
+
+  // PAGE 5
+  doc.addPage();hdr('Análisis avanzado y tendencias','Mapa solar, payback, perfil tipo, vertido cero');y=34;
+  await addChart('c5heat',M,y,(W-2*M)*.6,55);
+  // Payback text
+  if(R.analysis.hayPB){const pb=R.analysis.pb;const px=M+(W-2*M)*.62;
+    doc.setFillColor(248,249,250);doc.roundedRect(px,y,W-M-px,55,2,2,'F');
+    doc.setFontSize(20);doc.setFont(undefined,'bold');doc.setTextColor(26,60,52);
+    doc.text(fd(pb.pct)+'%',px+20,y+18);doc.setFontSize(8);doc.setFont(undefined,'normal');doc.text('recuperado',px+20,y+24);
+    doc.setFontSize(7);doc.setTextColor(80);
+    doc.text(`Inversión: ${fn(pb.inv)} €`,px+5,y+32);doc.text(`Ahorro ${pb.dias}d: ${fn(pb.ahAcum)} €`,px+5,y+37);
+    if(pb.canP){doc.text(`Anual: ${fn(pb.aAnual)} €/año`,px+5,y+42);doc.text(`Payback: ${fd(pb.anos)} años (~${pb.anoAmort})`,px+5,y+47)}}
+  doc.setTextColor(0);y+=60;
+  await addChart('c5perfil',M,y,(W-2*M)/2-2,55);await addChart('c5curt',W/2+2,y,(W-2*M)/2-2,55);
+  ftr(5);
+
+  const d1=R.prod.daily[0]?.date.replace(/-/g,'')||'',d2=R.prod.daily[R.prod.daily.length-1]?.date.replace(/-/g,'')||'';
+  doc.save(`Informe_FV_Gorraiz_${d1}_${d2}.pdf`);log('✓ PDF descargado');
 }
 
-// Drag & drop support
-document.querySelectorAll('.upload-zone').forEach(zone => {
-  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
-  zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
-  zone.addEventListener('drop', e => {
-    e.preventDefault(); zone.classList.remove('dragover');
-    const input = zone.querySelector('input[type=file]');
-    if (input && e.dataTransfer.files.length) {
-      input.files = e.dataTransfer.files;
-      input.dispatchEvent(new Event('change'));
-    }
-  });
-});
+// ═══ UI ═══
+function setStep(n){for(let i=1;i<=4;i++){const e=$('s'+i);e.classList.remove('on','ok');if(i<n)e.classList.add('ok');if(i===n)e.classList.add('on')}}
+function reset(){RAW={A:[],B:[],I:[]};R=null;METEO=null;destroyCharts();
+  $('pResults').style.display='none';$('pUpload').style.display='block';$('log').innerHTML='';
+  ['A','B','I'].forEach(k=>{$('st'+k).textContent='';$('z'+k).classList.remove('loaded')});
+  $('btnGo').disabled=true;setStep(1)}
+// D&D
+document.querySelectorAll('.uz').forEach(z=>{
+  z.ondragover=e=>{e.preventDefault();z.classList.add('drag')};z.ondragleave=()=>z.classList.remove('drag');
+  z.ondrop=e=>{e.preventDefault();z.classList.remove('drag');const i=z.querySelector('input[type=file]');
+    if(i&&e.dataTransfer.files.length){i.files=e.dataTransfer.files;i.dispatchEvent(new Event('change'))}}});
 </script>
 </body>
 </html>
