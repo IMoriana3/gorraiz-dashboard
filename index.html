@@ -4,524 +4,871 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Informe FV — Edificio Gorraiz</title>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@600&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg: #0a0e17;
-  --card: #111827;
-  --card-hover: #1a2234;
-  --accent: #22c55e;
-  --accent-dim: #16a34a;
-  --orange: #f59e0b;
-  --red: #ef4444;
-  --blue: #3b82f6;
-  --purple: #8b5cf6;
-  --border: #1e293b;
-  --text: #e2e8f0;
-  --text-dim: #94a3b8;
-  --text-muted: #64748b;
-  --header-bg: #1a5c3a;
+  --bg: #0a0e17; --card: #111827; --accent: #22c55e; --blue: #2980b9;
+  --orange: #e67e22; --red: #e74c3c; --border: #1e293b;
+  --text: #e2e8f0; --dim: #94a3b8; --muted: #64748b;
 }
-
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
-  min-height: 100vh;
-}
-
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--text); font-family:'IBM Plex Sans',sans-serif; min-height:100vh; }
 .header {
-  background: linear-gradient(135deg, var(--header-bg) 0%, #0f1a12 100%);
-  padding: 28px 32px 0;
-  border-bottom: 1px solid rgba(34,197,94,0.2);
-}
-.header-top { display: flex; align-items: center; gap: 14px; }
-.header-icon {
-  width: 48px; height: 48px; border-radius: 12px;
-  background: rgba(34,197,94,0.12); border: 2px solid rgba(34,197,94,0.25);
-  display: flex; align-items: center; justify-content: center; font-size: 24px;
+  background:linear-gradient(135deg,#1a5c3a,#0f1a12);
+  padding:24px 32px; border-bottom:1px solid rgba(34,197,94,.2);
 }
 .header h1 {
-  font-size: 24px; font-weight: 800; letter-spacing: -0.5px;
-  background: linear-gradient(90deg, #22c55e, #86efac);
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-  background-clip: text;
+  font-size:22px; font-weight:800;
+  background:linear-gradient(90deg,#22c55e,#86efac);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
 }
-.header-sub { font-size: 13px; color: var(--text-dim); margin-top: 2px; }
+.header-sub { font-size:13px; color:var(--dim); margin-top:2px; }
+.main { max-width:1000px; margin:0 auto; padding:24px; }
 
-.tabs { display: flex; gap: 4px; margin-top: 18px; padding-bottom: 0; }
-.tab {
-  padding: 9px 20px; border: none; border-radius: 8px 8px 0 0;
-  cursor: pointer; font-size: 13px; font-weight: 600; font-family: inherit;
-  background: transparent; color: var(--text-muted);
-  border-bottom: 2px solid transparent; transition: all 0.2s;
+/* Steps */
+.steps { display:flex; gap:8px; margin-bottom:24px; }
+.step {
+  flex:1; padding:12px 16px; background:var(--card); border:1px solid var(--border);
+  border-radius:10px; text-align:center; opacity:0.5; transition:all .3s;
 }
-.tab:hover { color: var(--text-dim); }
-.tab.active { background: var(--card); color: var(--accent); border-bottom-color: var(--accent); }
+.step.active { opacity:1; border-color:var(--accent); }
+.step.done { opacity:1; border-color:#16a34a; background:#0d2818; }
+.step-num { font-size:20px; font-weight:800; color:var(--accent); font-family:'JetBrains Mono',monospace; }
+.step-label { font-size:11px; color:var(--dim); margin-top:2px; }
 
-.content { padding: 24px 32px; max-width: 1100px; margin: 0 auto; }
+/* Upload zones */
+.upload-zone {
+  background:var(--card); border:2px dashed var(--border); border-radius:12px;
+  padding:24px; text-align:center; cursor:pointer; transition:all .2s; margin-bottom:12px;
+}
+.upload-zone:hover, .upload-zone.dragover { border-color:var(--accent); background:#0d2818; }
+.upload-zone.loaded { border-color:#16a34a; border-style:solid; }
+.upload-zone h3 { font-size:14px; margin-bottom:4px; }
+.upload-zone p { font-size:12px; color:var(--muted); }
+.upload-zone .status { font-size:12px; color:var(--accent); margin-top:8px; font-weight:600; }
+input[type=file] { display:none; }
 
-.card {
-  background: var(--card); border: 1px solid var(--border);
-  border-radius: 12px; padding: 20px 24px; margin-bottom: 20px;
-}
-
-.section-title {
-  font-size: 14px; font-weight: 700; color: var(--text-dim);
-  text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px;
-}
-
-.glow-dot {
-  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-  background: var(--accent); box-shadow: 0 0 8px rgba(34,197,94,0.5);
-}
-
-/* Installation grid */
-.install-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px;
-}
-.install-item {
-  padding: 8px 12px; background: #0d1320; border-radius: 8px;
-  border: 1px solid var(--border);
-}
-.install-item .label {
-  font-size: 10px; color: var(--text-muted);
-  text-transform: uppercase; letter-spacing: 0.8px;
-}
-.install-item .value { font-size: 14px; font-weight: 600; margin-top: 2px; }
-
-/* Features grid */
-.features-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px;
-}
-.feature {
-  background: var(--card); border: 1px solid var(--border);
-  border-radius: 10px; padding: 14px 16px;
-  display: flex; gap: 12px; align-items: flex-start;
-}
-.feature-icon { font-size: 22px; line-height: 1; flex-shrink: 0; }
-.feature-title { font-size: 13px; font-weight: 700; }
-.feature-desc { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
-
-/* Workflow */
-.workflow-step {
-  display: flex; align-items: center; gap: 14px; margin-bottom: 8px;
-}
-.step-icon {
-  width: 36px; height: 36px; border-radius: 8px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 16px; flex-shrink: 0;
-}
-.step-label { font-size: 13px; font-weight: 700; }
-.step-desc { font-size: 12px; color: var(--text-muted); margin-left: 8px; }
-.step-arrow { color: var(--text-muted); font-size: 16px; margin-left: auto; }
-
-/* Pages */
-.page-card {
-  background: var(--card); border: 1px solid var(--border);
-  border-radius: 12px; padding: 18px 22px; margin-bottom: 10px;
-  border-left: 4px solid; transition: all 0.2s; cursor: default;
-}
-.page-card:hover { background: var(--card-hover); }
-.page-inner { display: flex; align-items: center; gap: 12px; }
-.page-icon-box {
-  width: 40px; height: 40px; border-radius: 10px;
-  display: flex; align-items: center; justify-content: center; font-size: 20px;
-}
-.page-badge {
-  font-size: 11px; font-weight: 700; padding: 2px 8px;
-  border-radius: 4px; font-family: 'JetBrains Mono', monospace;
-}
-.page-title { font-size: 15px; font-weight: 700; margin-left: 8px; }
-.page-desc { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
-.page-scope {
-  font-size: 11px; color: var(--text-muted); background: #0d1320;
-  padding: 4px 10px; border-radius: 6px; font-weight: 600; margin-left: auto; white-space: nowrap;
+/* Date inputs */
+.date-row { display:flex; gap:12px; margin-bottom:16px; align-items:center; }
+.date-row label { font-size:13px; color:var(--dim); }
+.date-row input {
+  background:#0d1320; border:1px solid var(--border); border-radius:6px;
+  color:var(--text); padding:8px 12px; font-family:inherit; font-size:13px;
 }
 
-/* Scopes */
-.scope-card {
-  background: var(--card); border: 1px solid var(--border);
-  border-radius: 14px; padding: 20px 24px; margin-bottom: 14px;
-  border-left: 4px solid; cursor: pointer; transition: all 0.2s;
+/* Buttons */
+.btn {
+  padding:12px 28px; border:none; border-radius:8px; cursor:pointer;
+  font-size:14px; font-weight:700; font-family:inherit; transition:all .2s;
 }
-.scope-card.expanded { border-color: rgba(255,255,255,0.3); }
-.scope-header { display: flex; align-items: center; justify-content: space-between; }
-.scope-badge {
-  font-size: 12px; font-weight: 800; padding: 3px 10px; border-radius: 6px;
-}
-.scope-title { font-size: 16px; font-weight: 700; margin-left: 10px; }
-.scope-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
-.scope-arrow { font-size: 18px; color: var(--text-muted); transition: transform 0.2s; }
-.scope-card.expanded .scope-arrow { transform: rotate(180deg); }
-.scope-detail {
-  margin-top: 14px; padding: 14px 16px; background: #0d1320;
-  border-radius: 8px; border: 1px solid var(--border);
-  display: none;
-}
-.scope-card.expanded .scope-detail { display: block; }
-.scope-detail p { font-size: 13px; line-height: 1.6; }
+.btn-primary { background:var(--accent); color:#000; }
+.btn-primary:hover { background:#16a34a; }
+.btn-primary:disabled { background:#1e293b; color:var(--muted); cursor:not-allowed; }
+.btn-pdf { background:var(--blue); color:#fff; margin-left:12px; }
+.btn-pdf:hover { background:#1a6fa0; }
 
-/* Timeline */
-.timeline-box { position: relative; height: 90px; margin-top: 8px; }
-.timeline-base {
-  position: absolute; top: 40px; left: 0; right: 0;
-  height: 2px; background: var(--border);
+/* Results */
+.kpi-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; margin:16px 0; }
+.kpi-card {
+  background:var(--card); border:1px solid var(--border); border-radius:8px;
+  padding:12px; border-top:3px solid var(--accent);
 }
-.timeline-bar {
-  position: absolute; height: 16px; border-radius: 4px;
-}
-.timeline-label {
-  position: absolute; font-size: 10px; font-weight: 600;
-}
+.kpi-label { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.8px; }
+.kpi-value { font-size:18px; font-weight:700; color:var(--accent); margin-top:4px; font-family:'JetBrains Mono',monospace; }
+.kpi-sub { font-size:10px; color:var(--dim); margin-top:2px; }
 
-/* Scope bar */
-.scope-bar { display: flex; border-radius: 3px; overflow: hidden; height: 4px; background: #1e293b; margin-top: 10px; }
-.scope-bar-seg { transition: width 0.5s; }
-.scope-bar-labels { display: flex; justify-content: space-between; margin-top: 6px; }
-.scope-bar-labels span { font-size: 10px; }
+.chart-container { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; margin:12px 0; }
+.chart-title { font-size:13px; font-weight:700; margin-bottom:8px; }
 
-/* Changelog */
-.bug-card {
-  background: var(--card); border: 1px solid var(--border);
-  border-radius: 10px; padding: 14px 18px; margin-bottom: 8px;
-}
-.bug-inner { display: flex; align-items: flex-start; gap: 12px; }
-.bug-num {
-  width: 28px; height: 28px; border-radius: 8px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 14px; font-weight: 800; flex-shrink: 0;
-  font-family: 'JetBrains Mono', monospace;
-  background: rgba(34,197,94,0.1); color: var(--accent);
-  border: 1px solid rgba(34,197,94,0.2);
-}
-.bug-title { font-size: 13px; font-weight: 700; }
-.bug-badge {
-  font-size: 10px; font-weight: 700; color: var(--accent);
-  background: rgba(34,197,94,0.1); padding: 1px 6px;
-  border-radius: 4px; margin-left: 8px;
-}
-.bug-desc {
-  font-size: 11px; color: var(--text-muted); margin-top: 3px;
-  font-family: 'JetBrains Mono', monospace;
-}
+.section-title { font-size:14px; font-weight:700; color:var(--dim); text-transform:uppercase; letter-spacing:1px; margin:20px 0 10px; }
 
-.improve-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.improve-card {
-  background: var(--card); border: 1px solid var(--border);
-  border-radius: 10px; padding: 12px 16px; border-left: 3px solid;
+#log { font-size:11px; color:var(--muted); font-family:'JetBrains Mono',monospace; max-height:120px; overflow-y:auto; padding:8px; background:#0d1320; border-radius:6px; margin-top:8px; }
+
+/* PDF canvas (hidden) */
+#pdf-render { position:absolute; left:-9999px; top:0; width:794px; }
+.pdf-page {
+  width:794px; height:1123px; background:#fff; padding:24px;
+  font-family:'IBM Plex Sans',Arial,sans-serif; color:#333; position:relative;
+  page-break-after:always;
 }
-.improve-title { font-size: 13px; font-weight: 700; }
-.improve-desc { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
-
-.tab-content { display: none; }
-.tab-content.active { display: block; }
-
-.footer {
-  padding: 16px 32px; border-top: 1px solid var(--border);
-  font-size: 11px; color: var(--text-muted); text-align: center;
+.pdf-header { background:#1a3c4d; color:#fff; padding:12px 20px; border-radius:6px; margin-bottom:16px; }
+.pdf-header h2 { font-size:16px; font-weight:700; }
+.pdf-header p { font-size:11px; opacity:.8; }
+.pdf-kpi-row { display:flex; gap:8px; margin-bottom:12px; }
+.pdf-kpi {
+  flex:1; background:#f0f7ff; border:1px solid #d0e0f0; border-radius:6px;
+  padding:8px 10px; text-align:center;
 }
+.pdf-kpi .label { font-size:8px; color:#666; text-transform:uppercase; }
+.pdf-kpi .val { font-size:14px; font-weight:700; color:#1a5276; margin-top:2px; }
+.pdf-kpi .sub { font-size:8px; color:#999; }
+.pdf-footer { position:absolute; bottom:12px; left:24px; right:24px; font-size:8px; color:#999; border-top:1px solid #ddd; padding-top:4px; }
+.pdf-table { width:100%; border-collapse:collapse; font-size:10px; margin:8px 0; }
+.pdf-table th { background:#1a3c4d; color:#fff; padding:6px 8px; text-align:left; }
+.pdf-table td { padding:5px 8px; border-bottom:1px solid #eee; }
+.pdf-table tr:nth-child(even) td { background:#f8f9fa; }
+.pdf-ficha { background:#f8f9fa; border:1px solid #ddd; border-radius:6px; padding:12px; font-size:10px; }
+.pdf-ficha li { margin-bottom:4px; color:#555; }
 
-@media (max-width: 700px) {
-  .header { padding: 20px 16px 0; }
-  .content { padding: 16px; }
-  .install-grid { grid-template-columns: 1fr 1fr; }
-  .features-grid { grid-template-columns: 1fr; }
-  .improve-grid { grid-template-columns: 1fr; }
-  .page-scope { display: none; }
+@media(max-width:700px) {
+  .main { padding:12px; }
+  .steps { flex-wrap:wrap; }
+  .kpi-grid { grid-template-columns:1fr 1fr; }
+  .date-row { flex-direction:column; }
 }
 </style>
 </head>
 <body>
 
-<!-- HEADER -->
 <div class="header">
-  <div class="header-top">
-    <div class="header-icon">☀️</div>
-    <div>
-      <h1>Informe FV — Edificio Gorraiz</h1>
-      <div class="header-sub">123.84 kWp · Autoconsumo SIN excedentes · Desde 16/12/2025</div>
-    </div>
-  </div>
-  <div class="tabs">
-    <button class="tab active" data-tab="overview"><span>◉</span> Panel</button>
-    <button class="tab" data-tab="pages"><span>📄</span> Páginas</button>
-    <button class="tab" data-tab="scopes"><span>🔭</span> Alcances</button>
-    <button class="tab" data-tab="changelog"><span>🔧</span> Changelog</button>
-  </div>
+  <h1>☀️ Informe FV — Edificio Gorraiz</h1>
+  <div class="header-sub">123.84 kWp · Autoconsumo SIN excedentes · Generador de informes PDF</div>
 </div>
 
-<!-- CONTENT -->
-<div class="content">
+<div class="main">
+  <!-- Progress steps -->
+  <div class="steps">
+    <div class="step active" id="s1"><div class="step-num">1</div><div class="step-label">Subir datos</div></div>
+    <div class="step" id="s2"><div class="step-num">2</div><div class="step-label">Configurar</div></div>
+    <div class="step" id="s3"><div class="step-num">3</div><div class="step-label">Resultados</div></div>
+    <div class="step" id="s4"><div class="step-num">4</div><div class="step-label">Descargar PDF</div></div>
+  </div>
 
-  <!-- ═══ OVERVIEW ═══ -->
-  <div id="tab-overview" class="tab-content active">
-    <div class="card">
-      <div class="section-title"><span class="glow-dot"></span> &nbsp;FICHA DE INSTALACIÓN</div>
-      <div class="install-grid" id="install-grid"></div>
+  <!-- STEP 1: Upload -->
+  <div id="panel-upload">
+    <div class="upload-zone" id="zone-inv-a" onclick="document.getElementById('file-inv-a').click()">
+      <h3>📂 Inversor A — Ficheros KSTAR (.xlsx)</h3>
+      <p>Selecciona uno o varios ficheros .xlsx del inversor A</p>
+      <div class="status" id="status-inv-a"></div>
+      <input type="file" id="file-inv-a" accept=".xlsx" multiple>
     </div>
 
-    <div class="section-title">Capacidades del informe</div>
-    <div class="features-grid" id="features-grid"></div>
+    <div class="upload-zone" id="zone-inv-b" onclick="document.getElementById('file-inv-b').click()">
+      <h3>📂 Inversor B — Ficheros KSTAR (.xlsx) <span style="color:var(--muted)">(opcional)</span></h3>
+      <p>Selecciona ficheros del inversor B si existe</p>
+      <div class="status" id="status-inv-b"></div>
+      <input type="file" id="file-inv-b" accept=".xlsx" multiple>
+    </div>
 
-    <div class="section-title" style="margin-top:24px">Flujo de ejecución en Colab</div>
-    <div class="card" id="workflow-card"></div>
+    <div class="upload-zone" id="zone-ibr" onclick="document.getElementById('file-ibr').click()">
+      <h3>📂 Consumo i-DE (.xlsx)</h3>
+      <p>Fichero de consumo horario descargado de i-DE (hoja "Horarias")</p>
+      <div class="status" id="status-ibr"></div>
+      <input type="file" id="file-ibr" accept=".xlsx">
+    </div>
+
+    <div class="date-row">
+      <label>Desde:</label>
+      <input type="date" id="fecha-desde">
+      <label>Hasta:</label>
+      <input type="date" id="fecha-hasta">
+      <span style="font-size:11px;color:var(--muted)">(vacío = todo el rango disponible)</span>
+    </div>
+
+    <button class="btn btn-primary" id="btn-generate" onclick="generate()" disabled>
+      ⚡ Generar informe
+    </button>
+    <div id="log"></div>
   </div>
 
-  <!-- ═══ PAGES ═══ -->
-  <div id="tab-pages" class="tab-content">
-    <div class="section-title">Informe principal — 5 páginas</div>
-    <div id="pages-main"></div>
-    <div class="section-title" style="margin-top:32px">Informe comparativo — 3 páginas (opcional)</div>
-    <div id="pages-comp"></div>
-  </div>
+  <!-- STEP 3: Results -->
+  <div id="panel-results" style="display:none">
+    <div class="section-title">Resultados clave</div>
+    <div class="kpi-grid" id="kpi-grid"></div>
 
-  <!-- ═══ SCOPES ═══ -->
-  <div id="tab-scopes" class="tab-content">
-    <div class="section-title">Arquitectura de 3 alcances de datos</div>
-    <p style="font-size:12px;color:var(--text-muted);margin-bottom:20px">
-      Cada página del informe usa un alcance temporal diferente para que las métricas sean coherentes.
-    </p>
-    <div id="scopes-list"></div>
+    <div class="chart-container">
+      <div class="chart-title">Producción diaria (kWh)</div>
+      <canvas id="chart-daily" height="200"></canvas>
+    </div>
 
-    <div class="card" style="margin-top:24px">
-      <div class="section-title">Línea temporal de datos</div>
-      <div class="timeline-box">
-        <div class="timeline-base"></div>
-        <div class="timeline-bar" style="top:28px;left:0%;width:100%;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.3)">
-          <span class="timeline-label" style="top:-16px;left:4px;color:var(--orange)">Consumo (jun 2025)</span>
-        </div>
-        <div class="timeline-bar" style="top:48px;left:65%;width:35%;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.3)">
-          <span class="timeline-label" style="top:18px;left:4px;color:var(--accent)">FV (16 dic 2025)</span>
-        </div>
-        <div class="timeline-bar" style="top:28px;left:85%;width:12%;height:36px;background:rgba(59,130,246,0.1);border:1px dashed rgba(59,130,246,0.3)">
-          <span class="timeline-label" style="top:-16px;left:2px;color:var(--blue)">Feb 2026</span>
-        </div>
+    <div style="display:flex;gap:12px">
+      <div class="chart-container" style="flex:1">
+        <div class="chart-title">Perfil horario medio FV (kWh/h)</div>
+        <canvas id="chart-hourly" height="180"></canvas>
+      </div>
+      <div class="chart-container" style="flex:1">
+        <div class="chart-title">Reparto inversores</div>
+        <canvas id="chart-donut" height="180"></canvas>
       </div>
     </div>
-  </div>
 
-  <!-- ═══ CHANGELOG ═══ -->
-  <div id="tab-changelog" class="tab-content">
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
-      <div class="section-title" style="margin-bottom:0">Bugs corregidos</div>
-      <span style="font-size:12px;font-weight:700;color:var(--accent);background:rgba(34,197,94,0.1);padding:3px 10px;border-radius:20px" id="bug-count"></span>
+    <div class="chart-container">
+      <div class="chart-title">Consumo diario: Red vs FV (kWh)</div>
+      <canvas id="chart-cons" height="200"></canvas>
     </div>
-    <div id="bugs-list"></div>
 
-    <div class="section-title" style="margin-top:28px">Mejoras implementadas</div>
-    <div class="improve-grid" id="improvements-grid"></div>
+    <div class="chart-container">
+      <div class="chart-title">Ahorro por periodos (P1-P6)</div>
+      <canvas id="chart-ahorro" height="160"></canvas>
+    </div>
+
+    <div style="margin-top:16px">
+      <button class="btn btn-pdf" onclick="generatePDF()">📄 Descargar PDF</button>
+      <button class="btn" style="background:var(--card);color:var(--text);border:1px solid var(--border);margin-left:8px" onclick="reset()">↩ Nuevo informe</button>
+    </div>
   </div>
-
 </div>
 
-<div class="footer">
-  Informe FV Gorraiz · 123.84 kWp · Notebook v3 · <span id="date-today"></span>
-</div>
+<!-- Hidden PDF render area -->
+<div id="pdf-render"></div>
 
 <script>
-// ═══ DATA ═══
-const INSTALL = [
-  ["Potencia pico", "123.84 kWp"],
-  ["Módulos", "288 × 430 Wp"],
-  ["Inversores", "2 × 50 kW KSTAR G50KT"],
-  ["Cubierta", "Este-Oeste"],
-  ["Producción estimada", "141.793 kWh/año"],
-  ["Inversión", "80.432,64 €"],
-];
+// ═══ CONSTANTS ═══
+const CFG = {
+  potencia_kwp: 123.84,
+  modalidad: "Autoconsumo SIN excedentes (vertido cero)",
+  modulos: "288 módulos de 430 Wp",
+  inversores: "2 × 50 kW (KSTAR G50KT)",
+  cubierta: "Este-Oeste",
+  prod_anual_est: 141793,
+  inversion: 80432.64,
+  precios: { P1:0.194, P2:0.160, P3:0.160, P4:0.139, P5:0.139, P6:0.139 },
+  IE: 0.051127,
+  IVA: 0.21,
+  factor_emisiones: 0.2,
+  consumo_vivienda: 250,
+  umbral_pv: 0.1,
+};
 
-const FEATURES = [
-  ["📊", "5 páginas PDF", "Informe completo con KPIs, gráficas y proyecciones"],
-  ["🔄", "3 alcances de datos", "Mensual / Acumulados / Histórico completo"],
-  ["📋", "Auditoría automática", "Detección de huecos con rangos y día de semana"],
-  ["⚖️", "Comparativa 2 periodos", "3 páginas extra con deltas y flechas"],
-  ["🌤️", "Datos meteo Open-Meteo", "GHI superpuesto en gráfica de producción"],
-  ["💰", "Ahorro por periodos P1-P6", "Cruce horario con precios Goiener 3.0TD"],
-  ["🔮", "Previsión curtailment-aware", "Proyección de ahorro con vertido cero"],
-  ["📈", "Tendencia consumo robusta", "Regresión solo con meses completos (≥20 días)"],
-];
+// ═══ STATE ═══
+let RAW = { invA: [], invB: [], ibr: [] };
+let RESULT = null;
 
-const WORKFLOW = [
-  [1, "Dependencias", "imports + matplotlib", "📦", "var(--text-dim)"],
-  [2, "Subir datos", "Inv A, Inv B, IBR, fechas", "📂", "var(--blue)"],
-  [3, "Motor de cálculo", "16 celdas de funciones", "⚙️", "var(--orange)"],
-  [4, "Meteo (opcional)", "Open-Meteo → GHI", "🌤️", "var(--purple)"],
-  [5, "Generar PDF", "5 páginas con 3 alcances", "📊", "var(--accent)"],
-  [6, "Descargar", "files.download()", "💾", "var(--accent)"],
-];
-
-const PAGES = [
-  [1, "Producción FV", "⚡", "Producción diaria, KPIs clave, irradiancia GHI", "var(--accent)", 1],
-  [2, "Detalle inversores", "🔧", "Perfil horario medio, reparto inversores, ahorro P1-P6", "var(--blue)", 1],
-  [3, "Consumo eléctrico", "🏢", "Consumo total, cobertura FV, perfil semanal/horario", "var(--orange)", 1],
-  [4, "Acumulados", "📈", "Evolución mensual, tendencia consumo, proyección ahorro", "var(--purple)", 2],
-  [5, "Análisis avanzado", "🔬", "Heatmap producción, perfil tipo, payback, vertido cero", "var(--red)", 3],
-];
-
-const COMP_PAGES = [
-  [1, "KPIs comparados", "Tabla completa con deltas y flechas"],
-  [2, "Perfiles horarios", "Producción y consumo superpuestos"],
-  [3, "Evolución diaria", "Curvas de ambos periodos"],
-];
-
-const SCOPES = [
-  [1, "Informe del mes", "Páginas 1-3", "Solo datos dentro del rango --desde/--hasta", "var(--accent)"],
-  [2, "Acumulados", "Página 4", "Desde puesta en marcha (16/dic/2025). Consumo con histórico completo para tendencia", "var(--purple)"],
-  [3, "Tendencias", "Página 5", "Cada fuente con TODO su histórico. Consumo desde jun/2025, generación desde dic/2025", "var(--red)"],
-];
-
-const BUGS = [
-  [1, "Claves comparativa", "produccion_media_diaria → media_diaria_kwh, yield_especifico → rendimiento_kwh_kwp"],
-  [2, "_delta_str args", "invert=True se pasaba como fmt. Reordenado: (val_a, val_b, invert=False, fmt, suffix)"],
-  [3, "Timestamp duplicado", "if ('tiempo' in cl) and 'tiempo' in cl → if 'tiempo' in cl"],
-  [4, "Año payback hardcoded", "int(2025 + anos) → int(datetime.now().year + anos)"],
-  [5, "Tildes FICHA", "Produccion → Producción, kWh/ano → kWh/año"],
-  [6, "Inversión incorrecta", "95.000 € → 80.432,64 € (26.647 + 53.784)"],
-  [7, "Tendencia consumo inflada", "Regresión excluye meses con <20 días (dic parcial sesgaba +21.9%)"],
-  [8, "Payback con días sin FV", "Solo cuenta dias_con_pv para proyección anual, no rango total"],
-  [9, "Gráfica pág 2 redundante", "Producción mensual (1 barra) → Perfil horario medio producción"],
-  [10, "Validación fechas comparativa", "Detecta si desde > hasta y lanza error claro"],
-];
-
-const IMPROVEMENTS = [
-  ["style_axes(ax)", "Helper para estilo uniforme de ejes", "var(--blue)"],
-  ["INSTALACION dict", "Constantes centralizadas para reutilización", "var(--blue)"],
-  ["Perfil horario pág 2", "Reemplaza bar chart mensual redundante", "var(--purple)"],
-  ["Meteo Open-Meteo", "GHI superpuesto en producción diaria", "var(--orange)"],
-  ["Validación fechas", "Error claro si desde > hasta", "var(--red)"],
-  ["Upload Colab", "files.upload() antes del motor de cálculo", "var(--accent)"],
-];
-
-// ═══ RENDER ═══
-function render() {
-  // Date
-  document.getElementById('date-today').textContent = new Date().toLocaleDateString('es-ES');
-
-  // Installation
-  const ig = document.getElementById('install-grid');
-  ig.innerHTML = INSTALL.map(([l,v]) =>
-    `<div class="install-item"><div class="label">${l}</div><div class="value">${v}</div></div>`
-  ).join('');
-
-  // Features
-  const fg = document.getElementById('features-grid');
-  fg.innerHTML = FEATURES.map(([i,t,d]) =>
-    `<div class="feature"><div class="feature-icon">${i}</div><div><div class="feature-title">${t}</div><div class="feature-desc">${d}</div></div></div>`
-  ).join('');
-
-  // Workflow
-  const wc = document.getElementById('workflow-card');
-  wc.innerHTML = WORKFLOW.map(([n,l,d,i,c], idx) =>
-    `<div class="workflow-step">
-      <div class="step-icon" style="background:color-mix(in srgb, ${c} 10%, transparent);border:1.5px solid color-mix(in srgb, ${c} 25%, transparent)">${i}</div>
-      <div><span class="step-label" style="color:${c}">${n}. ${l}</span><span class="step-desc">${d}</span></div>
-      ${idx < WORKFLOW.length-1 ? '<div class="step-arrow">→</div>' : ''}
-    </div>`
-  ).join('');
-
-  // Pages main
-  const pm = document.getElementById('pages-main');
-  pm.innerHTML = PAGES.map(([n,t,i,d,c,s]) =>
-    `<div class="page-card" style="border-left-color:${c}">
-      <div class="page-inner">
-        <div class="page-icon-box" style="background:color-mix(in srgb, ${c} 10%, transparent);border:1px solid color-mix(in srgb, ${c} 20%, transparent)">${i}</div>
-        <div style="flex:1">
-          <div style="display:flex;align-items:center;gap:8px">
-            <span class="page-badge" style="color:${c};background:color-mix(in srgb, ${c} 10%, transparent)">PÁG ${n}</span>
-            <span class="page-title">${t}</span>
-          </div>
-          <div class="page-desc">${d}</div>
-        </div>
-        <div class="page-scope">Alcance ${s}</div>
-      </div>
-    </div>`
-  ).join('');
-
-  // Pages comp
-  const pc = document.getElementById('pages-comp');
-  pc.innerHTML = COMP_PAGES.map(([n,t,d]) =>
-    `<div class="page-card" style="border-left-color:var(--blue)">
-      <div class="page-inner">
-        <span class="page-badge" style="color:var(--blue);background:rgba(59,130,246,0.1)">C${n}</span>
-        <span class="page-title">${t}</span>
-        <span style="font-size:12px;color:var(--text-muted);margin-left:8px">${d}</span>
-      </div>
-    </div>`
-  ).join('');
-
-  // Scopes
-  const sl = document.getElementById('scopes-list');
-  sl.innerHTML = SCOPES.map(([id,t,sub,desc,c]) => {
-    const bars = [1,2,3].map(i => `<div class="scope-bar-seg" style="width:${i===id?'100':'0'}%;background:${c}"></div>`).join('');
-    const labels = [
-      ['Mes filtrado','var(--accent)'],
-      ['Desde PV start','var(--purple)'],
-      ['Histórico total','var(--red)']
-    ].map(([l,col],i) =>
-      `<span style="color:${i+1===id?col:'var(--text-muted)'}">${l}</span>`
-    ).join('');
-    return `<div class="scope-card" style="border-left-color:${c}" onclick="toggleScope(this)">
-      <div class="scope-header">
-        <div>
-          <div style="display:flex;align-items:center;gap:10px">
-            <span class="scope-badge" style="color:${c};background:color-mix(in srgb, ${c} 10%, transparent)">ALCANCE ${id}</span>
-            <span class="scope-title">${t}</span>
-          </div>
-          <div class="scope-sub">${sub}</div>
-        </div>
-        <div class="scope-arrow">▾</div>
-      </div>
-      <div class="scope-detail">
-        <p>${desc}</p>
-        <div class="scope-bar">${bars}</div>
-        <div class="scope-bar-labels">${labels}</div>
-      </div>
-    </div>`;
-  }).join('');
-
-  // Bugs
-  document.getElementById('bug-count').textContent = BUGS.length + ' fixes';
-  const bl = document.getElementById('bugs-list');
-  bl.innerHTML = BUGS.map(([n,t,d]) =>
-    `<div class="bug-card"><div class="bug-inner">
-      <div class="bug-num">${n}</div>
-      <div style="flex:1">
-        <div><span class="bug-title">${t}</span><span class="bug-badge">✓ FIXED</span></div>
-        <div class="bug-desc">${d}</div>
-      </div>
-    </div></div>`
-  ).join('');
-
-  // Improvements
-  const impr = document.getElementById('improvements-grid');
-  impr.innerHTML = IMPROVEMENTS.map(([t,d,c]) =>
-    `<div class="improve-card" style="border-left-color:${c}">
-      <div class="improve-title" style="color:${c}">${t}</div>
-      <div class="improve-desc">${d}</div>
-    </div>`
-  ).join('');
+// ═══ LOGGING ═══
+function log(msg) {
+  const el = document.getElementById('log');
+  el.innerHTML += msg + '<br>';
+  el.scrollTop = el.scrollHeight;
 }
 
-// ═══ TAB SWITCHING ═══
-document.querySelectorAll('.tab').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+// ═══ FILE HANDLERS ═══
+document.getElementById('file-inv-a').addEventListener('change', e => loadInversor(e.target.files, 'A'));
+document.getElementById('file-inv-b').addEventListener('change', e => loadInversor(e.target.files, 'B'));
+document.getElementById('file-ibr').addEventListener('change', e => loadIBR(e.target.files[0]));
+
+function checkReady() {
+  const ready = RAW.invA.length > 0 && RAW.ibr.length > 0;
+  document.getElementById('btn-generate').disabled = !ready;
+}
+
+function parseExcelDate(v) {
+  if (v instanceof Date) return v;
+  if (typeof v === 'number') {
+    // Excel serial date
+    const d = new Date((v - 25569) * 86400000);
+    return d;
+  }
+  if (typeof v === 'string') {
+    // Try multiple formats
+    let d = new Date(v);
+    if (!isNaN(d)) return d;
+    // DD/MM/YYYY HH:mm
+    const m = v.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\s*(\d{1,2})?:?(\d{2})?:?(\d{2})?/);
+    if (m) {
+      d = new Date(m[3], m[2]-1, m[1], m[4]||0, m[5]||0, m[6]||0);
+      if (!isNaN(d)) return d;
+    }
+  }
+  return null;
+}
+
+function loadInversor(files, label) {
+  const key = label === 'A' ? 'invA' : 'invB';
+  RAW[key] = [];
+  let loaded = 0;
+  const total = files.length;
+
+  Array.from(files).forEach(file => {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { defval: 0 });
+
+        rows.forEach(row => {
+          // Find columns
+          let ts = null, pot = 0, acum = 0, diaria = 0;
+          for (const [k, v] of Object.entries(row)) {
+            const kl = k.toLowerCase();
+            if (kl.includes('tiempo') || kl === 'tiempo') ts = parseExcelDate(v);
+            if (kl.includes('potencia total c') || kl.includes('potencia total ac')) pot = parseFloat(v) || 0;
+            if (kl.includes('producción acumulada') || kl.includes('produccion acumulada')) acum = parseFloat(v) || 0;
+            if (kl.includes('producción diaria') || kl.includes('produccion diaria')) diaria = parseFloat(v) || 0;
+          }
+          if (ts) RAW[key].push({ ts, pot, acum, diaria });
+        });
+      } catch(err) {
+        log(`⚠ Error leyendo ${file.name}: ${err.message}`);
+      }
+      loaded++;
+      if (loaded === total) {
+        RAW[key].sort((a,b) => a.ts - b.ts);
+        const days = new Set(RAW[key].map(r => r.ts.toDateString())).size;
+        document.getElementById(`status-inv-${label.toLowerCase()}`).textContent =
+          `✓ ${total} fichero(s), ${RAW[key].length} registros, ${days} días`;
+        document.getElementById(`zone-inv-${label.toLowerCase()}`).classList.add('loaded');
+        log(`Inversor ${label}: ${RAW[key].length} registros, ${days} días`);
+        checkReady();
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function loadIBR(file) {
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+      // Find "Horarias" sheet
+      let sheetName = wb.SheetNames.find(s => s.toLowerCase().includes('horaria')) || wb.SheetNames[0];
+      const ws = wb.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+      // Find header row (look for "Fecha" or "Consumo")
+      let headerRow = 2; // default for i-DE format
+      for (let i = 0; i < Math.min(10, rows.length); i++) {
+        const r = rows[i].map(c => String(c).toLowerCase());
+        if (r.some(c => c.includes('fecha') || c.includes('consumo'))) { headerRow = i; break; }
+      }
+
+      RAW.ibr = [];
+      for (let i = headerRow + 1; i < rows.length; i++) {
+        const r = rows[i];
+        if (!r || r.length < 5) continue;
+        const ts = parseExcelDate(r[1]); // Column B = timestamp
+        if (!ts) continue;
+        const consumo = (parseFloat(r[4]) || 0) / 1000; // Column E = Wh → kWh
+        const gen = (parseFloat(r[5]) || 0) / 1000; // Column F = generation Wh → kWh
+        // Period: column D
+        let periodo = 'P6';
+        const rawP = String(r[3] || '');
+        const pm = rawP.match(/(\d)/);
+        if (pm) periodo = 'P' + pm[1];
+        RAW.ibr.push({ ts, consumo, gen, periodo });
+      }
+      RAW.ibr.sort((a,b) => a.ts - b.ts);
+      const days = new Set(RAW.ibr.map(r => r.ts.toDateString())).size;
+      document.getElementById('status-ibr').textContent =
+        `✓ ${RAW.ibr.length} registros, ${days} días`;
+      document.getElementById('zone-ibr').classList.add('loaded');
+      log(`Consumo i-DE: ${RAW.ibr.length} registros, ${days} días`);
+      checkReady();
+    } catch(err) {
+      log(`⚠ Error leyendo consumo: ${err.message}`);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ═══ PROCESSING ENGINE ═══
+function dateKey(d) { return d.toISOString().slice(0,10); }
+function hourKey(d) { return d.toISOString().slice(0,13); }
+function fmtNum(n) { return n.toLocaleString('es-ES', {maximumFractionDigits:0}); }
+function fmtDec(n,d=1) { return n.toLocaleString('es-ES', {minimumFractionDigits:d,maximumFractionDigits:d}); }
+
+function filterByDate(arr, desde, hasta) {
+  return arr.filter(r => {
+    if (desde && r.ts < desde) return false;
+    if (hasta && r.ts > hasta) return false;
+    return true;
+  });
+}
+
+function processProduction(invA, invB) {
+  // Daily aggregation
+  const dailyMap = {};
+  invA.forEach(r => {
+    const dk = dateKey(r.ts);
+    if (!dailyMap[dk]) dailyMap[dk] = { date: dk, invA: 0, invB: 0 };
+    dailyMap[dk].invA = Math.max(dailyMap[dk].invA, r.diaria);
+  });
+  invB.forEach(r => {
+    const dk = dateKey(r.ts);
+    if (!dailyMap[dk]) dailyMap[dk] = { date: dk, invA: 0, invB: 0 };
+    dailyMap[dk].invB = Math.max(dailyMap[dk].invB, r.diaria);
+  });
+  const daily = Object.values(dailyMap).map(d => ({
+    ...d, total: d.invA + d.invB
+  })).sort((a,b) => a.date.localeCompare(b.date));
+
+  // Hourly aggregation (for profile)
+  const hourlyMap = {};
+  const processHourly = (arr, key) => {
+    const sorted = [...arr].sort((a,b) => a.ts - b.ts);
+    sorted.forEach(r => {
+      const hk = hourKey(r.ts);
+      if (!hourlyMap[hk]) hourlyMap[hk] = { hour: hk, h: r.ts.getHours(), invA: 0, invB: 0 };
+    });
+    // Group by hour, compute delta acum
+    const byHour = {};
+    sorted.forEach(r => {
+      const hk = hourKey(r.ts);
+      if (!byHour[hk]) byHour[hk] = [];
+      byHour[hk].push(r);
+    });
+    for (const [hk, recs] of Object.entries(byHour)) {
+      if (recs.length < 2) {
+        if (hourlyMap[hk]) hourlyMap[hk][key] = (recs[0].pot || 0) / 1000;
+      } else {
+        let delta = recs[recs.length-1].acum - recs[0].acum;
+        if (delta <= 0) delta = recs.reduce((s,r) => s + r.pot, 0) / recs.length / 1000;
+        if (hourlyMap[hk]) hourlyMap[hk][key] = Math.max(0, delta);
+      }
+    }
+  };
+  processHourly(invA, 'invA');
+  processHourly(invB, 'invB');
+
+  const hourly = Object.values(hourlyMap).map(h => ({
+    ...h, total: h.invA + h.invB
+  })).sort((a,b) => a.hour.localeCompare(b.hour));
+
+  return { daily, hourly };
+}
+
+function processConsumption(ibr, prodHourly) {
+  // Build PV lookup by hour
+  const pvByHour = {};
+  prodHourly.forEach(h => { pvByHour[h.hour] = h.total; });
+
+  const consHourly = ibr.map(r => {
+    const hk = hourKey(r.ts);
+    const pvKwh = pvByHour[hk] || 0;
+    return {
+      ts: r.ts, date: dateKey(r.ts), h: r.ts.getHours(),
+      red: r.consumo, gen: r.gen, pv: pvKwh,
+      total: r.consumo + pvKwh, periodo: r.periodo,
+      weekday: r.ts.getDay(), // 0=Sun
+    };
+  });
+
+  // Daily
+  const dailyMap = {};
+  consHourly.forEach(r => {
+    if (!dailyMap[r.date]) dailyMap[r.date] = { date: r.date, total: 0, red: 0, pv: 0 };
+    dailyMap[r.date].total += r.total;
+    dailyMap[r.date].red += r.red;
+    dailyMap[r.date].pv += r.pv;
+  });
+  const consDaily = Object.values(dailyMap).sort((a,b) => a.date.localeCompare(b.date));
+
+  return { hourly: consHourly, daily: consDaily };
+}
+
+function calcKPIs(prod, cons) {
+  const pd = prod.daily;
+  const ch = cons.hourly;
+
+  // Production KPIs
+  const totalProd = pd.reduce((s,d) => s + d.total, 0);
+  const daysWithPV = pd.filter(d => d.total > 0).length;
+  const avgDaily = daysWithPV > 0 ? totalProd / daysWithPV : 0;
+  const bestDay = pd.reduce((m,d) => d.total > m.total ? d : m, { total:0, date:'-' });
+  const yieldKwp = totalProd / CFG.potencia_kwp;
+  const invATotal = pd.reduce((s,d) => s + d.invA, 0);
+  const invBTotal = pd.reduce((s,d) => s + d.invB, 0);
+
+  // Savings by period
+  const ahorroPeriodos = {};
+  ['P1','P2','P3','P4','P5','P6'].forEach(p => { ahorroPeriodos[p] = { kwh: 0, precio: CFG.precios[p], ahorro: 0 }; });
+  ch.forEach(r => {
+    const p = r.periodo || 'P6';
+    if (ahorroPeriodos[p]) ahorroPeriodos[p].kwh += r.pv;
+  });
+  let totalAhorroEnergia = 0;
+  for (const p in ahorroPeriodos) {
+    ahorroPeriodos[p].ahorro = ahorroPeriodos[p].kwh * ahorroPeriodos[p].precio;
+    totalAhorroEnergia += ahorroPeriodos[p].ahorro;
+  }
+  const totalAhorroFactura = totalAhorroEnergia * (1 + CFG.IE) * (1 + CFG.IVA);
+
+  // Consumption KPIs
+  const totalCons = ch.reduce((s,r) => s + r.total, 0);
+  const totalRed = ch.reduce((s,r) => s + r.red, 0);
+  const totalPV = ch.reduce((s,r) => s + r.pv, 0);
+  const pctCubierto = totalCons > 0 ? (totalPV / totalCons * 100) : 0;
+
+  // Hourly profile for chart
+  const hourlyProfile = Array(24).fill(0).map(() => ({ count: 0, total: 0 }));
+  prod.hourly.forEach(h => { hourlyProfile[h.h].total += h.total; hourlyProfile[h.h].count++; });
+  const avgHourly = hourlyProfile.map(h => h.count > 0 ? h.total / h.count : 0);
+
+  // Payback
+  const ahorroAnual = daysWithPV > 0 ? totalAhorroFactura * 365 / daysWithPV : 0;
+  const paybackYears = ahorroAnual > 0 ? CFG.inversion / ahorroAnual : 99;
+
+  return {
+    totalProd, daysWithPV, avgDaily, bestDay,
+    yieldKwp, invATotal, invBTotal,
+    ahorroPeriodos, totalAhorroEnergia, totalAhorroFactura,
+    totalCons, totalRed, totalPV, pctCubierto,
+    avgHourly, ahorroAnual, paybackYears,
+    co2: totalProd * CFG.factor_emisiones / 1000,
+    prod, cons,
+  };
+}
+
+// ═══ MAIN GENERATE ═══
+function generate() {
+  log('Procesando...');
+  const desde = document.getElementById('fecha-desde').value ? new Date(document.getElementById('fecha-desde').value + 'T00:00:00') : null;
+  const hasta = document.getElementById('fecha-hasta').value ? new Date(document.getElementById('fecha-hasta').value + 'T23:59:59') : null;
+
+  if (desde && hasta && desde > hasta) {
+    log('⚠ ERROR: "Desde" es posterior a "Hasta"');
+    return;
+  }
+
+  const invA = filterByDate(RAW.invA, desde, hasta);
+  const invB = filterByDate(RAW.invB, desde, hasta);
+  const ibr = filterByDate(RAW.ibr, desde, hasta);
+
+  log(`Filtrado: Inv A=${invA.length}, Inv B=${invB.length}, IBR=${ibr.length}`);
+
+  if (invA.length === 0) { log('⚠ No hay datos de inversor A en el rango'); return; }
+
+  const prod = processProduction(invA, invB);
+  const cons = processConsumption(ibr, prod.hourly);
+  RESULT = calcKPIs(prod, cons);
+
+  log(`✓ Producción: ${fmtDec(RESULT.totalProd)} kWh | Consumo: ${fmtNum(RESULT.totalCons)} kWh`);
+  log(`✓ Ahorro energía: ${fmtNum(RESULT.totalAhorroEnergia)} € | Total factura: ${fmtNum(RESULT.totalAhorroFactura)} €`);
+
+  setStep(3);
+  renderResults();
+}
+
+// ═══ RENDER RESULTS ═══
+function renderResults() {
+  const R = RESULT;
+  document.getElementById('panel-upload').style.display = 'none';
+  document.getElementById('panel-results').style.display = 'block';
+
+  // KPIs
+  const eStr = R.totalProd >= 1000 ? fmtDec(R.totalProd/1000,2) + ' MWh' : fmtDec(R.totalProd) + ' kWh';
+  const kpis = [
+    { label: 'Energía producida', value: eStr, sub: 'Producción total' },
+    { label: 'Media diaria', value: fmtDec(R.avgDaily) + ' kWh/día', sub: R.daysWithPV + ' días' },
+    { label: 'Mejor día', value: fmtDec(R.bestDay.total) + ' kWh', sub: R.bestDay.date },
+    { label: 'Rendimiento', value: fmtDec(R.yieldKwp) + ' kWh/kWp', sub: CFG.potencia_kwp + ' kWp' },
+    { label: 'Ahorro energía', value: fmtNum(R.totalAhorroEnergia) + ' €', sub: 'P1-P6' },
+    { label: 'Ahorro factura', value: fmtNum(R.totalAhorroFactura) + ' €', sub: 'IE+IVA incl.' },
+  ];
+  document.getElementById('kpi-grid').innerHTML = kpis.map(k =>
+    `<div class="kpi-card"><div class="kpi-label">${k.label}</div><div class="kpi-value">${k.value}</div><div class="kpi-sub">${k.sub}</div></div>`
+  ).join('');
+
+  // Charts
+  renderDailyChart();
+  renderHourlyChart();
+  renderDonutChart();
+  renderConsChart();
+  renderAhorroChart();
+}
+
+function renderDailyChart() {
+  const ctx = document.getElementById('chart-daily').getContext('2d');
+  const pd = RESULT.prod.daily;
+  new Chart(ctx, {
+    type: pd.length <= 5 ? 'bar' : 'line',
+    data: {
+      labels: pd.map(d => d.date.slice(5)),
+      datasets: [{
+        label: 'Producción (kWh)',
+        data: pd.map(d => d.total),
+        backgroundColor: '#2980b9',
+        borderColor: '#2980b9',
+        borderWidth: 1.5,
+        fill: false,
+        tension: 0.3,
+        pointRadius: pd.length > 20 ? 0 : 3,
+      }]
+    },
+    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+  });
+}
+
+function renderHourlyChart() {
+  const ctx = document.getElementById('chart-hourly').getContext('2d');
+  const colors = RESULT.avgHourly.map(v => v > Math.max(...RESULT.avgHourly) * 0.5 ? '#2980b9' : '#90caf9');
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: Array.from({length:24}, (_,i) => i+'h'),
+      datasets: [{ data: RESULT.avgHourly, backgroundColor: colors, borderWidth: 0 }]
+    },
+    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+  });
+}
+
+function renderDonutChart() {
+  const ctx = document.getElementById('chart-donut').getContext('2d');
+  const a = RESULT.invATotal, b = RESULT.invBTotal;
+  new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Inversor A', 'Inversor B'],
+      datasets: [{ data: [a, b], backgroundColor: ['#2980b9', '#e67e22'], borderWidth: 2, borderColor: '#111827' }]
+    },
+    options: { responsive: true, cutout: '55%', plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', font: { size: 11 } } } } }
+  });
+}
+
+function renderConsChart() {
+  const ctx = document.getElementById('chart-cons').getContext('2d');
+  const cd = RESULT.cons.daily;
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: cd.map(d => d.date.slice(5)),
+      datasets: [
+        { label: 'Red', data: cd.map(d => d.red), backgroundColor: '#e74c3c', stack: 'a' },
+        { label: 'FV', data: cd.map(d => d.pv), backgroundColor: '#27ae60', stack: 'a' },
+      ]
+    },
+    options: { responsive: true, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } } }
+  });
+}
+
+function renderAhorroChart() {
+  const ctx = document.getElementById('chart-ahorro').getContext('2d');
+  const ap = RESULT.ahorroPeriodos;
+  const periodos = Object.keys(ap);
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: periodos,
+      datasets: [
+        { label: 'kWh FV', data: periodos.map(p => ap[p].kwh), backgroundColor: '#2980b9', yAxisID: 'y' },
+        { label: 'Ahorro €', data: periodos.map(p => ap[p].ahorro), backgroundColor: '#27ae60', yAxisID: 'y1' },
+      ]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: { beginAtZero: true, position: 'left', title: { display: true, text: 'kWh' } },
+        y1: { beginAtZero: true, position: 'right', title: { display: true, text: '€' }, grid: { drawOnChartArea: false } }
+      }
+    }
+  });
+}
+
+// ═══ PDF GENERATION ═══
+async function generatePDF() {
+  setStep(4);
+  log('Generando PDF...');
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF('p', 'mm', 'a4');
+  const R = RESULT;
+  const W = 210, H = 297, M = 15;
+
+  const desde = R.prod.daily[0]?.date || '';
+  const hasta = R.prod.daily[R.prod.daily.length-1]?.date || '';
+  const periodo = `${desde} → ${hasta}`;
+
+  function header(title, sub) {
+    doc.setFillColor(26, 60, 77);
+    doc.roundedRect(M, 10, W-2*M, 18, 3, 3, 'F');
+    doc.setTextColor(255); doc.setFontSize(13); doc.setFont(undefined, 'bold');
+    doc.text(title, M+5, 21);
+    doc.setFontSize(9); doc.setFont(undefined, 'normal');
+    doc.text(sub, M+5, 26);
+    doc.setTextColor(0);
+  }
+
+  function footer(page) {
+    doc.setFontSize(7); doc.setTextColor(150);
+    doc.text(`Fuentes: inversores (KSTAR) + contador horario + factura Goiener.  Modalidad: SIN excedentes (vertido cero).`, M, H-8);
+    doc.text(`Pág ${page}`, W-M-10, H-8);
+    doc.setTextColor(0);
+  }
+
+  // Helper: capture chart to image
+  async function chartToImg(canvasId, w, h) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return null;
+    return canvas.toDataURL('image/png');
+  }
+
+  // ═══ PAGE 1: Production ═══
+  header('Producción fotovoltaica — Edificio Gorraiz', `Periodo: ${periodo}  ·  Modalidad: ${CFG.modalidad}`);
+
+  // KPIs
+  let y = 34;
+  doc.setFontSize(11); doc.setFont(undefined, 'bold'); doc.text('Resultados clave', M, y); y += 6;
+  const eStr = R.totalProd >= 1000 ? fmtDec(R.totalProd/1000,2) + ' MWh' : fmtDec(R.totalProd) + ' kWh';
+  const kpiData = [
+    ['Energía producida', eStr],
+    ['Media diaria', fmtDec(R.avgDaily) + ' kWh/día'],
+    ['Mejor día', fmtDec(R.bestDay.total) + ' kWh'],
+    ['Rendimiento', fmtDec(R.yieldKwp) + ' kWh/kWp'],
+    ['Ahorro energía', fmtNum(R.totalAhorroEnergia) + ' €'],
+    ['Ahorro factura', fmtNum(R.totalAhorroFactura) + ' €'],
+  ];
+  const kw = (W - 2*M) / 6;
+  kpiData.forEach(([label, val], i) => {
+    const x = M + i * kw;
+    doc.setFillColor(240, 247, 255); doc.roundedRect(x, y, kw-2, 16, 2, 2, 'F');
+    doc.setFontSize(6); doc.setFont(undefined, 'normal'); doc.setTextColor(100);
+    doc.text(label.toUpperCase(), x+2, y+5);
+    doc.setFontSize(10); doc.setFont(undefined, 'bold'); doc.setTextColor(26, 82, 118);
+    doc.text(val, x+2, y+12);
+  });
+  doc.setTextColor(0); y += 22;
+
+  // Daily chart
+  const imgDaily = await chartToImg('chart-daily');
+  if (imgDaily) doc.addImage(imgDaily, 'PNG', M, y, W-2*M, 70);
+  y += 76;
+
+  // Conclusion
+  doc.setFillColor(248,249,250); doc.roundedRect(M, y, W-2*M, 28, 2, 2, 'F');
+  doc.setFontSize(10); doc.setFont(undefined, 'bold'); doc.text('Conclusión', M+4, y+7);
+  doc.setFontSize(8); doc.setFont(undefined, 'normal'); doc.setTextColor(80);
+  const conclusion = `La planta produce con estabilidad. El ahorro se calcula cruzando producción horaria y precios por periodo (P1-P6). Referencia de proyecto (memoria visada): ${fmtNum(CFG.prod_anual_est)} kWh/año.`;
+  doc.text(conclusion, M+4, y+14, { maxWidth: W-2*M-8 });
+  doc.setTextColor(0);
+  footer(1);
+
+  // ═══ PAGE 2: Inverters & Savings ═══
+  doc.addPage();
+  header('Detalle de instalación, inversores y ahorro', `Periodo: ${periodo}  ·  Modalidad: ${CFG.modalidad}`);
+  y = 34;
+
+  // Hourly profile chart
+  const imgHourly = await chartToImg('chart-hourly');
+  if (imgHourly) doc.addImage(imgHourly, 'PNG', M, y, (W-2*M)/2-2, 50);
+
+  // Donut chart
+  const imgDonut = await chartToImg('chart-donut');
+  if (imgDonut) doc.addImage(imgDonut, 'PNG', W/2+2, y, (W-2*M)/2-2, 50);
+  y += 56;
+
+  // P1-P6 savings table
+  doc.setFontSize(10); doc.setFont(undefined, 'bold'); doc.text('Ahorro por periodos (P1-P6)', M, y); y += 6;
+  doc.setFontSize(8); doc.setFont(undefined, 'bold');
+  doc.setFillColor(26,60,77); doc.setTextColor(255);
+  doc.rect(M, y, W-2*M, 6, 'F');
+  doc.text('Periodo', M+2, y+4); doc.text('FV (kWh)', M+35, y+4);
+  doc.text('€/kWh', M+70, y+4); doc.text('Ahorro (€)', M+105, y+4);
+  doc.setTextColor(0); doc.setFont(undefined, 'normal'); y += 7;
+  const ap = R.ahorroPeriodos;
+  let totalAh = 0;
+  for (const p of ['P1','P2','P3','P4','P5','P6']) {
+    doc.text(p, M+2, y+4);
+    doc.text(fmtNum(ap[p].kwh), M+35, y+4);
+    doc.text(ap[p].precio.toFixed(3), M+70, y+4);
+    doc.text(fmtNum(ap[p].ahorro), M+105, y+4);
+    totalAh += ap[p].ahorro;
+    if (['P1','P3','P5'].includes(p)) { doc.setFillColor(248,249,250); doc.rect(M, y, W-2*M, 6, 'F'); }
+    doc.text(p, M+2, y+4);
+    doc.text(fmtNum(ap[p].kwh), M+35, y+4);
+    doc.text(ap[p].precio.toFixed(3), M+70, y+4);
+    doc.text(fmtNum(ap[p].ahorro), M+105, y+4);
+    y += 6;
+  }
+  doc.setDrawColor(0); doc.line(M, y, W-M, y); y += 2;
+  doc.setFont(undefined, 'bold');
+  doc.text('TOTAL término energía', M+2, y+4);
+  doc.text(fmtNum(totalAh) + ' €', M+105, y+4);
+  y += 12;
+
+  // Ficha
+  doc.setFontSize(10); doc.setFont(undefined, 'bold'); doc.text('Ficha rápida de la instalación', M, y); y += 5;
+  doc.setFillColor(248,249,250); doc.roundedRect(M, y, W-2*M, 44, 2, 2, 'F');
+  doc.setFontSize(8); doc.setFont(undefined, 'normal');
+  const ficha = [
+    `Potencia pico: ${CFG.potencia_kwp} kWp`, `Generadores: ${CFG.modulos}`,
+    `Inversores: ${CFG.inversores}`, `Cubierta con captación ${CFG.cubierta}`,
+    CFG.modalidad, `Producción anual estimada: ${fmtNum(CFG.prod_anual_est)} kWh/año`,
+  ];
+  ficha.forEach((line, i) => { doc.text('• ' + line, M+4, y+6+i*6); });
+  footer(2);
+
+  // ═══ PAGE 3: Consumption ═══
+  doc.addPage();
+  header('Consumo eléctrico y cobertura fotovoltaica', `Periodo: ${periodo}  ·  Modalidad: ${CFG.modalidad}`);
+  y = 34;
+
+  // Consumption KPIs
+  doc.setFontSize(11); doc.setFont(undefined, 'bold'); doc.text('Balance energético', M, y); y += 6;
+  const consKpis = [
+    ['Consumo total', fmtNum(R.totalCons) + ' kWh'],
+    ['Desde red', fmtNum(R.totalRed) + ' kWh'],
+    ['Desde FV', fmtNum(R.totalPV) + ' kWh'],
+    ['Cobertura FV', fmtDec(R.pctCubierto) + '%'],
+  ];
+  const ckw = (W-2*M) / 4;
+  consKpis.forEach(([label, val], i) => {
+    const x = M + i * ckw;
+    doc.setFillColor(240, 247, 255); doc.roundedRect(x, y, ckw-2, 14, 2, 2, 'F');
+    doc.setFontSize(6); doc.setFont(undefined, 'normal'); doc.setTextColor(100);
+    doc.text(label.toUpperCase(), x+2, y+5);
+    doc.setFontSize(10); doc.setFont(undefined, 'bold'); doc.setTextColor(26, 82, 118);
+    doc.text(val, x+2, y+11);
+  });
+  doc.setTextColor(0); y += 20;
+
+  // Consumption chart
+  const imgCons = await chartToImg('chart-cons');
+  if (imgCons) doc.addImage(imgCons, 'PNG', M, y, W-2*M, 70);
+  y += 76;
+
+  // Ahorro chart
+  const imgAhorro = await chartToImg('chart-ahorro');
+  if (imgAhorro) doc.addImage(imgAhorro, 'PNG', M, y, W-2*M, 55);
+
+  footer(3);
+
+  // Save
+  const fname = `Informe_FV_Gorraiz_${desde.replace(/-/g,'')}_${hasta.replace(/-/g,'')}.pdf`;
+  doc.save(fname);
+  log(`✓ PDF descargado: ${fname}`);
+}
+
+// ═══ UI HELPERS ═══
+function setStep(n) {
+  for (let i = 1; i <= 4; i++) {
+    const el = document.getElementById('s'+i);
+    el.classList.remove('active', 'done');
+    if (i < n) el.classList.add('done');
+    if (i === n) el.classList.add('active');
+  }
+}
+
+function reset() {
+  RAW = { invA: [], invB: [], ibr: [] };
+  RESULT = null;
+  document.getElementById('panel-results').style.display = 'none';
+  document.getElementById('panel-upload').style.display = 'block';
+  document.getElementById('log').innerHTML = '';
+  ['inv-a','inv-b','ibr'].forEach(id => {
+    document.getElementById('status-'+id).textContent = '';
+    document.getElementById('zone-'+id).classList.remove('loaded');
+  });
+  document.getElementById('btn-generate').disabled = true;
+  setStep(1);
+}
+
+// Drag & drop support
+document.querySelectorAll('.upload-zone').forEach(zone => {
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('dragover');
+    const input = zone.querySelector('input[type=file]');
+    if (input && e.dataTransfer.files.length) {
+      input.files = e.dataTransfer.files;
+      input.dispatchEvent(new Event('change'));
+    }
   });
 });
-
-// ═══ SCOPE TOGGLE ═══
-function toggleScope(el) {
-  const wasExpanded = el.classList.contains('expanded');
-  document.querySelectorAll('.scope-card').forEach(c => c.classList.remove('expanded'));
-  if (!wasExpanded) el.classList.add('expanded');
-}
-
-// ═══ INIT ═══
-render();
 </script>
 </body>
 </html>
