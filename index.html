@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Informe FV — Edificio Gorraiz</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0e17;
+  --card: #111827;
+  --card-hover: #1a2234;
+  --accent: #22c55e;
+  --accent-dim: #16a34a;
+  --orange: #f59e0b;
+  --red: #ef4444;
+  --blue: #3b82f6;
+  --purple: #8b5cf6;
+  --border: #1e293b;
+  --text: #e2e8f0;
+  --text-dim: #94a3b8;
+  --text-muted: #64748b;
+  --header-bg: #1a5c3a;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+  min-height: 100vh;
+}
+
+.header {
+  background: linear-gradient(135deg, var(--header-bg) 0%, #0f1a12 100%);
+  padding: 28px 32px 0;
+  border-bottom: 1px solid rgba(34,197,94,0.2);
+}
+.header-top { display: flex; align-items: center; gap: 14px; }
+.header-icon {
+  width: 48px; height: 48px; border-radius: 12px;
+  background: rgba(34,197,94,0.12); border: 2px solid rgba(34,197,94,0.25);
+  display: flex; align-items: center; justify-content: center; font-size: 24px;
+}
+.header h1 {
+  font-size: 24px; font-weight: 800; letter-spacing: -0.5px;
+  background: linear-gradient(90deg, #22c55e, #86efac);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.header-sub { font-size: 13px; color: var(--text-dim); margin-top: 2px; }
+
+.tabs { display: flex; gap: 4px; margin-top: 18px; padding-bottom: 0; }
+.tab {
+  padding: 9px 20px; border: none; border-radius: 8px 8px 0 0;
+  cursor: pointer; font-size: 13px; font-weight: 600; font-family: inherit;
+  background: transparent; color: var(--text-muted);
+  border-bottom: 2px solid transparent; transition: all 0.2s;
+}
+.tab:hover { color: var(--text-dim); }
+.tab.active { background: var(--card); color: var(--accent); border-bottom-color: var(--accent); }
+
+.content { padding: 24px 32px; max-width: 1100px; margin: 0 auto; }
+
+.card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 20px 24px; margin-bottom: 20px;
+}
+
+.section-title {
+  font-size: 14px; font-weight: 700; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px;
+}
+
+.glow-dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 8px rgba(34,197,94,0.5);
+}
+
+/* Installation grid */
+.install-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px;
+}
+.install-item {
+  padding: 8px 12px; background: #0d1320; border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.install-item .label {
+  font-size: 10px; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.8px;
+}
+.install-item .value { font-size: 14px; font-weight: 600; margin-top: 2px; }
+
+/* Features grid */
+.features-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px;
+}
+.feature {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px 16px;
+  display: flex; gap: 12px; align-items: flex-start;
+}
+.feature-icon { font-size: 22px; line-height: 1; flex-shrink: 0; }
+.feature-title { font-size: 13px; font-weight: 700; }
+.feature-desc { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+/* Workflow */
+.workflow-step {
+  display: flex; align-items: center; gap: 14px; margin-bottom: 8px;
+}
+.step-icon {
+  width: 36px; height: 36px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; flex-shrink: 0;
+}
+.step-label { font-size: 13px; font-weight: 700; }
+.step-desc { font-size: 12px; color: var(--text-muted); margin-left: 8px; }
+.step-arrow { color: var(--text-muted); font-size: 16px; margin-left: auto; }
+
+/* Pages */
+.page-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 18px 22px; margin-bottom: 10px;
+  border-left: 4px solid; transition: all 0.2s; cursor: default;
+}
+.page-card:hover { background: var(--card-hover); }
+.page-inner { display: flex; align-items: center; gap: 12px; }
+.page-icon-box {
+  width: 40px; height: 40px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center; font-size: 20px;
+}
+.page-badge {
+  font-size: 11px; font-weight: 700; padding: 2px 8px;
+  border-radius: 4px; font-family: 'JetBrains Mono', monospace;
+}
+.page-title { font-size: 15px; font-weight: 700; margin-left: 8px; }
+.page-desc { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+.page-scope {
+  font-size: 11px; color: var(--text-muted); background: #0d1320;
+  padding: 4px 10px; border-radius: 6px; font-weight: 600; margin-left: auto; white-space: nowrap;
+}
+
+/* Scopes */
+.scope-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 14px; padding: 20px 24px; margin-bottom: 14px;
+  border-left: 4px solid; cursor: pointer; transition: all 0.2s;
+}
+.scope-card.expanded { border-color: rgba(255,255,255,0.3); }
+.scope-header { display: flex; align-items: center; justify-content: space-between; }
+.scope-badge {
+  font-size: 12px; font-weight: 800; padding: 3px 10px; border-radius: 6px;
+}
+.scope-title { font-size: 16px; font-weight: 700; margin-left: 10px; }
+.scope-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.scope-arrow { font-size: 18px; color: var(--text-muted); transition: transform 0.2s; }
+.scope-card.expanded .scope-arrow { transform: rotate(180deg); }
+.scope-detail {
+  margin-top: 14px; padding: 14px 16px; background: #0d1320;
+  border-radius: 8px; border: 1px solid var(--border);
+  display: none;
+}
+.scope-card.expanded .scope-detail { display: block; }
+.scope-detail p { font-size: 13px; line-height: 1.6; }
+
+/* Timeline */
+.timeline-box { position: relative; height: 90px; margin-top: 8px; }
+.timeline-base {
+  position: absolute; top: 40px; left: 0; right: 0;
+  height: 2px; background: var(--border);
+}
+.timeline-bar {
+  position: absolute; height: 16px; border-radius: 4px;
+}
+.timeline-label {
+  position: absolute; font-size: 10px; font-weight: 600;
+}
+
+/* Scope bar */
+.scope-bar { display: flex; border-radius: 3px; overflow: hidden; height: 4px; background: #1e293b; margin-top: 10px; }
+.scope-bar-seg { transition: width 0.5s; }
+.scope-bar-labels { display: flex; justify-content: space-between; margin-top: 6px; }
+.scope-bar-labels span { font-size: 10px; }
+
+/* Changelog */
+.bug-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px 18px; margin-bottom: 8px;
+}
+.bug-inner { display: flex; align-items: flex-start; gap: 12px; }
+.bug-num {
+  width: 28px; height: 28px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 800; flex-shrink: 0;
+  font-family: 'JetBrains Mono', monospace;
+  background: rgba(34,197,94,0.1); color: var(--accent);
+  border: 1px solid rgba(34,197,94,0.2);
+}
+.bug-title { font-size: 13px; font-weight: 700; }
+.bug-badge {
+  font-size: 10px; font-weight: 700; color: var(--accent);
+  background: rgba(34,197,94,0.1); padding: 1px 6px;
+  border-radius: 4px; margin-left: 8px;
+}
+.bug-desc {
+  font-size: 11px; color: var(--text-muted); margin-top: 3px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.improve-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.improve-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px 16px; border-left: 3px solid;
+}
+.improve-title { font-size: 13px; font-weight: 700; }
+.improve-desc { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+.footer {
+  padding: 16px 32px; border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--text-muted); text-align: center;
+}
+
+@media (max-width: 700px) {
+  .header { padding: 20px 16px 0; }
+  .content { padding: 16px; }
+  .install-grid { grid-template-columns: 1fr 1fr; }
+  .features-grid { grid-template-columns: 1fr; }
+  .improve-grid { grid-template-columns: 1fr; }
+  .page-scope { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-top">
+    <div class="header-icon">☀️</div>
+    <div>
+      <h1>Informe FV — Edificio Gorraiz</h1>
+      <div class="header-sub">123.84 kWp · Autoconsumo SIN excedentes · Desde 16/12/2025</div>
+    </div>
+  </div>
+  <div class="tabs">
+    <button class="tab active" data-tab="overview"><span>◉</span> Panel</button>
+    <button class="tab" data-tab="pages"><span>📄</span> Páginas</button>
+    <button class="tab" data-tab="scopes"><span>🔭</span> Alcances</button>
+    <button class="tab" data-tab="changelog"><span>🔧</span> Changelog</button>
+  </div>
+</div>
+
+<!-- CONTENT -->
+<div class="content">
+
+  <!-- ═══ OVERVIEW ═══ -->
+  <div id="tab-overview" class="tab-content active">
+    <div class="card">
+      <div class="section-title"><span class="glow-dot"></span> &nbsp;FICHA DE INSTALACIÓN</div>
+      <div class="install-grid" id="install-grid"></div>
+    </div>
+
+    <div class="section-title">Capacidades del informe</div>
+    <div class="features-grid" id="features-grid"></div>
+
+    <div class="section-title" style="margin-top:24px">Flujo de ejecución en Colab</div>
+    <div class="card" id="workflow-card"></div>
+  </div>
+
+  <!-- ═══ PAGES ═══ -->
+  <div id="tab-pages" class="tab-content">
+    <div class="section-title">Informe principal — 5 páginas</div>
+    <div id="pages-main"></div>
+    <div class="section-title" style="margin-top:32px">Informe comparativo — 3 páginas (opcional)</div>
+    <div id="pages-comp"></div>
+  </div>
+
+  <!-- ═══ SCOPES ═══ -->
+  <div id="tab-scopes" class="tab-content">
+    <div class="section-title">Arquitectura de 3 alcances de datos</div>
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:20px">
+      Cada página del informe usa un alcance temporal diferente para que las métricas sean coherentes.
+    </p>
+    <div id="scopes-list"></div>
+
+    <div class="card" style="margin-top:24px">
+      <div class="section-title">Línea temporal de datos</div>
+      <div class="timeline-box">
+        <div class="timeline-base"></div>
+        <div class="timeline-bar" style="top:28px;left:0%;width:100%;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.3)">
+          <span class="timeline-label" style="top:-16px;left:4px;color:var(--orange)">Consumo (jun 2025)</span>
+        </div>
+        <div class="timeline-bar" style="top:48px;left:65%;width:35%;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.3)">
+          <span class="timeline-label" style="top:18px;left:4px;color:var(--accent)">FV (16 dic 2025)</span>
+        </div>
+        <div class="timeline-bar" style="top:28px;left:85%;width:12%;height:36px;background:rgba(59,130,246,0.1);border:1px dashed rgba(59,130,246,0.3)">
+          <span class="timeline-label" style="top:-16px;left:2px;color:var(--blue)">Feb 2026</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ CHANGELOG ═══ -->
+  <div id="tab-changelog" class="tab-content">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+      <div class="section-title" style="margin-bottom:0">Bugs corregidos</div>
+      <span style="font-size:12px;font-weight:700;color:var(--accent);background:rgba(34,197,94,0.1);padding:3px 10px;border-radius:20px" id="bug-count"></span>
+    </div>
+    <div id="bugs-list"></div>
+
+    <div class="section-title" style="margin-top:28px">Mejoras implementadas</div>
+    <div class="improve-grid" id="improvements-grid"></div>
+  </div>
+
+</div>
+
+<div class="footer">
+  Informe FV Gorraiz · 123.84 kWp · Notebook v3 · <span id="date-today"></span>
+</div>
+
+<script>
+// ═══ DATA ═══
+const INSTALL = [
+  ["Potencia pico", "123.84 kWp"],
+  ["Módulos", "288 × 430 Wp"],
+  ["Inversores", "2 × 50 kW KSTAR G50KT"],
+  ["Cubierta", "Este-Oeste"],
+  ["Producción estimada", "141.793 kWh/año"],
+  ["Inversión", "80.432,64 €"],
+];
+
+const FEATURES = [
+  ["📊", "5 páginas PDF", "Informe completo con KPIs, gráficas y proyecciones"],
+  ["🔄", "3 alcances de datos", "Mensual / Acumulados / Histórico completo"],
+  ["📋", "Auditoría automática", "Detección de huecos con rangos y día de semana"],
+  ["⚖️", "Comparativa 2 periodos", "3 páginas extra con deltas y flechas"],
+  ["🌤️", "Datos meteo Open-Meteo", "GHI superpuesto en gráfica de producción"],
+  ["💰", "Ahorro por periodos P1-P6", "Cruce horario con precios Goiener 3.0TD"],
+  ["🔮", "Previsión curtailment-aware", "Proyección de ahorro con vertido cero"],
+  ["📈", "Tendencia consumo robusta", "Regresión solo con meses completos (≥20 días)"],
+];
+
+const WORKFLOW = [
+  [1, "Dependencias", "imports + matplotlib", "📦", "var(--text-dim)"],
+  [2, "Subir datos", "Inv A, Inv B, IBR, fechas", "📂", "var(--blue)"],
+  [3, "Motor de cálculo", "16 celdas de funciones", "⚙️", "var(--orange)"],
+  [4, "Meteo (opcional)", "Open-Meteo → GHI", "🌤️", "var(--purple)"],
+  [5, "Generar PDF", "5 páginas con 3 alcances", "📊", "var(--accent)"],
+  [6, "Descargar", "files.download()", "💾", "var(--accent)"],
+];
+
+const PAGES = [
+  [1, "Producción FV", "⚡", "Producción diaria, KPIs clave, irradiancia GHI", "var(--accent)", 1],
+  [2, "Detalle inversores", "🔧", "Perfil horario medio, reparto inversores, ahorro P1-P6", "var(--blue)", 1],
+  [3, "Consumo eléctrico", "🏢", "Consumo total, cobertura FV, perfil semanal/horario", "var(--orange)", 1],
+  [4, "Acumulados", "📈", "Evolución mensual, tendencia consumo, proyección ahorro", "var(--purple)", 2],
+  [5, "Análisis avanzado", "🔬", "Heatmap producción, perfil tipo, payback, vertido cero", "var(--red)", 3],
+];
+
+const COMP_PAGES = [
+  [1, "KPIs comparados", "Tabla completa con deltas y flechas"],
+  [2, "Perfiles horarios", "Producción y consumo superpuestos"],
+  [3, "Evolución diaria", "Curvas de ambos periodos"],
+];
+
+const SCOPES = [
+  [1, "Informe del mes", "Páginas 1-3", "Solo datos dentro del rango --desde/--hasta", "var(--accent)"],
+  [2, "Acumulados", "Página 4", "Desde puesta en marcha (16/dic/2025). Consumo con histórico completo para tendencia", "var(--purple)"],
+  [3, "Tendencias", "Página 5", "Cada fuente con TODO su histórico. Consumo desde jun/2025, generación desde dic/2025", "var(--red)"],
+];
+
+const BUGS = [
+  [1, "Claves comparativa", "produccion_media_diaria → media_diaria_kwh, yield_especifico → rendimiento_kwh_kwp"],
+  [2, "_delta_str args", "invert=True se pasaba como fmt. Reordenado: (val_a, val_b, invert=False, fmt, suffix)"],
+  [3, "Timestamp duplicado", "if ('tiempo' in cl) and 'tiempo' in cl → if 'tiempo' in cl"],
+  [4, "Año payback hardcoded", "int(2025 + anos) → int(datetime.now().year + anos)"],
+  [5, "Tildes FICHA", "Produccion → Producción, kWh/ano → kWh/año"],
+  [6, "Inversión incorrecta", "95.000 € → 80.432,64 € (26.647 + 53.784)"],
+  [7, "Tendencia consumo inflada", "Regresión excluye meses con <20 días (dic parcial sesgaba +21.9%)"],
+  [8, "Payback con días sin FV", "Solo cuenta dias_con_pv para proyección anual, no rango total"],
+  [9, "Gráfica pág 2 redundante", "Producción mensual (1 barra) → Perfil horario medio producción"],
+  [10, "Validación fechas comparativa", "Detecta si desde > hasta y lanza error claro"],
+];
+
+const IMPROVEMENTS = [
+  ["style_axes(ax)", "Helper para estilo uniforme de ejes", "var(--blue)"],
+  ["INSTALACION dict", "Constantes centralizadas para reutilización", "var(--blue)"],
+  ["Perfil horario pág 2", "Reemplaza bar chart mensual redundante", "var(--purple)"],
+  ["Meteo Open-Meteo", "GHI superpuesto en producción diaria", "var(--orange)"],
+  ["Validación fechas", "Error claro si desde > hasta", "var(--red)"],
+  ["Upload Colab", "files.upload() antes del motor de cálculo", "var(--accent)"],
+];
+
+// ═══ RENDER ═══
+function render() {
+  // Date
+  document.getElementById('date-today').textContent = new Date().toLocaleDateString('es-ES');
+
+  // Installation
+  const ig = document.getElementById('install-grid');
+  ig.innerHTML = INSTALL.map(([l,v]) =>
+    `<div class="install-item"><div class="label">${l}</div><div class="value">${v}</div></div>`
+  ).join('');
+
+  // Features
+  const fg = document.getElementById('features-grid');
+  fg.innerHTML = FEATURES.map(([i,t,d]) =>
+    `<div class="feature"><div class="feature-icon">${i}</div><div><div class="feature-title">${t}</div><div class="feature-desc">${d}</div></div></div>`
+  ).join('');
+
+  // Workflow
+  const wc = document.getElementById('workflow-card');
+  wc.innerHTML = WORKFLOW.map(([n,l,d,i,c], idx) =>
+    `<div class="workflow-step">
+      <div class="step-icon" style="background:color-mix(in srgb, ${c} 10%, transparent);border:1.5px solid color-mix(in srgb, ${c} 25%, transparent)">${i}</div>
+      <div><span class="step-label" style="color:${c}">${n}. ${l}</span><span class="step-desc">${d}</span></div>
+      ${idx < WORKFLOW.length-1 ? '<div class="step-arrow">→</div>' : ''}
+    </div>`
+  ).join('');
+
+  // Pages main
+  const pm = document.getElementById('pages-main');
+  pm.innerHTML = PAGES.map(([n,t,i,d,c,s]) =>
+    `<div class="page-card" style="border-left-color:${c}">
+      <div class="page-inner">
+        <div class="page-icon-box" style="background:color-mix(in srgb, ${c} 10%, transparent);border:1px solid color-mix(in srgb, ${c} 20%, transparent)">${i}</div>
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="page-badge" style="color:${c};background:color-mix(in srgb, ${c} 10%, transparent)">PÁG ${n}</span>
+            <span class="page-title">${t}</span>
+          </div>
+          <div class="page-desc">${d}</div>
+        </div>
+        <div class="page-scope">Alcance ${s}</div>
+      </div>
+    </div>`
+  ).join('');
+
+  // Pages comp
+  const pc = document.getElementById('pages-comp');
+  pc.innerHTML = COMP_PAGES.map(([n,t,d]) =>
+    `<div class="page-card" style="border-left-color:var(--blue)">
+      <div class="page-inner">
+        <span class="page-badge" style="color:var(--blue);background:rgba(59,130,246,0.1)">C${n}</span>
+        <span class="page-title">${t}</span>
+        <span style="font-size:12px;color:var(--text-muted);margin-left:8px">${d}</span>
+      </div>
+    </div>`
+  ).join('');
+
+  // Scopes
+  const sl = document.getElementById('scopes-list');
+  sl.innerHTML = SCOPES.map(([id,t,sub,desc,c]) => {
+    const bars = [1,2,3].map(i => `<div class="scope-bar-seg" style="width:${i===id?'100':'0'}%;background:${c}"></div>`).join('');
+    const labels = [
+      ['Mes filtrado','var(--accent)'],
+      ['Desde PV start','var(--purple)'],
+      ['Histórico total','var(--red)']
+    ].map(([l,col],i) =>
+      `<span style="color:${i+1===id?col:'var(--text-muted)'}">${l}</span>`
+    ).join('');
+    return `<div class="scope-card" style="border-left-color:${c}" onclick="toggleScope(this)">
+      <div class="scope-header">
+        <div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="scope-badge" style="color:${c};background:color-mix(in srgb, ${c} 10%, transparent)">ALCANCE ${id}</span>
+            <span class="scope-title">${t}</span>
+          </div>
+          <div class="scope-sub">${sub}</div>
+        </div>
+        <div class="scope-arrow">▾</div>
+      </div>
+      <div class="scope-detail">
+        <p>${desc}</p>
+        <div class="scope-bar">${bars}</div>
+        <div class="scope-bar-labels">${labels}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Bugs
+  document.getElementById('bug-count').textContent = BUGS.length + ' fixes';
+  const bl = document.getElementById('bugs-list');
+  bl.innerHTML = BUGS.map(([n,t,d]) =>
+    `<div class="bug-card"><div class="bug-inner">
+      <div class="bug-num">${n}</div>
+      <div style="flex:1">
+        <div><span class="bug-title">${t}</span><span class="bug-badge">✓ FIXED</span></div>
+        <div class="bug-desc">${d}</div>
+      </div>
+    </div></div>`
+  ).join('');
+
+  // Improvements
+  const impr = document.getElementById('improvements-grid');
+  impr.innerHTML = IMPROVEMENTS.map(([t,d,c]) =>
+    `<div class="improve-card" style="border-left-color:${c}">
+      <div class="improve-title" style="color:${c}">${t}</div>
+      <div class="improve-desc">${d}</div>
+    </div>`
+  ).join('');
+}
+
+// ═══ TAB SWITCHING ═══
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+// ═══ SCOPE TOGGLE ═══
+function toggleScope(el) {
+  const wasExpanded = el.classList.contains('expanded');
+  document.querySelectorAll('.scope-card').forEach(c => c.classList.remove('expanded'));
+  if (!wasExpanded) el.classList.add('expanded');
+}
+
+// ═══ INIT ═══
+render();
+</script>
+</body>
+</html>
