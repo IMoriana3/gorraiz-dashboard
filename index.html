@@ -169,10 +169,13 @@ input[type=file]{display:none}
     <div class="pcon" id="p4">
       <div class="slbl">Acumulados desde puesta en marcha</div>
       <div class="row">
-        <div class="cc"><h4>Producción mensual + previsión (kWh)</h4><canvas id="c4prod" height="220"></canvas></div>
-        <div class="cc"><h4>Consumo mensual Punta/Llano/Valle</h4><canvas id="c4cons" height="220"></canvas></div>
+        <div class="cc"><h4>Producción mensual + previsión (kWh)</h4><canvas id="c4prod" height="200"></canvas></div>
+        <div class="cc"><h4>Consumo mensual + previsión por franja (kWh)</h4><canvas id="c4cons" height="200"></canvas></div>
       </div>
-      <div class="cc"><h4>Ahorro mensual acumulado (€)</h4><canvas id="c4ahorro" height="180"></canvas></div>
+      <div class="row">
+        <div class="cc"><h4>Ahorro mensual y acumulado + proyección (€)</h4><canvas id="c4ahorro" height="200"></canvas></div>
+        <div class="cc"><h4>Coste mensual energía: con FV vs sin FV (€ IE+IVA)</h4><canvas id="c4coste" height="200"></canvas></div>
+      </div>
     </div>
 
     <!-- PAGE 5 -->
@@ -184,7 +187,7 @@ input[type=file]{display:none}
       </div>
       <div class="row">
         <div class="cc"><h4>Perfil día tipo laborable: consumo vs FV</h4><canvas id="c5perfil" height="200"></canvas></div>
-        <div class="cc"><h4>Energía mensual: aprovechada vs perdida</h4><canvas id="c5curt" height="200"></canvas></div>
+        <div class="cc"><h4>Energía mensual: aprovechada vs perdida por vertido cero</h4><canvas id="c5curt" height="200"></canvas></div>
       </div>
     </div>
 
@@ -690,13 +693,44 @@ function renderP4(){
     if(ev.trend){ds.push({label:'Modelo HDD',data:cm.map(m=>m.modelo||null),type:'line',borderColor:'#e8e6e0',borderWidth:1.5,borderDash:[4,3],pointRadius:0,fill:false})}
     CHARTS.c4c=new Chart($('c4cons'),{type:'bar',data:{labels:cm.map(m=>m.mes.slice(2)),datasets:ds},
       options:{responsive:true,scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true}},plugins:{legend:{labels:{color:'#9baa9f',font:{size:8}}}}}})}
-  // Ahorro acum
+  // Ahorro acum + projected line
   if(ev.hayAhorro){const am=ev.ahorroM;
+    // Split acumulado into real and projected segments
+    const acumReal=am.map(m=>m.fc?null:m.acum);
+    const acumProj=am.map(m=>m.acum); // full line for projected
+    const lastReal=am.filter(m=>!m.fc);const lastAcum=lastReal.length?lastReal[lastReal.length-1].acum:0;
     CHARTS.c4a=new Chart($('c4ahorro'),{type:'line',data:{labels:am.map(m=>m.mes.slice(2)),datasets:[
-      {label:'Ahorro mensual (€)',data:am.map(m=>m.ahT),type:'bar',backgroundColor:am.map(m=>m.fc?'rgba(212,160,57,.35)':'#d4a039')},
-      {label:'Acumulado (€)',data:am.map(m=>m.acum),borderColor:'#2a6b5a',borderWidth:2,fill:false,tension:.3,pointRadius:2}]},
-    options:{responsive:true,scales:{y:{beginAtZero:true}},plugins:{legend:{labels:{color:'#9baa9f',font:{size:9}}}}}})}
+      {label:'Ahorro mensual',data:am.map(m=>m.ahT),type:'bar',backgroundColor:am.map(m=>m.fc?'rgba(42,107,90,.3)':'#2a6b5a')},
+      {label:'Acumulado (real)',data:acumReal,borderColor:'#27ae60',borderWidth:2.5,fill:false,tension:.3,pointRadius:3,spanGaps:false},
+      {label:'Ahorro proyectado',data:acumProj,borderColor:'#27ae60',borderWidth:1.5,borderDash:[6,3],fill:false,tension:.3,pointRadius:0}]},
+    options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'€ (IE+IVA)'}}},
+      plugins:{legend:{labels:{color:'#9baa9f',font:{size:9}}}}}})}
 
+  // Coste mensual con FV vs sin FV
+  if(ev.hayAhorro&&ev.hayCons){
+    const cm=ev.consM.filter(m=>!m.fc);
+    const am=ev.ahorroM.filter(m=>!m.fc);
+    // Calculate coste sin FV and con FV per month
+    const labels=[],sinFV=[],conFV=[],deltas=[];
+    cm.forEach(m=>{
+      const ah=am.find(a=>a.mes===m.mes);
+      if(!ah)return;
+      const prM=Object.values(CFG.precios).reduce((s,p)=>s+p,0)/6;
+      const costeSin=m.total*prM*(1+CFG.IE)*(1+CFG.IVA);
+      const costeCon=(m.total-m.pv)*prM*(1+CFG.IE)*(1+CFG.IVA);
+      labels.push(m.mes.slice(2));
+      sinFV.push(costeSin);conFV.push(costeCon);
+      deltas.push(Math.round(costeCon-costeSin));
+    });
+    const totalAh=sinFV.reduce((s,v,i)=>s+(v-conFV[i]),0);
+    const totalSin=sinFV.reduce((s,v)=>s+v,0);
+    CHARTS.c4cost=new Chart($('c4coste'),{type:'bar',data:{labels,datasets:[
+      {label:'Sin FV',data:sinFV,backgroundColor:'rgba(231,76,60,.6)',borderColor:'#e74c3c',borderWidth:1},
+      {label:'Con FV (real)',data:conFV,backgroundColor:'rgba(39,174,96,.6)',borderColor:'#27ae60',borderWidth:1}]},
+    options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'€'}}},
+      plugins:{legend:{labels:{color:'#9baa9f',font:{size:9}}},
+        tooltip:{callbacks:{afterBody:ctx=>{const i=ctx[0].dataIndex;return'Ahorro: '+deltas[i]+'€'}}}}}});
+  }
 }
 
 function renderP5(){
@@ -764,6 +798,7 @@ function renderP5(){
       plugins:{legend:{labels:{color:'#9baa9f',font:{size:9}}}}}})}
   // Curtailment
   if(an.hayCurt){const cm=an.curtM;
+    const tCurt=cm.reduce((s,m)=>s+m.curt,0),tUsed=cm.reduce((s,m)=>s+m.used,0);
     CHARTS.c5c=new Chart($('c5curt'),{type:'bar',data:{labels:cm.map(m=>m.mes.slice(2)),datasets:[
       {label:'Autoconsumo',data:cm.map(m=>m.used/1000),backgroundColor:'#27ae60'},
       {label:'Energía perdida',data:cm.map(m=>m.curt/1000),backgroundColor:'rgba(192,57,43,.7)'}]},
@@ -894,13 +929,13 @@ async function genPDF(){
   doc.text('Nota: el consumo total del edificio se reconstruye sumando la producción FV medida a la energía comprada a red (instalación SIN excedentes).',M,H-14);
   ftr(3);
 
-  // PAGE 4 — Acumulados
+  // PAGE 4 — Acumulados (2×2 grid like notebook)
   doc.addPage('l');hdr('Acumulados desde puesta en marcha — Edificio Gorraiz','Barras rayadas = proyección basada en datos reales');y=32;
-  // Prod mensual (left) + Cons mensual (right) — top half
-  const hw4=(W-2*M)/2-3;
-  await addChart('c4prod',M,y,hw4,65);await addChart('c4cons',M+hw4+6,y,hw4,65);y+=68;
-  // Ahorro acumulado (full width) — bottom
-  await addChart('c4ahorro',M,y,W-2*M,55);
+  const hw4=(W-2*M)/2-3;const hh4=68;
+  // Top: prod (left) + cons (right)
+  await addChart('c4prod',M,y,hw4,hh4);await addChart('c4cons',M+hw4+6,y,hw4,hh4);y+=hh4+4;
+  // Bottom: ahorro (left) + coste (right)
+  await addChart('c4ahorro',M,y,hw4,hh4);await addChart('c4coste',M+hw4+6,y,hw4,hh4);
   ftr(4);
 
   // PAGE 5 — Análisis avanzado
