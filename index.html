@@ -254,7 +254,10 @@ input[type=file]{display:none}
 
 <script>
 const $=id=>document.getElementById(id);
-Chart.defaults.font.size=10;Chart.defaults.plugins.legend.labels.font={size:9};
+Chart.defaults.font.size=11;Chart.defaults.font.family="'DM Sans',sans-serif";
+Chart.defaults.plugins.legend.labels.font={size:10};Chart.defaults.plugins.legend.labels.padding=12;
+Chart.defaults.plugins.legend.labels.boxWidth=12;Chart.defaults.plugins.legend.labels.boxHeight=10;
+Chart.defaults.scale.ticks.font={size:10};Chart.defaults.plugins.title.font={size:12,weight:'bold'};
 const LOGO_B64="data:image/jpeg;base64,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";
 $("logo").src=LOGO_B64;
 
@@ -586,7 +589,7 @@ function renderP1(){
     else{log('⚠ Meteo descargado pero sin coincidencias de fecha con producción')}
   }else{log('⚠ Sin datos meteo (METEO=null)')}
   CHARTS.c1=new Chart($('c1daily'),{type:pd.length<=5?'bar':'line',data:{labels:pd.map(d=>d.date.slice(5)),datasets:ds},
-    options:{responsive:true,plugins:{legend:{display:ds.length>1,labels:{color:'#9baa9f',font:{size:9}}}},scales:{...sc,x:{ticks:{font:{size:8},maxRotation:45,autoSkip:true,maxTicksLimit:15}}}}});
+    options:{responsive:true,plugins:{legend:{display:ds.length>1}},scales:{...sc,x:{ticks:{maxRotation:45,autoSkip:true,maxTicksLimit:15}}}}});
   // Meteo box
   // Conclusion
   const concl=`La planta produce con estabilidad. En este periodo se han generado ${R.tP>=1000?fn(R.tP/1000,2)+' MWh':fd(R.tP)+' kWh'} `+
@@ -614,7 +617,7 @@ function renderP2(){
   // Donut
   CHARTS.c2d=new Chart($('c2donut'),{type:'doughnut',data:{labels:['Inversor A','Inversor B'],
     datasets:[{data:[R.iA,R.iB],backgroundColor:['#1a3c34','#d4a039'],borderWidth:2,borderColor:'#162420'}]},
-    options:{responsive:true,maintainAspectRatio:true,cutout:'50%',plugins:{legend:{position:'bottom',labels:{color:'#9baa9f',font:{size:9},padding:8}}}}});
+    options:{responsive:true,maintainAspectRatio:true,cutout:'50%',plugins:{legend:{position:'bottom'}}}});
   // Scatter
   const sd=R.prod.daily.filter(d=>d.A>0||d.B>0);
   CHARTS.c2s=new Chart($('c2scatter'),{type:'scatter',data:{datasets:[{data:sd.map(d=>({x:d.A,y:d.B})),
@@ -643,24 +646,24 @@ function renderP3(){
     {label:'Consumo total',data:cd.map(d=>d.total),borderColor:'#2a6b5a',borderWidth:1.2,fill:false,tension:.3,pointRadius:0},
     {label:'Red',data:cd.map(d=>d.red),borderColor:'#e67e22',borderWidth:1,fill:false,tension:.3,pointRadius:0},
     {label:'FV',data:cd.map(d=>d.pv),borderColor:'#27ae60',borderWidth:1,fill:false,tension:.3,pointRadius:0}]},
-    options:{responsive:true,scales:{y:{beginAtZero:true,ticks:{font:{size:9}}},x:{ticks:{font:{size:8},maxRotation:45,autoSkip:true,maxTicksLimit:15}}},
-      plugins:{legend:{labels:{color:'#9baa9f',font:{size:9}}}}}});
+    options:{responsive:true,scales:{y:{beginAtZero:true},x:{ticks:{maxRotation:45,autoSkip:true,maxTicksLimit:15}}},
+      plugins:{legend:{}}}});
   // Weekly
   const dias=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
   CHARTS.c3w=new Chart($('c3week'),{type:'bar',data:{labels:dias,datasets:[
     {label:'Red',data:R.weekly.map(w=>w.red),backgroundColor:'#2a6b5a',stack:'a'},
     {label:'FV',data:R.weekly.map(w=>w.pv),backgroundColor:'#d4a039',stack:'a'}]},
-    options:{responsive:true,scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true}},plugins:{legend:{labels:{color:'#9baa9f',font:{size:9}}}}}});
+    options:{responsive:true,scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true}},plugins:{legend:{}}}});
   // Hourly profile
   CHARTS.c3h=new Chart($('c3hourly'),{type:'line',data:{labels:Array.from({length:24},(_,i)=>i+'h'),datasets:[
     {label:'L-V',data:R.hpCons.LV,borderColor:'#2a6b5a',borderWidth:1.2,tension:.3,pointRadius:2},
     {label:'Sáb',data:R.hpCons.S,borderColor:'#d4a039',borderWidth:1,tension:.3,pointRadius:2},
     {label:'Dom',data:R.hpCons.D,borderColor:'#3d8b70',borderWidth:1,tension:.3,pointRadius:2}]},
-    options:{responsive:true,scales:{y:{beginAtZero:true}},plugins:{legend:{labels:{color:'#9baa9f',font:{size:9}}}}}});
+    options:{responsive:true,scales:{y:{beginAtZero:true}},plugins:{legend:{}}}});
   // Coverage donut
   CHARTS.c3dn=new Chart($('c3donut'),{type:'doughnut',data:{labels:['FV','Red'],
     datasets:[{data:[R.pct,1-R.pct],backgroundColor:['#d4a039','#2a6b5a'],borderWidth:2,borderColor:'#162420'}]},
-    options:{responsive:true,maintainAspectRatio:true,cutout:'50%',plugins:{legend:{position:'bottom',labels:{color:'#9baa9f',font:{size:9},padding:8}}}}});
+    options:{responsive:true,maintainAspectRatio:true,cutout:'50%',plugins:{legend:{position:'bottom'}}}});
 }
 
 function renderP4(){
@@ -673,7 +676,7 @@ function renderP4(){
       {label:'Proyección',data:pm.map(m=>m.fc?m.kwh:0),backgroundColor:'rgba(42,107,90,.35)',stack:'a'},
       {label:'Esperada (memoria)',data:pm.map(m=>m.esp),type:'line',borderColor:'#d4a039',borderWidth:2,pointRadius:3,fill:false,tension:0}]},
     options:{responsive:true,scales:{y:{beginAtZero:true}},
-      plugins:{legend:{labels:{color:'#9baa9f',font:{size:9}}},
+      plugins:{legend:{},
         tooltip:{callbacks:{afterLabel:ctx=>{const m=pm[ctx.dataIndex];return m&&!m.fc?'PR: '+fn(m.pr,0)+'%':'Proyección'}}}}}}); // close Chart
     // Projection info (pm in scope)
     const totalAnual=pm.reduce((s,m)=>s+m.kwh,0);
@@ -692,7 +695,7 @@ function renderP4(){
       {label:'Punta (proy)',data:cm.map(m=>m.fc?m.P:0),backgroundColor:'rgba(192,57,43,.35)',stack:'a'}];
     if(ev.trend){ds.push({label:'Modelo HDD',data:cm.map(m=>m.modelo||null),type:'line',borderColor:'#e8e6e0',borderWidth:1.5,borderDash:[4,3],pointRadius:0,fill:false})}
     CHARTS.c4c=new Chart($('c4cons'),{type:'bar',data:{labels:cm.map(m=>m.mes.slice(2)),datasets:ds},
-      options:{responsive:true,scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true}},plugins:{legend:{labels:{color:'#9baa9f',font:{size:8}}}}}})}
+      options:{responsive:true,scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true}},plugins:{legend:{}}}})}
   // Ahorro acum + projected line
   if(ev.hayAhorro){const am=ev.ahorroM;
     // Split acumulado into real and projected segments
@@ -704,7 +707,7 @@ function renderP4(){
       {label:'Acumulado (real)',data:acumReal,borderColor:'#27ae60',borderWidth:2.5,fill:false,tension:.3,pointRadius:3,spanGaps:false},
       {label:'Ahorro proyectado',data:acumProj,borderColor:'#27ae60',borderWidth:1.5,borderDash:[6,3],fill:false,tension:.3,pointRadius:0}]},
     options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'€ (IE+IVA)'}}},
-      plugins:{legend:{labels:{color:'#9baa9f',font:{size:9}}}}}})}
+      plugins:{legend:{}}}})}
 
   // Coste mensual con FV vs sin FV
   if(ev.hayAhorro&&ev.hayCons){
@@ -728,7 +731,7 @@ function renderP4(){
       {label:'Sin FV',data:sinFV,backgroundColor:'rgba(231,76,60,.6)',borderColor:'#e74c3c',borderWidth:1},
       {label:'Con FV (real)',data:conFV,backgroundColor:'rgba(39,174,96,.6)',borderColor:'#27ae60',borderWidth:1}]},
     options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'€'}}},
-      plugins:{legend:{labels:{color:'#9baa9f',font:{size:9}}},
+      plugins:{legend:{},
         tooltip:{callbacks:{afterBody:ctx=>{const i=ctx[0].dataIndex;return'Ahorro: '+deltas[i]+'€'}}}}}});
   }
 }
@@ -795,7 +798,7 @@ function renderP5(){
       {label:'Autoconsumo',data:pf.map(p=>p.auto),backgroundColor:'rgba(39,174,96,.35)',borderColor:'#27ae60',borderWidth:1,fill:true,tension:.3,pointRadius:0},
       {label:'Energía perdida (vertido 0)',data:pf.map(p=>p.curt>0.01?p.pv:null),backgroundColor:'rgba(231,76,60,.3)',borderColor:'#e74c3c',borderWidth:1,fill:'-1',tension:.3,pointRadius:0}]},
     options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'kWh/h (media)',font:{size:10}}}},
-      plugins:{legend:{labels:{color:'#9baa9f',font:{size:9}}}}}})}
+      plugins:{legend:{}}}})}
   // Curtailment
   if(an.hayCurt){const cm=an.curtM;
     const tCurt=cm.reduce((s,m)=>s+m.curt,0),tUsed=cm.reduce((s,m)=>s+m.used,0);
@@ -803,7 +806,7 @@ function renderP5(){
       {label:'Autoconsumo',data:cm.map(m=>m.used/1000),backgroundColor:'#27ae60'},
       {label:'Energía perdida',data:cm.map(m=>m.curt/1000),backgroundColor:'rgba(192,57,43,.7)'}]},
     options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'MWh',font:{size:10}}}},
-      plugins:{legend:{labels:{color:'#9baa9f',font:{size:9}}},
+      plugins:{legend:{},
         tooltip:{callbacks:{afterLabel:ctx=>{if(ctx.datasetIndex===1){const m=cm[ctx.dataIndex];return m.pct>0?fn(m.pct,1)+'% perdido':''}return''}}}}}});
     // Summary
     const tLost=cm.reduce((s,m)=>s+m.curt,0),tPvAll=cm.reduce((s,m)=>s+m.pvT,0);
@@ -1094,7 +1097,7 @@ function renderCP1(){
     {label:labB,data:franjas.map(f=>db.franja[f]/1000),backgroundColor:cols.map(c=>c+'55'),borderColor:cols,borderWidth:1,
       borderDash:[5,3]}]},
   options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'MWh',font:{size:10}}}},
-    plugins:{legend:{labels:{color:'#9baa9f',font:{size:9}}}}}});
+    plugins:{legend:{}}}});
 }
 
 // ═══ C-PAGE 2: PRODUCTION + PROFILES ═══
@@ -1126,13 +1129,13 @@ function renderCP2(){
     {label:labA,data:da.perfilPV,borderColor:'#2a6b5a',backgroundColor:'rgba(42,107,90,.15)',borderWidth:2,fill:true,tension:.3,pointRadius:0},
     {label:labB,data:db.perfilPV,borderColor:'#d4a039',backgroundColor:'rgba(212,160,57,.15)',borderWidth:2,fill:true,tension:.3,pointRadius:0,borderDash:[5,3]}]},
   options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'kWh/h',font:{size:10}}}},
-    plugins:{legend:{labels:{color:'#9baa9f',font:{size:9}}}}}});
+    plugins:{legend:{}}}});
   // Perfil Consumo overlay
   COMP_CHARTS.ccPC=new Chart($('ccPerfilCons'),{type:'line',data:{labels:hrs,datasets:[
     {label:labA,data:da.perfilCons,borderColor:'#2a6b5a',backgroundColor:'rgba(42,107,90,.15)',borderWidth:2,fill:true,tension:.3,pointRadius:0},
     {label:labB,data:db.perfilCons,borderColor:'#d4a039',backgroundColor:'rgba(212,160,57,.15)',borderWidth:2,fill:true,tension:.3,pointRadius:0,borderDash:[5,3]}]},
   options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'kWh/h',font:{size:10}}}},
-    plugins:{legend:{labels:{color:'#9baa9f',font:{size:9}}}}}});
+    plugins:{legend:{}}}});
 }
 
 // ═══ C-PAGE 3: ECONOMIC BALANCE + CONSUMPTION ═══
@@ -1149,7 +1152,7 @@ function renderCP3(){
     {label:labA,data:vaVals,backgroundColor:'#2a6b5acc',borderColor:'#2a6b5a',borderWidth:1},
     {label:labB,data:vbVals,backgroundColor:'#d4a039aa',borderColor:'#d4a039',borderWidth:1}]},
   options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'€',font:{size:10}}}},
-    plugins:{legend:{labels:{color:'#9baa9f',font:{size:9}}},
+    plugins:{legend:{},
       tooltip:{callbacks:{afterLabel:ctx=>{const i=ctx.dataIndex;const inv=[false,false,true][i];
         const[dt]=deltaStr(vaVals[i],vbVals[i],inv);return dt}}}}}});
   // Cons A
@@ -1157,13 +1160,13 @@ function renderCP3(){
   COMP_CHARTS.ccCA=new Chart($('ccConsA'),{type:'bar',data:{labels:cdA.map((_,i)=>i+1),datasets:[
     {label:'Total',data:cdA.map(d=>d.total),backgroundColor:'rgba(42,107,90,.5)',borderWidth:0},
     {label:'Red',data:cdA.map(d=>d.red),backgroundColor:'rgba(231,76,60,.4)',borderWidth:0}]},
-  options:{responsive:true,scales:{y:{beginAtZero:true}},plugins:{legend:{labels:{color:'#9baa9f',font:{size:8}}}}}});
+  options:{responsive:true,scales:{y:{beginAtZero:true}},plugins:{legend:{}}}});
   // Cons B
   const cdB=db.cons.daily;
   COMP_CHARTS.ccCB=new Chart($('ccConsB'),{type:'bar',data:{labels:cdB.map((_,i)=>i+1),datasets:[
     {label:'Total',data:cdB.map(d=>d.total),backgroundColor:'rgba(212,160,57,.5)',borderWidth:0},
     {label:'Red',data:cdB.map(d=>d.red),backgroundColor:'rgba(231,76,60,.4)',borderWidth:0}]},
-  options:{responsive:true,scales:{y:{beginAtZero:true}},plugins:{legend:{labels:{color:'#9baa9f',font:{size:8}}}}}});
+  options:{responsive:true,scales:{y:{beginAtZero:true}},plugins:{legend:{}}}});
   // Sync Y
   const maxY=Math.max(Math.max(...cdA.map(d=>d.total)),Math.max(...cdB.map(d=>d.total)))*1.1;
   COMP_CHARTS.ccCA.options.scales.y.max=maxY;COMP_CHARTS.ccCA.update();
