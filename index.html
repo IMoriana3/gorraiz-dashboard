@@ -53,7 +53,8 @@ input[type=file]{display:none}
 .ptabs{display:flex;gap:3px;margin-bottom:16px;flex-wrap:wrap}
 .ptab{padding:8px 14px;border:1px solid var(--border);border-radius:6px 6px 0 0;cursor:pointer;font-size:11px;font-weight:600;background:transparent;color:var(--muted);border-bottom:2px solid transparent;transition:.2s;font-family:inherit}
 .ptab:hover{color:var(--dim)} .ptab.on{background:var(--card);color:var(--accent);border-bottom-color:var(--accent)}
-.pcon{display:none;width:100%} .pcon.on{display:block;width:100%}
+.pcon{position:absolute;left:-9999px;width:100%;visibility:hidden}
+.pcon.on{position:relative;left:0;visibility:visible}
 
 /* KPIs */
 .krow{display:flex;gap:8px;margin:12px 0;flex-wrap:wrap}
@@ -549,19 +550,16 @@ async function generate(){
 function render(){
   $('pUpload').style.display='none';$('pResults').style.display='block';
   destroyCharts();
-  // Make ALL tabs visible (both class and inline) so Chart.js measures real sizes
+  // Temporarily show ALL tabs on-screen so Chart.js gets real dimensions
   const allP=document.querySelectorAll('.pcon');
-  allP.forEach(c=>{c.classList.add('on');c.style.display='block';c.style.visibility='visible'});
-  document.body.offsetHeight; // force reflow
-  log('Canvas sizes: '+Array.from(document.querySelectorAll('.pcon canvas')).map(c=>c.id+'='+c.parentElement.clientWidth).join(', '));
+  allP.forEach(c=>{c.classList.add('on')});
+  document.body.offsetHeight;
   renderP1();renderP2();renderP3();renderP4();renderP5();
-  // Hide non-active after charts finish
-  setTimeout(()=>{
-    allP.forEach(c=>{c.classList.remove('on');c.style.display='';c.style.visibility=''});
-    $('p1').classList.add('on');
-    document.querySelectorAll('.ptab').forEach(t=>t.classList.remove('on'));
-    document.querySelector('[data-p=p1]').classList.add('on');
-  },600);
+  // After render, show only P1
+  allP.forEach(c=>c.classList.remove('on'));
+  $('p1').classList.add('on');
+  document.querySelectorAll('.ptab').forEach(t=>t.classList.remove('on'));
+  document.querySelector('[data-p=p1]').classList.add('on');
 }
 function destroyCharts(){for(const k in CHARTS){try{CHARTS[k].destroy()}catch(e){}}CHARTS={}}
 
@@ -784,15 +782,13 @@ document.querySelectorAll('.ptab').forEach(b=>{b.onclick=()=>{
   document.querySelectorAll('.ptab').forEach(t=>t.classList.remove('on'));
   document.querySelectorAll('.pcon').forEach(c=>c.classList.remove('on'));
   b.classList.add('on');$(b.dataset.p).classList.add('on');
-  // Resize charts in newly visible tab
-  setTimeout(()=>{for(const k in CHARTS){try{CHARTS[k].resize()}catch(e){}}},50);
 }});
 
 // ═══ PDF ═══
 async function genPDF(){
   setStep(4);log('Generando PDF de 5 páginas...');
-  const{jsPDF}=window.jspdf;const doc=new jsPDF('p','mm','a4');
-  const W=210,H=297,M=15;
+  const{jsPDF}=window.jspdf;const doc=new jsPDF('l','mm','a4');
+  const W=297,H=210,M=15;
   const per=R.prod.daily[0]?.date+' → '+R.prod.daily[R.prod.daily.length-1]?.date;
 
   function hdr(t,s){doc.setFillColor(26,60,52);doc.roundedRect(M,10,W-2*M,18,3,3,'F');
@@ -804,12 +800,10 @@ async function genPDF(){
     doc.text('Pág '+p,W-M-8,H-8);doc.setTextColor(0)}
   async function addChart(id,x,y,w,h){try{const cv=$(id);if(cv&&cv.tagName==='CANVAS'&&cv.width>10){doc.addImage(cv.toDataURL('image/png'),'PNG',x,y,w,h)}else{log('⚠ PDF '+id+': w='+cv?.width)}}catch(e){log('⚠ PDF '+id+': '+e.message)}}
 
-  // Make ALL tabs visible for PDF capture
-  document.querySelectorAll('.pcon').forEach(c=>{c.classList.add('on');c.style.display='block';c.style.visibility='visible'});
+  // Show all tabs on-screen for PDF capture
+  document.querySelectorAll('.pcon').forEach(c=>c.classList.add('on'));
   document.body.offsetHeight;
-  for(const k in CHARTS){try{CHARTS[k].resize();CHARTS[k].update('none')}catch(e){}}
-  await new Promise(r=>setTimeout(r,1000));
-  log('PDF canvas sizes: '+['c4prod','c4cons','c4ahorro','c5perfil','c5curt'].map(id=>{const c=$(id);return id+'='+(c?c.width+'x'+c.height:'null')}).join(', '));
+  await new Promise(r=>setTimeout(r,300));
 
   // PAGE 1
   hdr('Producción fotovoltaica — Edificio Gorraiz','Periodo: '+per+' · '+CFG.mod);
@@ -901,7 +895,7 @@ async function genPDF(){
   const d1=R.prod.daily[0]?.date.replace(/-/g,'')||'',d2=R.prod.daily[R.prod.daily.length-1]?.date.replace(/-/g,'')||'';
   doc.save(`Informe_FV_Gorraiz_${d1}_${d2}.pdf`);
   // Restore tabs
-  document.querySelectorAll('.pcon').forEach(c=>{c.classList.remove('on');c.style.display='';c.style.visibility=''});
+  document.querySelectorAll('.pcon').forEach(c=>c.classList.remove('on'));
   $('p1').classList.add('on');
   document.querySelectorAll('.ptab').forEach(t=>t.classList.remove('on'));
   document.querySelector('[data-p=p1]').classList.add('on');
@@ -982,10 +976,10 @@ function renderComp(){
   for(const k in COMP_CHARTS){try{COMP_CHARTS[k].destroy()}catch(e){}}COMP_CHARTS={};
   $('compResults').style.display='block';
   // Show all comp tabs for rendering
-  document.querySelectorAll('#compResults .pcon').forEach(c=>{c.style.display='block';c.style.visibility='visible';c.style.position='relative';c.style.height='auto'});
+  document.querySelectorAll('#compResults .pcon').forEach(c=>c.classList.add('on'));
   renderCP1();renderCP2();renderCP3();
   setTimeout(()=>{
-    document.querySelectorAll('#compResults .pcon').forEach(c=>{c.style.display='';c.style.visibility='';c.style.position='';c.style.height=''});
+    document.querySelectorAll('#compResults .pcon').forEach(c=>c.classList.remove('on'));
     document.querySelectorAll('#compResults .pcon').forEach(c=>c.classList.remove('on'));
     $('cp1').classList.add('on');
     document.querySelectorAll('#compTabs .ptab').forEach(t=>t.classList.remove('on'));
@@ -1103,8 +1097,8 @@ function renderCP3(){
 async function genCompPDF(){
   if(!COMP.da){log('⚠ Genera la comparativa primero');return}
   log('Generando PDF comparativa...');
-  const{jsPDF}=window.jspdf;const doc=new jsPDF('p','mm','a4');
-  const W=210,H=297,M=15;
+  const{jsPDF}=window.jspdf;const doc=new jsPDF('l','mm','a4');
+  const W=297,H=210,M=15;
   const{da,db,labA,labB}=COMP;
 
   function hdr(t,s){doc.setFillColor(26,60,52);doc.roundedRect(M,10,W-2*M,18,3,3,'F');
@@ -1117,7 +1111,7 @@ async function genCompPDF(){
   async function addC(id,x,y,w,h){const cv=$(id);if(cv&&cv.tagName==='CANVAS'){doc.addImage(cv.toDataURL('image/png'),'PNG',x,y,w,h)}}
 
   // Show all comp tabs
-  document.querySelectorAll('#compResults .pcon').forEach(c=>{c.style.display='block';c.style.visibility='visible';c.style.position='relative';c.style.height='auto'});
+  document.querySelectorAll('#compResults .pcon').forEach(c=>c.classList.add('on'));
   for(const k in COMP_CHARTS){try{COMP_CHARTS[k].resize()}catch(e){}}
   await new Promise(r=>setTimeout(r,500));
 
@@ -1167,7 +1161,7 @@ async function genCompPDF(){
   ftr(3);
 
   // Restore tabs
-  document.querySelectorAll('#compResults .pcon').forEach(c=>{c.style.display='';c.style.visibility='';c.style.position='';c.style.height=''});
+  document.querySelectorAll('#compResults .pcon').forEach(c=>c.classList.remove('on'));
   document.querySelectorAll('#compResults .pcon').forEach(c=>c.classList.remove('on'));
   $('cp1').classList.add('on');
 
