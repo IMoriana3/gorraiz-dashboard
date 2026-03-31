@@ -141,7 +141,7 @@ input[type=file]{display:none}
       <div class="slbl">Detalle técnico</div>
       <div class="cc"><h4>Perfil horario medio de producción FV (kWh/h)</h4><canvas id="c2hourly" height="180"></canvas></div>
       <div class="row">
-        <div class="cc"><h4>Reparto por inversor</h4><canvas id="c2donut" height="180"></canvas></div>
+        <div class="cc"><h4>Reparto por inversor</h4><canvas id="c2donut" height="160"></canvas></div>
         <div class="cc"><h4>Equilibrio inversores (kWh/día)</h4><canvas id="c2scatter" height="180"></canvas></div>
       </div>
       <div class="slbl">Ahorro por periodos (P1-P6)</div>
@@ -157,7 +157,7 @@ input[type=file]{display:none}
       <div class="row">
         <div class="cc"><h4>Consumo medio por día de la semana</h4><canvas id="c3week" height="180"></canvas></div>
         <div class="cc"><h4>Perfil horario medio del consumo</h4><canvas id="c3hourly" height="180"></canvas></div>
-        <div class="cc"><h4>Cobertura FV</h4><canvas id="c3donut" height="180"></canvas></div>
+        <div class="cc"><h4>Cobertura FV</h4><canvas id="c3donut" height="160"></canvas></div>
       </div>
       <div style="font-size:10px;color:var(--muted);margin-top:6px;padding:0 4px">
         Nota: el Excel del contador muestra la energía comprada a red. Al ser una instalación SIN excedentes,
@@ -839,16 +839,16 @@ async function genPDF(){
 
   // PAGE 2 — Detalle inversores y ahorro
   doc.addPage('l');hdr('Detalle de instalación, inversores y ahorro','Periodo: '+per+' · Modalidad: '+CFG.mod);y=32;
-  // Perfil horario (full width, top)
-  await addChart('c2hourly',M,y,W-2*M,55);y+=58;
-  // Donut (left) + Scatter (right)
-  const hw2=(W-2*M)/2-3;
-  await addChart('c2donut',M,y,hw2,50);await addChart('c2scatter',M+hw2+6,y,hw2,50);y+=53;
+  // Perfil horario (full width, top ~28% of page)
+  await addChart('c2hourly',M,y,W-2*M,45);y+=48;
+  // Donut (left, ~35% width to keep it small) + Scatter (right, ~60%)
+  const donutW=90,scatW=W-2*M-donutW-6;
+  await addChart('c2donut',M,y,donutW,45);await addChart('c2scatter',M+donutW+6,y,scatW,45);y+=48;
   // Table ahorro periodos (right side) + ficha instalación (left side)
-  const tblX=M,tblW=(W-2*M)*0.55;
+  const tblX=M,tblW=(W-2*M)*0.50;
   doc.setFontSize(9);doc.setFont(undefined,'bold');doc.setTextColor(0);doc.text('Ahorro por periodos',tblX,y);y+=4;
   doc.setFontSize(6.5);doc.setFillColor(26,60,52);doc.setTextColor(255);
-  const cols=[tblX,tblX+40,tblX+80,tblX+120];
+  const cw4=tblW/4;const cols=[tblX,tblX+cw4,tblX+cw4*2,tblX+cw4*3];
   doc.rect(tblX,y,tblW,5,'F');doc.text('Periodo',cols[0]+2,y+3.5);doc.text('FV (kWh)',cols[1],y+3.5);doc.text('€/kWh',cols[2],y+3.5);doc.text('Ahorro (€)',cols[3],y+3.5);
   doc.setTextColor(0);doc.setFont(undefined,'normal');y+=5.5;
   let tKwh=0,tAh=0;
@@ -884,9 +884,9 @@ async function genPDF(){
   doc.setTextColor(0);y+=20;
   // Daily consumption chart (full width)
   await addChart('c3daily',M,y,W-2*M,55);y+=58;
-  // Bottom: weekly + hourly + donut
-  const tw3=(W-2*M)/3-3;
-  await addChart('c3week',M,y,tw3,52);await addChart('c3hourly',M+tw3+4,y,tw3,52);await addChart('c3donut',M+2*(tw3+4),y,tw3,52);
+  // Bottom: weekly (35%) + hourly (35%) + donut (30% - smaller to avoid giant circle)
+  const tw3a=(W-2*M)*0.35-2,tw3b=(W-2*M)*0.35-2,tw3c=(W-2*M)*0.30-2;
+  await addChart('c3week',M,y,tw3a,48);await addChart('c3hourly',M+tw3a+4,y,tw3b,48);await addChart('c3donut',M+tw3a+tw3b+8,y,tw3c,48);
   // Note
   doc.setFontSize(5.5);doc.setTextColor(120);
   doc.text('Nota: el consumo total del edificio se reconstruye sumando la producción FV medida a la energía comprada a red (instalación SIN excedentes).',M,H-14);
@@ -928,7 +928,8 @@ async function genPDF(){
   }
   y+=68;
   // Perfil tipo (left) + Curtailment (right) — bottom half
-  await addChart('c5perfil',M,y,hw4,55);await addChart('c5curt',M+hw4+6,y,hw4,55);
+  const hw5=(W-2*M)/2-3;
+  await addChart('c5perfil',M,y,hw5,50);await addChart('c5curt',M+hw5+6,y,hw5,50);
   ftr(5);
 
   const d1=R.prod.daily[0]?.date.replace(/-/g,'')||'',d2=R.prod.daily[R.prod.daily.length-1]?.date.replace(/-/g,'')||'';
