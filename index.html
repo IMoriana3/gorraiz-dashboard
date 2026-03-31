@@ -53,7 +53,7 @@ input[type=file]{display:none}
 .ptabs{display:flex;gap:3px;margin-bottom:16px;flex-wrap:wrap}
 .ptab{padding:8px 14px;border:1px solid var(--border);border-radius:6px 6px 0 0;cursor:pointer;font-size:11px;font-weight:600;background:transparent;color:var(--muted);border-bottom:2px solid transparent;transition:.2s;font-family:inherit}
 .ptab:hover{color:var(--dim)} .ptab.on{background:var(--card);color:var(--accent);border-bottom-color:var(--accent)}
-.pcon{display:none} .pcon.on{display:block}
+.pcon{display:none;width:100%} .pcon.on{display:block;width:100%}
 
 /* KPIs */
 .krow{display:flex;gap:8px;margin:12px 0;flex-wrap:wrap}
@@ -187,9 +187,62 @@ input[type=file]{display:none}
       </div>
     </div>
 
-    <div style="margin-top:14px;display:flex;gap:10px">
+    <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
       <button class="btn btn1" onclick="genPDF()">📄 Descargar PDF (5 páginas)</button>
       <button class="btn btn2" onclick="reset()">↩ Nuevo informe</button>
+    </div>
+
+    <!-- COMPARATIVE SECTION -->
+    <div style="margin-top:24px;border-top:1px solid var(--border);padding-top:16px">
+      <div class="slbl">📊 Comparativa entre dos periodos</div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin:10px 0">
+        <div style="flex:1;min-width:200px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px">
+          <div style="font-size:11px;font-weight:700;color:var(--accent);margin-bottom:6px">Periodo A</div>
+          <div class="drow"><label>Desde:</label><input type="date" id="cDesdeA"><label>Hasta:</label><input type="date" id="cHastaA"></div>
+        </div>
+        <div style="flex:1;min-width:200px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px">
+          <div style="font-size:11px;font-weight:700;color:var(--accent);margin-bottom:6px">Periodo B</div>
+          <div class="drow"><label>Desde:</label><input type="date" id="cDesdeB"><label>Hasta:</label><input type="date" id="cHastaB"></div>
+        </div>
+      </div>
+      <button class="btn btn1" onclick="genComp()">⚡ Generar comparativa</button>
+    </div>
+
+    <!-- COMPARATIVE RESULTS -->
+    <div id="compResults" style="display:none;margin-top:16px">
+      <div class="ptabs" id="compTabs">
+        <button class="ptab on" data-cp="cp1">C1 · KPIs</button>
+        <button class="ptab" data-cp="cp2">C2 · Producción</button>
+        <button class="ptab" data-cp="cp3">C3 · Económico</button>
+      </div>
+      <!-- C-PAGE 1: KPI table + franja bars -->
+      <div class="pcon on" id="cp1">
+        <div class="slbl">Indicadores clave: Periodo A vs Periodo B</div>
+        <table class="tbl" id="tblComp"></table>
+        <div class="cc"><h4>Consumo por franja horaria</h4><canvas id="ccFranja" height="180"></canvas></div>
+      </div>
+      <!-- C-PAGE 2: Production daily + hourly profiles -->
+      <div class="pcon" id="cp2">
+        <div class="row">
+          <div class="cc"><h4 id="cp2titleA">Producción diaria — Periodo A</h4><canvas id="ccProdA" height="180"></canvas></div>
+          <div class="cc"><h4 id="cp2titleB">Producción diaria — Periodo B</h4><canvas id="ccProdB" height="180"></canvas></div>
+        </div>
+        <div class="row">
+          <div class="cc"><h4>Perfil horario medio: producción FV</h4><canvas id="ccPerfilPV" height="180"></canvas></div>
+          <div class="cc"><h4>Perfil horario medio: consumo edificio</h4><canvas id="ccPerfilCons" height="180"></canvas></div>
+        </div>
+      </div>
+      <!-- C-PAGE 3: Economic balance + daily consumption -->
+      <div class="pcon" id="cp3">
+        <div class="cc"><h4>Balance económico</h4><canvas id="ccEcon" height="180"></canvas></div>
+        <div class="row">
+          <div class="cc"><h4 id="cp3titleA">Consumo diario — Periodo A</h4><canvas id="ccConsA" height="180"></canvas></div>
+          <div class="cc"><h4 id="cp3titleB">Consumo diario — Periodo B</h4><canvas id="ccConsB" height="180"></canvas></div>
+        </div>
+      </div>
+      <div style="margin-top:14px">
+        <button class="btn btn1" onclick="genCompPDF()">📄 Descargar PDF comparativa (3 páginas)</button>
+      </div>
     </div>
   </div>
 </div>
@@ -211,9 +264,9 @@ let RAW={A:[],B:[],I:[]},R=null,CHARTS={},METEO=null;
 function log(m){const e=$('log');e.innerHTML+=m+'<br>';e.scrollTop=9e9}
 function fn(x,d=0){return d?x.toLocaleString('es-ES',{minimumFractionDigits:d,maximumFractionDigits:d}):x.toLocaleString('es-ES',{maximumFractionDigits:0})}
 function fd(x){return fn(x,1)}
-function dk(d){return d.toISOString().slice(0,10)}
-function hk(d){return d.toISOString().slice(0,13)}
-function ym(d){return d.toISOString().slice(0,7)}
+function dk(d){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),dd=String(d.getDate()).padStart(2,'0');return y+'-'+m+'-'+dd}
+function hk(d){return dk(d)+'T'+String(d.getHours()).padStart(2,'0')}
+function ym(d){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0');return y+'-'+m}
 
 // ── Parse Excel date ──
 function pDate(v){
@@ -446,11 +499,21 @@ function calcAnalysis(prodH,consH){
 
 // ── Meteo ──
 async function fetchMeteo(d1,d2){
+  if(!d1||!d2)return null;
   try{log('Descargando meteo Open-Meteo...');
-    const u=`https://api.open-meteo.com/v1/forecast?latitude=42.83&longitude=-1.58&start_date=${d1}&end_date=${d2}&daily=shortwave_radiation_sum,temperature_2m_max,temperature_2m_min,sunshine_duration&timezone=Europe/Madrid`;
-    let r=await fetch(u);if(!r.ok)r=await fetch(u.replace('api.open-meteo.com/v1/forecast','archive-api.open-meteo.com/v1/archive'));
-    const j=await r.json();if(!j.daily)return null;
-    const m=j.daily.time.map((t,i)=>({date:t,ghi:(j.daily.shortwave_radiation_sum[i]||0)/1000,
+    const params=`latitude=42.83&longitude=-1.58&start_date=${d1}&end_date=${d2}&daily=shortwave_radiation_sum,temperature_2m_max,temperature_2m_min,sunshine_duration&timezone=Europe/Madrid`;
+    // Use archive API for past dates, forecast for recent/future
+    const today=new Date().toISOString().slice(0,10);
+    const urls=d2<today
+      ?[`https://archive-api.open-meteo.com/v1/archive?${params}`,`https://api.open-meteo.com/v1/forecast?${params}`]
+      :[`https://api.open-meteo.com/v1/forecast?${params}`,`https://archive-api.open-meteo.com/v1/archive?${params}`];
+    let j=null;
+    for(const u of urls){
+      try{const r=await fetch(u);if(!r.ok)continue;const d=await r.json();
+        if(d.daily&&d.daily.time&&d.daily.time.length>0){j=d;log('✓ Meteo desde: '+u.split('?')[0].split('//')[1].split('/')[0]);break}
+      }catch(e){continue}}
+    if(!j||!j.daily||!j.daily.time.length){log('⚠ Meteo: sin datos disponibles');return null}
+    const m=j.daily.time.map((t,i)=>({date:t,ghi:(j.daily.shortwave_radiation_sum[i]||0)/3.6,
       tMax:j.daily.temperature_2m_max[i],tMin:j.daily.temperature_2m_min[i],sol:(j.daily.sunshine_duration[i]||0)/3600}));
     const ag=m.reduce((s,x)=>s+x.ghi,0)/m.length,as=m.reduce((s,x)=>s+x.sol,0)/m.length;
     log(`✓ Meteo: ${m.length} días | GHI: ${ag.toFixed(2)} kWh/m²/d | Sol: ${as.toFixed(1)} h/d`);return m;
@@ -476,6 +539,7 @@ async function generate(){
   // Meteo
   const mD1=prod.daily[0]?.date||'',mD2=prod.daily[prod.daily.length-1]?.date||'';
   METEO=await fetchMeteo(mD1,mD2);
+  if(METEO)log(`Meteo fechas: ${METEO[0]?.date} → ${METEO[METEO.length-1]?.date} | Prod fechas: ${mD1} → ${mD2}`);
   R={...kpis,evol,analysis,meteo:METEO};
   log(`✓ Producción: ${fd(R.tP)} kWh | Ahorro: ${fn(R.tAF)} €`);
   setStep(3);render();
@@ -484,7 +548,20 @@ async function generate(){
 // ═══ RENDER ═══
 function render(){
   $('pUpload').style.display='none';$('pResults').style.display='block';
-  destroyCharts();renderP1();renderP2();renderP3();renderP4();renderP5();
+  destroyCharts();
+  // Make ALL tabs visible (both class and inline) so Chart.js measures real sizes
+  const allP=document.querySelectorAll('.pcon');
+  allP.forEach(c=>{c.classList.add('on');c.style.display='block';c.style.visibility='visible'});
+  document.body.offsetHeight; // force reflow
+  log('Canvas sizes: '+Array.from(document.querySelectorAll('.pcon canvas')).map(c=>c.id+'='+c.parentElement.clientWidth).join(', '));
+  renderP1();renderP2();renderP3();renderP4();renderP5();
+  // Hide non-active after charts finish
+  setTimeout(()=>{
+    allP.forEach(c=>{c.classList.remove('on');c.style.display='';c.style.visibility=''});
+    $('p1').classList.add('on');
+    document.querySelectorAll('.ptab').forEach(t=>t.classList.remove('on'));
+    document.querySelector('[data-p=p1]').classList.add('on');
+  },600);
 }
 function destroyCharts(){for(const k in CHARTS){try{CHARTS[k].destroy()}catch(e){}}CHARTS={}}
 
@@ -499,11 +576,15 @@ function renderP1(){
     borderWidth:1.5,fill:true,tension:.3,pointRadius:pd.length>20?0:3,yAxisID:'y'}];
   const sc={y:{beginAtZero:true,position:'left',title:{display:true,text:'kWh/día',color:'#9baa9f',font:{size:10}}}};
   if(METEO){const gm={};METEO.forEach(m=>gm[m.date]=m.ghi);
-    ds.push({label:'GHI (kWh/m²)',data:pd.map(d=>gm[d.date]||null),borderColor:'#d4a039',borderWidth:1.5,borderDash:[5,3],
-      fill:false,tension:.4,pointRadius:0,yAxisID:'y1'});
+    const ghiData=pd.map(d=>gm[d.date]!=null?gm[d.date]:null);
+    const hasGhi=ghiData.some(v=>v!==null);
+    if(hasGhi){ds.push({label:'GHI (kWh/m²)',data:ghiData,type:'line',borderColor:'#d4a039',borderWidth:1.5,borderDash:[5,3],
+      fill:false,tension:.4,pointRadius:0,yAxisID:'y1',order:0});
     sc.y1={beginAtZero:true,position:'right',title:{display:true,text:'GHI (kWh/m²)',color:'#d4a039',font:{size:10}},grid:{drawOnChartArea:false},ticks:{color:'#d4a039'}}}
+    else{log('⚠ Meteo descargado pero sin coincidencias de fecha con producción')}
+  }else{log('⚠ Sin datos meteo (METEO=null)')}
   CHARTS.c1=new Chart($('c1daily'),{type:pd.length<=5?'bar':'line',data:{labels:pd.map(d=>d.date.slice(5)),datasets:ds},
-    options:{responsive:true,plugins:{legend:{display:!!METEO,labels:{color:'#9baa9f',font:{size:10}}}},scales:sc}});
+    options:{responsive:true,plugins:{legend:{display:ds.length>1,labels:{color:'#9baa9f',font:{size:10}}}},scales:sc}});
   // Meteo box
   // Conclusion
   const concl=`La planta produce con estabilidad. En este periodo se han generado ${R.tP>=1000?fn(R.tP/1000,2)+' MWh':fd(R.tP)+' kWh'} `+
@@ -581,6 +662,7 @@ function renderP3(){
 
 function renderP4(){
   const ev=R.evol;
+  log('P4: hayProd='+ev.hayProd+' hayCons='+ev.hayCons+' hayAhorro='+ev.hayAhorro+(ev.consM?' consM.len='+ev.consM.length:''));
   // Prod mensual
   if(ev.hayProd){const pm=ev.prodM;
     CHARTS.c4p=new Chart($('c4prod'),{type:'bar',data:{labels:pm.map(m=>m.mes.slice(2)),datasets:[
@@ -589,13 +671,14 @@ function renderP4(){
       {label:'Esperada (memoria)',data:pm.map(m=>m.esp),type:'line',borderColor:'#d4a039',borderWidth:2,pointRadius:3,fill:false,tension:0}]},
     options:{responsive:true,scales:{y:{beginAtZero:true}},
       plugins:{legend:{labels:{color:'#9baa9f',font:{size:9}}},
-        tooltip:{callbacks:{afterLabel:ctx=>{const m=pm[ctx.dataIndex];return m&&!m.fc?'PR: '+fn(m.pr,0)+'%':'Proyección'}}}}}})}
-  // Add projection text box below chart
-  const totalAnual=pm.reduce((s,m)=>s+m.kwh,0);
+        tooltip:{callbacks:{afterLabel:ctx=>{const m=pm[ctx.dataIndex];return m&&!m.fc?'PR: '+fn(m.pr,0)+'%':'Proyección'}}}}}}); // close Chart
+    // Projection info (pm in scope)
+    const totalAnual=pm.reduce((s,m)=>s+m.kwh,0);
   const prMedio=ev.prM?fn(ev.prM*100,0)+'%':'—';
   const c4info=document.createElement('div');c4info.style.cssText='font-size:10px;color:var(--accent);text-align:right;padding:4px 8px';
   c4info.innerHTML='Proy. anual: <b>'+fn(totalAnual/1000,1)+' MWh</b> | PR medio: <b>'+prMedio+'</b>';
   $('c4prod').parentElement.appendChild(c4info);
+  } // close if(ev.hayProd)
   // Cons mensual
   if(ev.hayCons){const cm=ev.consM;
     const ds=[{label:'Valle',data:cm.map(m=>m.fc?0:m.V),backgroundColor:'#27ae60',stack:'a'},
@@ -618,17 +701,24 @@ function renderP4(){
 
 function renderP5(){
   const an=R.analysis;
+  log('P5: heat='+an.hayHeat+(an.heatDates?' dates='+an.heatDates.length:'')+' pb='+an.hayPB+' perfil='+an.hayPerfil+' curt='+an.hayCurt);
   // Heatmap (custom canvas)
   if(an.hayHeat){const cv=$('c5heat'),ctx=cv.getContext('2d');
     const dates=an.heatDates,nD=dates.length,nH=24;
-    const W=cv.width=cv.parentElement.clientWidth-28,H=cv.height=250;
+    const pW=cv.parentElement.clientWidth;const W=cv.width=Math.max(pW-28,400),H=cv.height=250;
     const ml=40,mt=10,mr=50,mb=30;const cw=(W-ml-mr)/nD,ch=(H-mt-mb)/18; // hours 4-22
     // Find max
     let mx=0;dates.forEach(d=>{for(let h=4;h<22;h++)mx=Math.max(mx,(an.heatData[d]||{})[h]||0)});
     // Color scale
-    const cScale=v=>{const t=mx?v/mx:0;
-      const r=Math.round(26+t*200),g=Math.round(30+t*100*(1-t)),b=Math.round(52*(1-t));
-      return`rgb(${r},${g},${b})`};
+    const cScale=v=>{if(mx<=0)return'#1a1a2e';const t=Math.min(v/mx,1);
+      // Solar: dark→blue→red→orange→yellow
+      let r,g,b;
+      if(t<0.01){r=20;g=20;b=40;}
+      else if(t<0.25){const s=t/0.25;r=20+s*60;g=20+s*10;b=40+s*60;}
+      else if(t<0.5){const s=(t-0.25)/0.25;r=80+s*153;g=30;b=100-s*100;}
+      else if(t<0.75){const s=(t-0.5)/0.25;r=233;g=30+s*140;b=s*30;}
+      else{const s=(t-0.75)/0.25;r=233+s*22;g=170+s*85;b=30+s*80;}
+      return`rgb(${Math.round(Math.min(255,r))},${Math.round(Math.min(255,g))},${Math.round(Math.min(255,b))})`};
     ctx.fillStyle='#162420';ctx.fillRect(0,0,W,H);
     dates.forEach((d,i)=>{for(let h=4;h<22;h++){const v=(an.heatData[d]||{})[h]||0;
       ctx.fillStyle=cScale(v);ctx.fillRect(ml+i*cw,mt+(h-4)*ch,cw+.5,ch+.5)}});
@@ -693,7 +783,10 @@ function renderP5(){
 document.querySelectorAll('.ptab').forEach(b=>{b.onclick=()=>{
   document.querySelectorAll('.ptab').forEach(t=>t.classList.remove('on'));
   document.querySelectorAll('.pcon').forEach(c=>c.classList.remove('on'));
-  b.classList.add('on');$(b.dataset.p).classList.add('on')}});
+  b.classList.add('on');$(b.dataset.p).classList.add('on');
+  // Resize charts in newly visible tab
+  setTimeout(()=>{for(const k in CHARTS){try{CHARTS[k].resize()}catch(e){}}},50);
+}});
 
 // ═══ PDF ═══
 async function genPDF(){
@@ -709,16 +802,14 @@ async function genPDF(){
   function ftr(p){doc.setFontSize(6);doc.setTextColor(150);
     doc.text('Amixalan Business Group — Fuentes: inversores + contador horario + factura Goiener. Modalidad: SIN excedentes.',M,H-8);
     doc.text('Pág '+p,W-M-8,H-8);doc.setTextColor(0)}
-  async function addChart(id,x,y,w,h){const cv=$(id);if(cv&&cv.tagName==='CANVAS'){doc.addImage(cv.toDataURL('image/png'),'PNG',x,y,w,h)}}
+  async function addChart(id,x,y,w,h){try{const cv=$(id);if(cv&&cv.tagName==='CANVAS'&&cv.width>10){doc.addImage(cv.toDataURL('image/png'),'PNG',x,y,w,h)}else{log('⚠ PDF '+id+': w='+cv?.width)}}catch(e){log('⚠ PDF '+id+': '+e.message)}}
 
-  // Switch to each tab to ensure charts are rendered
-  for(const p of['p1','p2','p3','p4','p5']){
-    document.querySelectorAll('.pcon').forEach(c=>c.classList.remove('on'));$(p).classList.add('on');
-    await new Promise(r=>setTimeout(r,200))}
-  // Back to p1
-  document.querySelectorAll('.pcon').forEach(c=>c.classList.remove('on'));$('p1').classList.add('on');
-  document.querySelectorAll('.ptab').forEach(t=>t.classList.remove('on'));
-  document.querySelector('[data-p=p1]').classList.add('on');
+  // Make ALL tabs visible for PDF capture
+  document.querySelectorAll('.pcon').forEach(c=>{c.classList.add('on');c.style.display='block';c.style.visibility='visible'});
+  document.body.offsetHeight;
+  for(const k in CHARTS){try{CHARTS[k].resize();CHARTS[k].update('none')}catch(e){}}
+  await new Promise(r=>setTimeout(r,1000));
+  log('PDF canvas sizes: '+['c4prod','c4cons','c4ahorro','c5perfil','c5curt'].map(id=>{const c=$(id);return id+'='+(c?c.width+'x'+c.height:'null')}).join(', '));
 
   // PAGE 1
   hdr('Producción fotovoltaica — Edificio Gorraiz','Periodo: '+per+' · '+CFG.mod);
@@ -746,8 +837,10 @@ async function genPDF(){
 
   // PAGE 2
   doc.addPage();hdr('Detalle inversores y ahorro','Periodo: '+per);y=34;
-  await addChart('c2hourly',M,y,(W-2*M)/2-2,45);await addChart('c2donut',W/2+2,y,(W-2*M)/2-2,45);y+=50;
-  await addChart('c2scatter',M,y,(W-2*M)/2-2,45);y+=50;
+  // Full width hourly profile (like notebook)
+  await addChart('c2hourly',M,y,W-2*M,50);y+=54;
+  // Donut + Scatter side by side
+  await addChart('c2donut',M,y,(W-2*M)/2-2,42);await addChart('c2scatter',W/2+2,y,(W-2*M)/2-2,42);y+=46;
   // Table
   doc.setFontSize(9);doc.setFont(undefined,'bold');doc.text('Ahorro por periodos',M,y);y+=5;
   doc.setFontSize(7);doc.setFillColor(26,60,52);doc.setTextColor(255);
@@ -759,7 +852,14 @@ async function genPDF(){
 
   // PAGE 3
   doc.addPage();hdr('Consumo eléctrico y cobertura FV','Periodo: '+per);y=34;
-  await addChart('c3daily',M,y,W-2*M,55);y+=58;
+  // KPIs
+  const sk=v=>v>=1000?fn(v/1000,2)+' MWh':fn(v)+' kWh';
+  const k3=[['Consumo total',sk(R.tC)],['Red',sk(R.tR)],['FV',sk(R.tPV)],['% FV',fd(R.pct*100)+'%'],['Pico',fn(R.picoD.total)+' kWh']];
+  const kw3=(W-2*M)/5;k3.forEach(([l,v],i)=>{const x=M+i*kw3;doc.setFillColor(240,245,235);doc.roundedRect(x,y,kw3-2,12,2,2,'F');
+    doc.setFontSize(6);doc.setFont(undefined,'normal');doc.setTextColor(100);doc.text(l.toUpperCase(),x+2,y+4);
+    doc.setFontSize(9);doc.setFont(undefined,'bold');doc.setTextColor(26,60,52);doc.text(v,x+2,y+10)});
+  doc.setTextColor(0);y+=16;
+  await addChart('c3daily',M,y,W-2*M,50);y+=54;
   await addChart('c3week',M,y,(W-2*M)/3-2,50);await addChart('c3hourly',M+(W-2*M)/3,y,(W-2*M)/3-2,50);
   await addChart('c3donut',M+2*(W-2*M)/3,y,(W-2*M)/3-2,50);
   ftr(3);
@@ -772,21 +872,40 @@ async function genPDF(){
 
   // PAGE 5
   doc.addPage();hdr('Análisis avanzado y tendencias','Mapa solar, payback, perfil tipo, vertido cero');y=34;
-  await addChart('c5heat',M,y,(W-2*M)*.6,55);
-  // Payback text
-  if(R.analysis.hayPB){const pb=R.analysis.pb;const px=M+(W-2*M)*.62;
-    doc.setFillColor(248,249,250);doc.roundedRect(px,y,W-M-px,55,2,2,'F');
-    doc.setFontSize(20);doc.setFont(undefined,'bold');doc.setTextColor(26,60,52);
-    doc.text(fd(pb.pct)+'%',px+20,y+18);doc.setFontSize(8);doc.setFont(undefined,'normal');doc.text('recuperado',px+20,y+24);
-    doc.setFontSize(7);doc.setTextColor(80);
-    doc.text(`Inversión: ${fn(pb.inv)} €`,px+5,y+32);doc.text(`Ahorro ${pb.dias}d: ${fn(pb.ahAcum)} €`,px+5,y+37);
-    if(pb.canP){doc.text(`Anual: ${fn(pb.aAnual)} €/año`,px+5,y+42);doc.text(`Payback: ${fd(pb.anos)} años (~${pb.anoAmort})`,px+5,y+47)}}
+  try{const hcv=$('c5heat');if(hcv&&hcv.width>10){doc.addImage(hcv.toDataURL('image/png'),'PNG',M,y,(W-2*M)*.6,55)}else{log('⚠ Heatmap canvas: '+hcv?.width)}}catch(e){log('⚠ Heat: '+e.message)}
+  // Payback box
+  if(R.analysis.hayPB){const pb=R.analysis.pb;const px=M+(W-2*M)*.62;const bw=W-M-px;
+    doc.setFillColor(248,249,250);doc.roundedRect(px,y,bw,55,2,2,'F');
+    // Thermometer
+    const tx=px+4,tw=10,th=45,ty_b=y+6;
+    doc.setFillColor(240,240,240);doc.rect(tx,ty_b,tw,th,'F');
+    doc.setDrawColor(200);doc.rect(tx,ty_b,tw,th,'S');
+    const fc=pb.pct>50?[39,174,96]:pb.pct>25?[212,160,57]:[192,57,43];
+    const fh=th*Math.min(pb.pct/100,1);
+    doc.setFillColor(...fc);doc.rect(tx,ty_b+th-fh,tw,fh,'F');
+    // % marks
+    doc.setFontSize(6);doc.setTextColor(150);
+    [25,50,75,100].forEach(p=>{const yp=ty_b+th*(1-p/100);doc.line(tx+tw,yp,tx+tw+3,yp);doc.text(p+'%',tx+tw+4,yp+1.5)});
+    // Text
+    const txR=px+22;doc.setTextColor(fc[0],fc[1],fc[2]);doc.setFontSize(22);doc.setFont(undefined,'bold');
+    doc.text(fd(pb.pct)+'%',txR,y+18);
+    doc.setFontSize(8);doc.setFont(undefined,'normal');doc.setTextColor(100);doc.text('recuperado',txR,y+24);
+    doc.setFontSize(7);doc.setTextColor(60);
+    doc.text('Inversión: '+fn(pb.inv)+' €',txR,y+32);
+    doc.text('Ahorro '+pb.dias+' días: '+fn(pb.ahAcum)+' €',txR,y+37);
+    if(pb.canP){doc.text('Anual: '+fn(pb.aAnual)+' €/año',txR,y+42);doc.text('Payback: '+fd(pb.anos)+' años (~'+pb.anoAmort+')',txR,y+47)}}
   doc.setTextColor(0);y+=60;
   await addChart('c5perfil',M,y,(W-2*M)/2-2,55);await addChart('c5curt',W/2+2,y,(W-2*M)/2-2,55);
   ftr(5);
 
   const d1=R.prod.daily[0]?.date.replace(/-/g,'')||'',d2=R.prod.daily[R.prod.daily.length-1]?.date.replace(/-/g,'')||'';
-  doc.save(`Informe_FV_Gorraiz_${d1}_${d2}.pdf`);log('✓ PDF descargado');
+  doc.save(`Informe_FV_Gorraiz_${d1}_${d2}.pdf`);
+  // Restore tabs
+  document.querySelectorAll('.pcon').forEach(c=>{c.classList.remove('on');c.style.display='';c.style.visibility=''});
+  $('p1').classList.add('on');
+  document.querySelectorAll('.ptab').forEach(t=>t.classList.remove('on'));
+  document.querySelector('[data-p=p1]').classList.add('on');
+  log('✓ PDF descargado');
 }
 
 // ═══ UI ═══
@@ -800,6 +919,262 @@ document.querySelectorAll('.uz').forEach(z=>{
   z.ondragover=e=>{e.preventDefault();z.classList.add('drag')};z.ondragleave=()=>z.classList.remove('drag');
   z.ondrop=e=>{e.preventDefault();z.classList.remove('drag');const i=z.querySelector('input[type=file]');
     if(i&&e.dataTransfer.files.length){i.files=e.dataTransfer.files;i.dispatchEvent(new Event('change'))}}});
+
+
+// ═══ COMPARATIVE TAB SWITCHING ═══
+document.querySelectorAll('#compTabs .ptab').forEach(b=>{b.onclick=()=>{
+  document.querySelectorAll('#compTabs .ptab').forEach(t=>t.classList.remove('on'));
+  document.querySelectorAll('#compResults .pcon').forEach(c=>c.classList.remove('on'));
+  b.classList.add('on');$(b.dataset.cp).classList.add('on');
+  setTimeout(()=>{for(const k in COMP_CHARTS){try{COMP_CHARTS[k].resize()}catch(e){}}},50);
+}});
+
+let COMP_CHARTS={},COMP={};
+
+// ═══ COMPARATIVE: calc KPIs for a period ═══
+function calcCompPeriod(iA,iB,ibr){
+  const prod=procProd(iA,iB),cons=procCons(ibr,prod.hourly);
+  const kpis=calcKPIs(prod,cons);
+  // Hourly profiles
+  const perfilPV=Array(24).fill(0),perfilCons=Array(24).fill(0),cntPV=Array(24).fill(0),cntCons=Array(24).fill(0);
+  cons.hourly.forEach(r=>{perfilCons[r.h]+=r.total;cntCons[r.h]++;perfilPV[r.h]+=r.pv;cntPV[r.h]++});
+  const pPV=perfilPV.map((v,i)=>cntPV[i]?v/cntPV[i]:0);
+  const pCons=perfilCons.map((v,i)=>cntCons[i]?v/cntCons[i]:0);
+  // Franja
+  const franja={Punta:0,Llano:0,Valle:0};
+  cons.hourly.forEach(r=>{const p=r.periodo;
+    if(p==='P1')franja.Punta+=r.red;
+    else if(p==='P2'||p==='P3')franja.Llano+=r.red;
+    else franja.Valle+=r.red});
+  return{...kpis,perfilPV:pPV,perfilCons:pCons,franja};
+}
+
+function deltaStr(a,b,inv){
+  if(!a)return['—','#999'];
+  const d=b-a,pct=d/a*100;
+  const good=inv?(d<0):(d>0);
+  const col=good?'#27ae60':(!good&&d!==0)?'#e74c3c':'#999';
+  const arrow=d>0?'▲':d<0?'▼':'=';
+  const sign=d>0?'+':'';
+  return[arrow+' '+sign+pct.toFixed(1)+'%',col];
+}
+
+// ═══ GENERATE COMPARATIVE ═══
+function genComp(){
+  const dA0=$('cDesdeA').value,dA1=$('cHastaA').value,dB0=$('cDesdeB').value,dB1=$('cHastaB').value;
+  if(!dA0||!dA1||!dB0||!dB1){log('⚠ Define las 4 fechas de la comparativa');return}
+  const a0=new Date(dA0+'T00:00:00'),a1=new Date(dA1+'T23:59:59');
+  const b0=new Date(dB0+'T00:00:00'),b1=new Date(dB1+'T23:59:59');
+  if(a0>a1||b0>b1){log('⚠ Fechas inválidas');return}
+  log('Comparativa: procesando periodos...');
+  const iA_a=filt(RAW.A,a0,a1),iB_a=filt(RAW.B,a0,a1),ibr_a=filt(RAW.I,a0,a1);
+  const iA_b=filt(RAW.A,b0,b1),iB_b=filt(RAW.B,b0,b1),ibr_b=filt(RAW.I,b0,b1);
+  const labA=dA0.split('-').reverse().join('/')+' – '+dA1.split('-').reverse().join('/');
+  const labB=dB0.split('-').reverse().join('/')+' – '+dB1.split('-').reverse().join('/');
+  const da=calcCompPeriod(iA_a,iB_a,ibr_a);
+  const db=calcCompPeriod(iA_b,iB_b,ibr_b);
+  COMP={da,db,labA,labB};
+  log(`✓ A: ${fd(da.tP)} kWh, B: ${fd(db.tP)} kWh`);
+  renderComp();
+}
+
+function renderComp(){
+  for(const k in COMP_CHARTS){try{COMP_CHARTS[k].destroy()}catch(e){}}COMP_CHARTS={};
+  $('compResults').style.display='block';
+  // Show all comp tabs for rendering
+  document.querySelectorAll('#compResults .pcon').forEach(c=>{c.style.display='block';c.style.visibility='visible';c.style.position='relative';c.style.height='auto'});
+  renderCP1();renderCP2();renderCP3();
+  setTimeout(()=>{
+    document.querySelectorAll('#compResults .pcon').forEach(c=>{c.style.display='';c.style.visibility='';c.style.position='';c.style.height=''});
+    document.querySelectorAll('#compResults .pcon').forEach(c=>c.classList.remove('on'));
+    $('cp1').classList.add('on');
+    document.querySelectorAll('#compTabs .ptab').forEach(t=>t.classList.remove('on'));
+    document.querySelector('[data-cp=cp1]').classList.add('on');
+  },300);
+}
+
+// ═══ C-PAGE 1: KPI TABLE + FRANJA ═══
+function renderCP1(){
+  const{da,db,labA,labB}=COMP;
+  const consMedA=da.dPV?da.tC/da.dPV:0,consMedB=db.dPV?db.tC/db.dPV:0;
+  const rows=[
+    ['Días de datos',da.dPV,db.dPV,false],
+    ['Producción FV (kWh)',da.tP,db.tP,false],
+    ['Prod. media diaria (kWh)',da.avg,db.avg,false],
+    ['Yield (kWh/kWp)',da.yld,db.yld,false],
+    ['Consumo total (kWh)',da.tC,db.tC,true],
+    ['Consumo medio diario (kWh)',consMedA,consMedB,true],
+    ['Autoconsumo FV (kWh)',da.tPV,db.tPV,false],
+    ['Cobertura FV (%)',da.pct*100,db.pct*100,false],
+    ['Ahorro energía (€)',da.tAE,db.tAE,false],
+    ['Ahorro total IE+IVA (€)',da.tAF,db.tAF,false],
+  ];
+  let h=`<tr><th>Indicador</th><th style="text-align:center">${labA}</th><th style="text-align:center">${labB}</th><th style="text-align:center">Variación</th></tr>`;
+  rows.forEach(([lbl,va,vb,inv])=>{
+    const[dt,dc]=deltaStr(va,vb,inv);
+    const fmtV=v=>typeof v==='number'?(v>=100?fn(v):fd(v)):'—';
+    h+=`<tr><td>${lbl}</td><td style="text-align:center;font-weight:600">${fmtV(va)}</td><td style="text-align:center;font-weight:600">${fmtV(vb)}</td><td style="text-align:center;font-weight:700;color:${dc}">${dt}</td></tr>`;
+  });
+  $('tblComp').innerHTML=h;
+  // Franja bars
+  const franjas=['Punta','Llano','Valle'],cols=['#e74c3c','#e67e22','#27ae60'];
+  COMP_CHARTS.ccF=new Chart($('ccFranja'),{type:'bar',data:{labels:franjas,datasets:[
+    {label:labA,data:franjas.map(f=>da.franja[f]/1000),backgroundColor:cols.map(c=>c+'cc'),borderColor:cols,borderWidth:1},
+    {label:labB,data:franjas.map(f=>db.franja[f]/1000),backgroundColor:cols.map(c=>c+'55'),borderColor:cols,borderWidth:1,
+      borderDash:[5,3]}]},
+  options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'MWh',font:{size:10}}}},
+    plugins:{legend:{labels:{color:'#9baa9f',font:{size:9}}}}}});
+}
+
+// ═══ C-PAGE 2: PRODUCTION + PROFILES ═══
+function renderCP2(){
+  const{da,db,labA,labB}=COMP;
+  $('cp2titleA').textContent='Producción diaria — '+labA;
+  $('cp2titleB').textContent='Producción diaria — '+labB;
+  // Prod A
+  const pdA=da.prod.daily;
+  COMP_CHARTS.ccPA=new Chart($('ccProdA'),{type:'bar',data:{labels:pdA.map((_,i)=>i+1),
+    datasets:[{data:pdA.map(d=>d.total),backgroundColor:'#2a6b5a',borderWidth:0}]},
+    options:{responsive:true,plugins:{legend:{display:false},
+      title:{display:true,text:'Total: '+fn(da.tP)+' kWh | Media: '+fd(da.avg)+' kWh/día',font:{size:9},color:'#9baa9f'}},
+      scales:{y:{beginAtZero:true}}}});
+  // Prod B
+  const pdB=db.prod.daily;
+  COMP_CHARTS.ccPB=new Chart($('ccProdB'),{type:'bar',data:{labels:pdB.map((_,i)=>i+1),
+    datasets:[{data:pdB.map(d=>d.total),backgroundColor:'#d4a039',borderWidth:0}]},
+    options:{responsive:true,plugins:{legend:{display:false},
+      title:{display:true,text:'Total: '+fn(db.tP)+' kWh | Media: '+fd(db.avg)+' kWh/día',font:{size:9},color:'#9baa9f'}},
+      scales:{y:{beginAtZero:true}}}});
+  // Sync Y scales
+  const maxY=Math.max(Math.max(...pdA.map(d=>d.total)),Math.max(...pdB.map(d=>d.total)))*1.1;
+  COMP_CHARTS.ccPA.options.scales.y.max=maxY;COMP_CHARTS.ccPA.update();
+  COMP_CHARTS.ccPB.options.scales.y.max=maxY;COMP_CHARTS.ccPB.update();
+  // Perfil PV overlay
+  const hrs=Array.from({length:24},(_,i)=>i+'h');
+  COMP_CHARTS.ccPPV=new Chart($('ccPerfilPV'),{type:'line',data:{labels:hrs,datasets:[
+    {label:labA,data:da.perfilPV,borderColor:'#2a6b5a',backgroundColor:'rgba(42,107,90,.15)',borderWidth:2,fill:true,tension:.3,pointRadius:0},
+    {label:labB,data:db.perfilPV,borderColor:'#d4a039',backgroundColor:'rgba(212,160,57,.15)',borderWidth:2,fill:true,tension:.3,pointRadius:0,borderDash:[5,3]}]},
+  options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'kWh/h',font:{size:10}}}},
+    plugins:{legend:{labels:{color:'#9baa9f',font:{size:9}}}}}});
+  // Perfil Consumo overlay
+  COMP_CHARTS.ccPC=new Chart($('ccPerfilCons'),{type:'line',data:{labels:hrs,datasets:[
+    {label:labA,data:da.perfilCons,borderColor:'#2a6b5a',backgroundColor:'rgba(42,107,90,.15)',borderWidth:2,fill:true,tension:.3,pointRadius:0},
+    {label:labB,data:db.perfilCons,borderColor:'#d4a039',backgroundColor:'rgba(212,160,57,.15)',borderWidth:2,fill:true,tension:.3,pointRadius:0,borderDash:[5,3]}]},
+  options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'kWh/h',font:{size:10}}}},
+    plugins:{legend:{labels:{color:'#9baa9f',font:{size:9}}}}}});
+}
+
+// ═══ C-PAGE 3: ECONOMIC BALANCE + CONSUMPTION ═══
+function renderCP3(){
+  const{da,db,labA,labB}=COMP;
+  $('cp3titleA').textContent='Consumo diario — '+labA;
+  $('cp3titleB').textContent='Consumo diario — '+labB;
+  const prM=Object.values(CFG.precios).reduce((s,p)=>s+p,0)/6;
+  const costeA=da.tC*prM*(1+CFG.IE)*(1+CFG.IVA),costeB=db.tC*prM*(1+CFG.IE)*(1+CFG.IVA);
+  // Economic bars
+  const cats=['Ahorro energía (€)','Ahorro total IE+IVA (€)','Coste red estimado (€)'];
+  const vaVals=[da.tAE,da.tAF,costeA],vbVals=[db.tAE,db.tAF,costeB];
+  COMP_CHARTS.ccE=new Chart($('ccEcon'),{type:'bar',data:{labels:cats,datasets:[
+    {label:labA,data:vaVals,backgroundColor:'#2a6b5acc',borderColor:'#2a6b5a',borderWidth:1},
+    {label:labB,data:vbVals,backgroundColor:'#d4a039aa',borderColor:'#d4a039',borderWidth:1}]},
+  options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'€',font:{size:10}}}},
+    plugins:{legend:{labels:{color:'#9baa9f',font:{size:9}}},
+      tooltip:{callbacks:{afterLabel:ctx=>{const i=ctx.dataIndex;const inv=[false,false,true][i];
+        const[dt]=deltaStr(vaVals[i],vbVals[i],inv);return dt}}}}}});
+  // Cons A
+  const cdA=da.cons.daily;
+  COMP_CHARTS.ccCA=new Chart($('ccConsA'),{type:'bar',data:{labels:cdA.map((_,i)=>i+1),datasets:[
+    {label:'Total',data:cdA.map(d=>d.total),backgroundColor:'rgba(42,107,90,.5)',borderWidth:0},
+    {label:'Red',data:cdA.map(d=>d.red),backgroundColor:'rgba(231,76,60,.4)',borderWidth:0}]},
+  options:{responsive:true,scales:{y:{beginAtZero:true}},plugins:{legend:{labels:{color:'#9baa9f',font:{size:8}}}}}});
+  // Cons B
+  const cdB=db.cons.daily;
+  COMP_CHARTS.ccCB=new Chart($('ccConsB'),{type:'bar',data:{labels:cdB.map((_,i)=>i+1),datasets:[
+    {label:'Total',data:cdB.map(d=>d.total),backgroundColor:'rgba(212,160,57,.5)',borderWidth:0},
+    {label:'Red',data:cdB.map(d=>d.red),backgroundColor:'rgba(231,76,60,.4)',borderWidth:0}]},
+  options:{responsive:true,scales:{y:{beginAtZero:true}},plugins:{legend:{labels:{color:'#9baa9f',font:{size:8}}}}}});
+  // Sync Y
+  const maxY=Math.max(Math.max(...cdA.map(d=>d.total)),Math.max(...cdB.map(d=>d.total)))*1.1;
+  COMP_CHARTS.ccCA.options.scales.y.max=maxY;COMP_CHARTS.ccCA.update();
+  COMP_CHARTS.ccCB.options.scales.y.max=maxY;COMP_CHARTS.ccCB.update();
+}
+
+// ═══ COMPARATIVE PDF (3 pages) ═══
+async function genCompPDF(){
+  if(!COMP.da){log('⚠ Genera la comparativa primero');return}
+  log('Generando PDF comparativa...');
+  const{jsPDF}=window.jspdf;const doc=new jsPDF('p','mm','a4');
+  const W=210,H=297,M=15;
+  const{da,db,labA,labB}=COMP;
+
+  function hdr(t,s){doc.setFillColor(26,60,52);doc.roundedRect(M,10,W-2*M,18,3,3,'F');
+    try{doc.addImage(LOGO_B64,'JPEG',M+2,11.5,15,15)}catch(e){}
+    doc.setTextColor(255);doc.setFontSize(12);doc.setFont(undefined,'bold');doc.text(t,M+20,20);
+    doc.setFontSize(8);doc.setFont(undefined,'normal');doc.text(s,M+20,25);doc.setTextColor(0)}
+  function ftr(p){doc.setFontSize(6);doc.setTextColor(150);
+    doc.text('Amixalan Business Group — Comparativa entre periodos',M,H-8);
+    doc.text('Pág '+p,W-M-8,H-8);doc.setTextColor(0)}
+  async function addC(id,x,y,w,h){const cv=$(id);if(cv&&cv.tagName==='CANVAS'){doc.addImage(cv.toDataURL('image/png'),'PNG',x,y,w,h)}}
+
+  // Show all comp tabs
+  document.querySelectorAll('#compResults .pcon').forEach(c=>{c.style.display='block';c.style.visibility='visible';c.style.position='relative';c.style.height='auto'});
+  for(const k in COMP_CHARTS){try{COMP_CHARTS[k].resize()}catch(e){}}
+  await new Promise(r=>setTimeout(r,500));
+
+  // PAGE 1: KPI table
+  hdr('Comparativa: '+labA+' vs '+labB,'Edificio Gorraiz — Resumen de indicadores clave');
+  let y=34;
+  // Table header
+  doc.setFontSize(7);doc.setFillColor(26,60,52);doc.setTextColor(255);
+  doc.rect(M,y,W-2*M,5,'F');
+  const cx=[M+2,M+65,M+100,M+140];
+  doc.text('Indicador',cx[0],y+3.5);doc.text(labA.slice(0,20),cx[1],y+3.5);doc.text(labB.slice(0,20),cx[2],y+3.5);doc.text('Variación',cx[3],y+3.5);
+  doc.setTextColor(0);doc.setFont(undefined,'normal');y+=6;
+  const consMedA=da.dPV?da.tC/da.dPV:0,consMedB=db.dPV?db.tC/db.dPV:0;
+  const trows=[
+    ['Días de datos',da.dPV,db.dPV,false],['Producción FV (kWh)',da.tP,db.tP,false],
+    ['Media diaria (kWh)',da.avg,db.avg,false],['Yield (kWh/kWp)',da.yld,db.yld,false],
+    ['Consumo total (kWh)',da.tC,db.tC,true],['Consumo medio/día',consMedA,consMedB,true],
+    ['Autoconsumo FV (kWh)',da.tPV,db.tPV,false],['Cobertura FV (%)',da.pct*100,db.pct*100,false],
+    ['Ahorro energía (€)',da.tAE,db.tAE,false],['Ahorro total (€)',da.tAF,db.tAF,false],
+  ];
+  trows.forEach(([lbl,va,vb,inv],i)=>{
+    if(i%2===0){doc.setFillColor(244,248,251);doc.rect(M,y,W-2*M,5,'F')}
+    doc.setFontSize(7);doc.setTextColor(0);
+    doc.text(lbl,cx[0],y+3.5);
+    doc.text(va>=100?fn(va):fd(va),cx[1],y+3.5);
+    doc.text(vb>=100?fn(vb):fd(vb),cx[2],y+3.5);
+    const[dt,dc]=deltaStr(va,vb,inv);
+    const rgb=dc==='#27ae60'?[39,174,96]:dc==='#e74c3c'?[231,76,60]:[150,150,150];
+    doc.setTextColor(...rgb);doc.setFont(undefined,'bold');doc.text(dt,cx[3],y+3.5);
+    doc.setFont(undefined,'normal');doc.setTextColor(0);y+=5;
+  });
+  y+=8;
+  await addC('ccFranja',M,y,W-2*M,60);
+  ftr(1);
+
+  // PAGE 2: Production + profiles
+  doc.addPage();hdr('Comparativa: Producción y perfiles',labA+' vs '+labB);y=34;
+  const hw=(W-2*M)/2-2;
+  await addC('ccProdA',M,y,hw,55);await addC('ccProdB',W/2+2,y,hw,55);y+=60;
+  await addC('ccPerfilPV',M,y,hw,55);await addC('ccPerfilCons',W/2+2,y,hw,55);
+  ftr(2);
+
+  // PAGE 3: Economic + consumption
+  doc.addPage();hdr('Comparativa: Balance económico y consumo',labA+' vs '+labB);y=34;
+  await addC('ccEcon',M,y,W-2*M,55);y+=60;
+  await addC('ccConsA',M,y,hw,55);await addC('ccConsB',W/2+2,y,hw,55);
+  ftr(3);
+
+  // Restore tabs
+  document.querySelectorAll('#compResults .pcon').forEach(c=>{c.style.display='';c.style.visibility='';c.style.position='';c.style.height=''});
+  document.querySelectorAll('#compResults .pcon').forEach(c=>c.classList.remove('on'));
+  $('cp1').classList.add('on');
+
+  const fname='Comparativa_FV_'+$('cDesdeA').value.replace(/-/g,'')+'_vs_'+$('cDesdeB').value.replace(/-/g,'')+'.pdf';
+  doc.save(fname);log('✓ PDF comparativa descargado: '+fname);
+}
+
 </script>
 </body>
 </html>
