@@ -805,91 +805,130 @@ async function genPDF(){
   document.body.offsetHeight;
   await new Promise(r=>setTimeout(r,300));
 
-  // PAGE 1
+  // PAGE 1 — Producción FV
   hdr('Producción fotovoltaica — Edificio Gorraiz','Periodo: '+per+' · '+CFG.mod);
-  let y=34;
-  // KPIs
+  let y=32;
+  // KPIs row (6 boxes)
   const e=R.tP>=1000?fn(R.tP/1000,2)+' MWh':fd(R.tP)+' kWh';
-  const k1=[['Energía',e],['Media/día',fd(R.avg)+' kWh'],['Mejor día',fd(R.best.total)+' kWh'],['Rend.',fd(R.yld)+' kWh/kWp'],['Ahorro E',fn(R.tAE)+' €'],['Ahorro F',fn(R.tAF)+' €']];
-  const kw=(W-2*M)/6;k1.forEach(([l,v],i)=>{const x=M+i*kw;doc.setFillColor(240,245,235);doc.roundedRect(x,y,kw-2,14,2,2,'F');
-    doc.setFontSize(6);doc.setFont(undefined,'normal');doc.setTextColor(100);doc.text(l.toUpperCase(),x+2,y+5);
-    doc.setFontSize(9);doc.setFont(undefined,'bold');doc.setTextColor(26,60,52);doc.text(v,x+2,y+11)});
-  doc.setTextColor(0);y+=18;
-  await addChart('c1daily',M,y,W-2*M,65);y+=68;
-  if(METEO){const ag=METEO.reduce((s,m)=>s+m.ghi,0)/METEO.length;
-    doc.setFillColor(245,240,225);doc.roundedRect(M,y,W-2*M,8,2,2,'F');
-    doc.setFontSize(7);doc.setFont(undefined,'bold');doc.setTextColor(26,60,52);
-    doc.text(`Datos meteo (Open-Meteo): GHI medio ${ag.toFixed(2)} kWh/m²/día`,M+4,y+5);doc.setTextColor(0);y+=10}
+  const k1=[['Energía producida',e],['Media diaria',fd(R.avg)+' kWh/día'],['Mejor día',fd(R.best.total)+' kWh'],
+    ['Rendimiento específico',fd(R.yld)+' kWh/kWp'],['Ahorro (término energía)',fn(R.tAE)+' €'],['Ahorro (total factura)',fn(R.tAF)+' €']];
+  const kw=(W-2*M)/6;
+  k1.forEach(([l,v],i)=>{const x=M+i*kw;
+    doc.setDrawColor(180);doc.setFillColor(255);doc.roundedRect(x,y,kw-2,16,1,1,'FD');
+    doc.setFontSize(5.5);doc.setFont(undefined,'normal');doc.setTextColor(100);doc.text(l,x+kw/2-1,y+4,{align:'center'});
+    doc.setFontSize(11);doc.setFont(undefined,'bold');doc.setTextColor(0);doc.text(v,x+kw/2-1,y+11,{align:'center'});
+  });
+  doc.setTextColor(0);y+=20;
+  // Main chart: producción diaria + GHI (full width, tall)
+  await addChart('c1daily',M,y,W-2*M,80);y+=83;
+  // Meteo summary
+  if(METEO&&METEO.length){const ag=METEO.reduce((s,m)=>s+m.ghi,0)/METEO.length;
+    const as2=METEO.reduce((s,m)=>s+m.sol,0)/METEO.length;
+    const atM=METEO.reduce((s,m)=>s+m.tMax,0)/METEO.length,atm=METEO.reduce((s,m)=>s+m.tMin,0)/METEO.length;
+    doc.setFillColor(238,246,255);doc.roundedRect(M,y,W-2*M,8,1,1,'F');
+    doc.setFontSize(7);doc.setFont(undefined,'normal');doc.setTextColor(26,60,52);
+    doc.text('Datos meteo (Open-Meteo): GHI medio: '+ag.toFixed(2)+' kWh/m²/día | Sol: '+as2.toFixed(1)+' h/día | Temp: '+atm.toFixed(1)+'°C — '+atM.toFixed(1)+'°C',M+4,y+5);
+    y+=10;}
   // Conclusion
-  doc.setFillColor(248,249,250);doc.roundedRect(M,y,W-2*M,20,2,2,'F');
-  doc.setFontSize(9);doc.setFont(undefined,'bold');doc.text('Conclusión',M+4,y+6);
-  doc.setFontSize(7);doc.setFont(undefined,'normal');doc.setTextColor(80);
+  doc.setFillColor(248,249,250);doc.roundedRect(M,y,W-2*M,18,1,1,'F');
+  doc.setFontSize(8);doc.setFont(undefined,'bold');doc.setTextColor(0);doc.text('Conclusión',M+4,y+5);
+  doc.setFontSize(7);doc.setFont(undefined,'normal');doc.setTextColor(60);
   const eS=R.tP>=1000?fn(R.tP/1000,2)+' MWh':fd(R.tP)+' kWh';
-  doc.text(`La planta produce con estabilidad. Producción: ${eS}, rendimiento: ${fd(R.yld)} kWh/kWp. Referencia (memoria visada): ${fn(CFG.prodAnual)} kWh/año.`,M+4,y+12,{maxWidth:W-2*M-8});
-  doc.setTextColor(0);
+  doc.text('La planta produce con estabilidad. Producción: '+eS+', rendimiento: '+fd(R.yld)+' kWh/kWp. Referencia (memoria): '+fn(CFG.prodAnual)+' kWh/año.',M+4,y+12,{maxWidth:W-2*M-8});
   ftr(1);
 
-  // PAGE 2
-  doc.addPage();hdr('Detalle inversores y ahorro','Periodo: '+per);y=34;
-  // Full width hourly profile (like notebook)
-  await addChart('c2hourly',M,y,W-2*M,50);y+=54;
-  // Donut + Scatter side by side
-  await addChart('c2donut',M,y,(W-2*M)/2-2,42);await addChart('c2scatter',W/2+2,y,(W-2*M)/2-2,42);y+=46;
-  // Table
-  doc.setFontSize(9);doc.setFont(undefined,'bold');doc.text('Ahorro por periodos',M,y);y+=5;
-  doc.setFontSize(7);doc.setFillColor(26,60,52);doc.setTextColor(255);
-  doc.rect(M,y,W-2*M,5,'F');doc.text('Periodo',M+2,y+3.5);doc.text('FV (kWh)',M+35,y+3.5);doc.text('€/kWh',M+70,y+3.5);doc.text('Ahorro (€)',M+105,y+3.5);
-  doc.setTextColor(0);doc.setFont(undefined,'normal');y+=6;
-  for(const p of['P1','P2','P3','P4','P5','P6']){const a=R.ap[p];
-    doc.text(p,M+2,y+3.5);doc.text(fn(a.kwh),M+35,y+3.5);doc.text(a.pr.toFixed(3),M+70,y+3.5);doc.text(fn(a.ah),M+105,y+3.5);y+=5}
+  // PAGE 2 — Detalle inversores y ahorro
+  doc.addPage('l');hdr('Detalle de instalación, inversores y ahorro','Periodo: '+per+' · Modalidad: '+CFG.mod);y=32;
+  // Perfil horario (full width, top)
+  await addChart('c2hourly',M,y,W-2*M,55);y+=58;
+  // Donut (left) + Scatter (right)
+  const hw2=(W-2*M)/2-3;
+  await addChart('c2donut',M,y,hw2,50);await addChart('c2scatter',M+hw2+6,y,hw2,50);y+=53;
+  // Table ahorro periodos (right side) + ficha instalación (left side)
+  const tblX=M,tblW=(W-2*M)*0.55;
+  doc.setFontSize(9);doc.setFont(undefined,'bold');doc.setTextColor(0);doc.text('Ahorro por periodos',tblX,y);y+=4;
+  doc.setFontSize(6.5);doc.setFillColor(26,60,52);doc.setTextColor(255);
+  const cols=[tblX,tblX+40,tblX+80,tblX+120];
+  doc.rect(tblX,y,tblW,5,'F');doc.text('Periodo',cols[0]+2,y+3.5);doc.text('FV (kWh)',cols[1],y+3.5);doc.text('€/kWh',cols[2],y+3.5);doc.text('Ahorro (€)',cols[3],y+3.5);
+  doc.setTextColor(0);doc.setFont(undefined,'normal');y+=5.5;
+  let tKwh=0,tAh=0;
+  for(const p of['P1','P2','P3','P4','P5','P6']){const a=R.ap[p];tKwh+=a.kwh;tAh+=a.ah;
+    if(['P1','P3','P5'].includes(p)){doc.setFillColor(248,249,250);doc.rect(tblX,y-0.5,tblW,4.5,'F')}
+    doc.text(p,cols[0]+2,y+3);doc.text(fn(a.kwh),cols[1],y+3);doc.text(a.pr.toFixed(3),cols[2],y+3);doc.text(fn(a.ah),cols[3],y+3);y+=4.5;}
+  doc.setFont(undefined,'bold');doc.setFillColor(26,60,52);doc.rect(tblX,y-0.5,tblW,5,'F');doc.setTextColor(255);
+  doc.text('TOTAL',cols[0]+2,y+3);doc.text(fn(tKwh),cols[1],y+3);doc.text('',cols[2],y+3);doc.text(fn(tAh)+' €',cols[3],y+3);
+  doc.setTextColor(0);
+  // Ficha instalación (right)
+  const fX=M+tblW+10,fW=W-M-fX;
+  doc.setFontSize(8);doc.setFont(undefined,'bold');doc.text('Ficha de la instalación',fX,y-28);
+  doc.setFontSize(6.5);doc.setFont(undefined,'normal');doc.setTextColor(60);
+  const fichaLines=['Potencia pico: '+CFG.kwp+' kWp','Generadores: '+CFG.modulos,'Inversores: '+CFG.inversores,
+    'Cubierta: '+CFG.cubierta,'Modalidad: Autoconsumo SIN excedentes','Prod. anual estimada: '+fn(CFG.prodAnual)+' kWh/año'];
+  fichaLines.forEach((l,i)=>{doc.text('• '+l,fX+2,y-22+i*5)});
+  doc.setTextColor(0);
   ftr(2);
 
-  // PAGE 3
-  doc.addPage();hdr('Consumo eléctrico y cobertura FV','Periodo: '+per);y=34;
-  // KPIs
+  // PAGE 3 — Consumo eléctrico
+  doc.addPage('l');hdr('Informe de consumo eléctrico — Edificio Gorraiz','Periodo: '+per+' · Consumo total = Red + FV (sin excedentes)');y=32;
+  // KPIs (5 boxes)
   const sk=v=>v>=1000?fn(v/1000,2)+' MWh':fn(v)+' kWh';
-  const k3=[['Consumo total',sk(R.tC)],['Red',sk(R.tR)],['FV',sk(R.tPV)],['% FV',fd(R.pct*100)+'%'],['Pico',fn(R.picoD.total)+' kWh']];
-  const kw3=(W-2*M)/5;k3.forEach(([l,v],i)=>{const x=M+i*kw3;doc.setFillColor(240,245,235);doc.roundedRect(x,y,kw3-2,12,2,2,'F');
-    doc.setFontSize(6);doc.setFont(undefined,'normal');doc.setTextColor(100);doc.text(l.toUpperCase(),x+2,y+4);
-    doc.setFontSize(9);doc.setFont(undefined,'bold');doc.setTextColor(26,60,52);doc.text(v,x+2,y+10)});
-  doc.setTextColor(0);y+=16;
-  await addChart('c3daily',M,y,W-2*M,50);y+=54;
-  await addChart('c3week',M,y,(W-2*M)/3-2,50);await addChart('c3hourly',M+(W-2*M)/3,y,(W-2*M)/3-2,50);
-  await addChart('c3donut',M+2*(W-2*M)/3,y,(W-2*M)/3-2,50);
+  const k3=[['Consumo total',sk(R.tC),'Red + FV'],['Comprado a red',sk(R.tR),'Balance contador'],['Aportado por FV',sk(R.tPV),'Producción inversores'],
+    ['% cubierto por FV',fd(R.pct*100)+' %','Autoconsumo'],['Pico diario',fn(R.picoD.total)+' kWh',R.picoD.date]];
+  const kw3=(W-2*M)/5;
+  k3.forEach(([l,v,s],i)=>{const x=M+i*kw3;
+    doc.setDrawColor(180);doc.setFillColor(255);doc.roundedRect(x,y,kw3-2,16,1,1,'FD');
+    doc.setFontSize(5.5);doc.setFont(undefined,'normal');doc.setTextColor(100);doc.text(l,x+kw3/2-1,y+4,{align:'center'});
+    doc.setFontSize(10);doc.setFont(undefined,'bold');doc.setTextColor(0);doc.text(v,x+kw3/2-1,y+10,{align:'center'});
+    doc.setFontSize(5);doc.setFont(undefined,'normal');doc.setTextColor(150);doc.text(s,x+kw3/2-1,y+14,{align:'center'});
+  });
+  doc.setTextColor(0);y+=20;
+  // Daily consumption chart (full width)
+  await addChart('c3daily',M,y,W-2*M,55);y+=58;
+  // Bottom: weekly + hourly + donut
+  const tw3=(W-2*M)/3-3;
+  await addChart('c3week',M,y,tw3,52);await addChart('c3hourly',M+tw3+4,y,tw3,52);await addChart('c3donut',M+2*(tw3+4),y,tw3,52);
+  // Note
+  doc.setFontSize(5.5);doc.setTextColor(120);
+  doc.text('Nota: el consumo total del edificio se reconstruye sumando la producción FV medida a la energía comprada a red (instalación SIN excedentes).',M,H-14);
   ftr(3);
 
-  // PAGE 4
-  doc.addPage();hdr('Acumulados desde puesta en marcha','Producción + consumo + ahorro acumulado');y=34;
-  await addChart('c4prod',M,y,(W-2*M)/2-2,60);await addChart('c4cons',W/2+2,y,(W-2*M)/2-2,60);y+=65;
+  // PAGE 4 — Acumulados
+  doc.addPage('l');hdr('Acumulados desde puesta en marcha — Edificio Gorraiz','Barras rayadas = proyección basada en datos reales');y=32;
+  // Prod mensual (left) + Cons mensual (right) — top half
+  const hw4=(W-2*M)/2-3;
+  await addChart('c4prod',M,y,hw4,65);await addChart('c4cons',M+hw4+6,y,hw4,65);y+=68;
+  // Ahorro acumulado (full width) — bottom
   await addChart('c4ahorro',M,y,W-2*M,55);
   ftr(4);
 
-  // PAGE 5
-  doc.addPage();hdr('Análisis avanzado y tendencias','Mapa solar, payback, perfil tipo, vertido cero');y=34;
-  try{const hcv=$('c5heat');if(hcv&&hcv.width>10){doc.addImage(hcv.toDataURL('image/png'),'PNG',M,y,(W-2*M)*.6,55)}else{log('⚠ Heatmap canvas: '+hcv?.width)}}catch(e){log('⚠ Heat: '+e.message)}
-  // Payback box
-  if(R.analysis.hayPB){const pb=R.analysis.pb;const px=M+(W-2*M)*.62;const bw=W-M-px;
-    doc.setFillColor(248,249,250);doc.roundedRect(px,y,bw,55,2,2,'F');
+  // PAGE 5 — Análisis avanzado
+  doc.addPage('l');hdr('Análisis avanzado y tendencias — Edificio Gorraiz','Mapa solar, perfil tipo, vertido cero, payback');y=32;
+  // Heatmap (left, wider) + Payback (right)
+  const heatW=(W-2*M)*0.60;
+  try{const hcv=$('c5heat');if(hcv&&hcv.width>10){doc.addImage(hcv.toDataURL('image/png'),'PNG',M,y,heatW,65)}}catch(e){}
+  // Payback gauge (right column)
+  if(R.analysis.hayPB){const pb=R.analysis.pb;const px=M+heatW+6;const bw=W-M-px;
+    doc.setFillColor(255);doc.setDrawColor(180);doc.roundedRect(px,y,bw,65,2,2,'FD');
+    doc.setFontSize(10);doc.setFont(undefined,'bold');doc.setTextColor(0);doc.text('Retorno de la inversión',px+bw/2,y+7,{align:'center'});
     // Thermometer
-    const tx=px+4,tw=10,th=45,ty_b=y+6;
-    doc.setFillColor(240,240,240);doc.rect(tx,ty_b,tw,th,'F');
-    doc.setDrawColor(200);doc.rect(tx,ty_b,tw,th,'S');
+    const tx=px+8,tw2=12,th=48,ty_b=y+12;
+    doc.setFillColor(240,240,240);doc.rect(tx,ty_b,tw2,th,'F');doc.setDrawColor(200);doc.rect(tx,ty_b,tw2,th,'S');
     const fc=pb.pct>50?[39,174,96]:pb.pct>25?[212,160,57]:[192,57,43];
-    const fh=th*Math.min(pb.pct/100,1);
-    doc.setFillColor(...fc);doc.rect(tx,ty_b+th-fh,tw,fh,'F');
-    // % marks
-    doc.setFontSize(6);doc.setTextColor(150);
-    [25,50,75,100].forEach(p=>{const yp=ty_b+th*(1-p/100);doc.line(tx+tw,yp,tx+tw+3,yp);doc.text(p+'%',tx+tw+4,yp+1.5)});
-    // Text
-    const txR=px+22;doc.setTextColor(fc[0],fc[1],fc[2]);doc.setFontSize(22);doc.setFont(undefined,'bold');
-    doc.text(fd(pb.pct)+'%',txR,y+18);
-    doc.setFontSize(8);doc.setFont(undefined,'normal');doc.setTextColor(100);doc.text('recuperado',txR,y+24);
+    const fh2=th*Math.min(pb.pct/100,1);
+    doc.setFillColor(...fc);doc.rect(tx,ty_b+th-fh2,tw2,fh2,'F');
+    [25,50,75,100].forEach(p=>{const yp=ty_b+th*(1-p/100);doc.setDrawColor(180);doc.line(tx+tw2,yp,tx+tw2+3,yp);
+      doc.setFontSize(5);doc.setTextColor(150);doc.text(p+'%',tx+tw2+4,yp+1.5)});
+    const txR=px+28;doc.setTextColor(fc[0],fc[1],fc[2]);doc.setFontSize(24);doc.setFont(undefined,'bold');
+    doc.text(fd(pb.pct)+'%',txR,y+30);
+    doc.setFontSize(8);doc.setFont(undefined,'normal');doc.setTextColor(100);doc.text('recuperado',txR,y+36);
     doc.setFontSize(7);doc.setTextColor(60);
-    doc.text('Inversión: '+fn(pb.inv)+' €',txR,y+32);
-    doc.text('Ahorro '+pb.dias+' días: '+fn(pb.ahAcum)+' €',txR,y+37);
-    if(pb.canP){doc.text('Anual: '+fn(pb.aAnual)+' €/año',txR,y+42);doc.text('Payback: '+fd(pb.anos)+' años (~'+pb.anoAmort+')',txR,y+47)}}
-  doc.setTextColor(0);y+=60;
-  await addChart('c5perfil',M,y,(W-2*M)/2-2,55);await addChart('c5curt',W/2+2,y,(W-2*M)/2-2,55);
+    const info=['Inversión: '+fn(pb.inv)+' €','Ahorro en '+pb.dias+' días: '+fn(pb.ahAcum)+' €'];
+    if(pb.canP){info.push('Ahorro anual proy.: '+fn(pb.aAnual)+' €/año','Payback estimado: '+fd(pb.anos)+' años','Amortización: ~'+pb.anoAmort)}
+    info.forEach((l,i)=>doc.text(l,txR,y+43+i*5));
+  }
+  y+=68;
+  // Perfil tipo (left) + Curtailment (right) — bottom half
+  await addChart('c5perfil',M,y,hw4,55);await addChart('c5curt',M+hw4+6,y,hw4,55);
   ftr(5);
 
   const d1=R.prod.daily[0]?.date.replace(/-/g,'')||'',d2=R.prod.daily[R.prod.daily.length-1]?.date.replace(/-/g,'')||'';
