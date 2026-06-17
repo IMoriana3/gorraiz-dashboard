@@ -3,12 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Informe FV — Edificio Gorraiz</title>
+<meta name="theme-color" content="#0B0F14">
+<link rel="icon" href="favicon.svg">
+<title>Gorraiz Dashboard — Informe FV Edificio Gorraiz</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&family=JetBrains+Mono:wght@500;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
 <style>
 :root {
   --bg:#0f1a16; --card:#162420; --card2:#1a2e28; --accent:#d4a039;
@@ -88,9 +92,28 @@ input[type=file]{display:none}
 .footer{padding:12px 28px;border-top:1px solid var(--border);font-size:10px;color:var(--muted);text-align:center}
 
 @media(max-width:700px){.main{padding:12px}.steps,.krow{flex-wrap:wrap}.row{flex-direction:column}.hdr-right{display:none}}
+/* ---- Barra/footer Factiun (chrome oscuro; el informe se mantiene claro para la fidelidad del PDF) ---- */
+.app-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:9px 16px;background:#0F151D;border-bottom:1px solid #23303D;font-family:'IBM Plex Sans',system-ui,sans-serif}
+.app-bar .back{color:#8093A4;text-decoration:none;font:600 13px/1 'IBM Plex Sans',system-ui,sans-serif;padding:6px 10px;border:1px solid #23303D;border-radius:10px;white-space:nowrap}
+.app-bar .back:hover{color:#E7EEF4;border-color:#36D399}
+.app-bar h1{margin:0;font:700 17px/1.1 'Space Grotesk','IBM Plex Sans',sans-serif;color:#E7EEF4}
+.app-bar .sub{color:#8093A4;font-size:12.5px;margin:0 auto 0 0}
+.app-bar .client{color:#E7EEF4;font-size:11.5px;border:1px solid #23303D;padding:3px 9px;border-radius:999px}
+.app-bar .brand{color:#36D399;font:700 14px/1 'Space Grotesk','IBM Plex Sans',sans-serif;letter-spacing:.04em}
+.app-foot{padding:12px 16px;text-align:center;color:#8093A4;font:400 12px/1.5 'IBM Plex Sans',system-ui,sans-serif;border-top:1px solid #23303D;background:#0F151D}
+.app-foot a{color:#36D399;text-decoration:none}
+.app-foot a:hover{text-decoration:underline}
+@media print{.app-bar,.app-foot{display:none}}
 </style>
 </head>
 <body>
+<header class="app-bar">
+  <a class="back" href="https://imoriana3.github.io/proyectos/">← Panel</a>
+  <h1>Gorraiz Dashboard</h1>
+  <span class="sub">Informe FV · Edificio Gorraiz</span>
+  <span class="client">Amixalan</span>
+  <span class="brand">Factiun</span>
+</header>
 <div class="hdr">
   <img id="logo" alt="Amixalan">
   <div style="flex:1"><h1>Informe FV — Edificio Gorraiz</h1><div class="hdr-sub">123.84 kWp · Autoconsumo SIN excedentes · Generador de informes</div></div>
@@ -1250,5 +1273,6 @@ async function genCompPDF(){
 }
 
 </script>
+<footer class="app-foot">Factiun · Gorraiz Dashboard — <a href="https://imoriana3.github.io/proyectos/">Panel de Proyectos</a></footer>
 </body>
 </html>
