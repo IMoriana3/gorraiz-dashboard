@@ -29,7 +29,11 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min
 .hdr-right{margin-left:auto;text-align:right}
 .hdr-right div:first-child{font-size:11px;color:var(--accent);font-weight:700}
 .hdr-right div:last-child{font-size:10px;color:var(--muted)}
-.main{max-width:1080px;margin:0 auto;padding:20px}
+/* ANCHO: `min(Npx, 94vw)` en vez de un tope fijo. Con el tope a secas, en un monitor de 1920 esta
+   pantalla usaba poco más de la mitad y dejaba cientos de píxeles muertos a cada lado; con solo
+   `vw` se pegaría a los bordes en pantallas enormes. El 94vw deja aire y el tope evita la línea
+   kilométrica. Mismo criterio que el Panel. */
+.main{max-width:min(1360px,94vw);margin:0 auto;padding:20px}
 
 /* Steps */
 .steps{display:flex;gap:6px;margin-bottom:20px}
