@@ -85,7 +85,10 @@ const DATADIS='https://datadis.es';
 const SOLARMAN='https://globalapi.solarmanpv.com';
 
 // ── utilidades ───────────────────────────────────────────────────────────
-const json=(o,s=200,h={})=>new Response(JSON.stringify(o),{status:s,headers:{'content-type':'application/json;charset=utf-8',...h}});
+// no-store: sin esto, el navegador puede quedarse con una respuesta vieja y
+// hacer creer que un cambio de configuración no ha surtido efecto.
+const json=(o,s=200,h={})=>new Response(JSON.stringify(o),{status:s,
+  headers:{'content-type':'application/json;charset=utf-8','cache-control':'no-store',...h}});
 const pad=n=>String(n).padStart(2,'0');
 const ymd=d=>d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate());
 const dUTC=s=>new Date(s+'T00:00:00Z');
