@@ -61,11 +61,23 @@ async function datadisToken(env){
   return t;
 }
 
+// Si el CUPS no es de la propia cuenta sino de un tercero que te ha
+// autorizado (el caso normal cuando la instaladora consulta a su cliente),
+// hay que mandar el NIF/CIF del titular en authorizedNif. Si el suministro es
+// propio, el parámetro NO debe ir.
+function autorizado(env){
+  const n=(env.DATADIS_AUTHORIZED_NIF||'').trim();
+  return n?{authorizedNif:n}:{};
+}
+
 async function datadisSuministro(env,tk){
-  const r=await pedir(DATADIS+'/api-private/api/get-supplies',{headers:{Authorization:'Bearer '+tk}});
+  const q=new URLSearchParams(autorizado(env)).toString();
+  const r=await pedir(DATADIS+'/api-private/api/get-supplies'+(q?'?'+q:''),{headers:{Authorization:'Bearer '+tk}});
   if(!r.ok)throw new Error('Datadis: no se pudo listar suministros (HTTP '+r.status+').');
   const lista=await r.json();
-  if(!Array.isArray(lista)||!lista.length)throw new Error('Datadis: la cuenta no tiene ningún suministro dado de alta.');
+  if(!Array.isArray(lista)||!lista.length)throw new Error(env.DATADIS_AUTHORIZED_NIF
+    ?('Datadis: no hay suministros autorizados para el NIF '+env.DATADIS_AUTHORIZED_NIF+'. ¿Ha aceptado el titular la autorización?')
+    :'Datadis: la cuenta no tiene ningún suministro dado de alta. Si el CUPS es de un cliente, configura DATADIS_AUTHORIZED_NIF.');
   const cups=env.DATADIS_CUPS;
   const s=cups?lista.find(x=>String(x.cups||'').toUpperCase().startsWith(cups.toUpperCase())):lista[0];
   if(!s)throw new Error('Datadis: el CUPS '+cups+' no está en esta cuenta. Disponibles: '+lista.map(x=>x.cups).join(', '));
@@ -89,8 +101,8 @@ async function datadisConsumo(env,desde,hasta){
   const sup=await datadisSuministro(env,tk);
   const filas=[],fallos=[];
   for(const mes of meses(desde,hasta)){
-    const q=new URLSearchParams({cups:sup.cups,distributorCode:sup.distributorCode,
-      startDate:mes,endDate:mes,measurementType:'0',pointType:String(sup.pointType)});
+    const q=new URLSearchParams(Object.assign({cups:sup.cups,distributorCode:sup.distributorCode,
+      startDate:mes,endDate:mes,measurementType:'0',pointType:String(sup.pointType)},autorizado(env)));
     try{
       const r=await pedir(DATADIS+'/api-private/api/get-consumption-data?'+q,{headers:{Authorization:'Bearer '+tk}});
       if(!r.ok){fallos.push(mes+': HTTP '+r.status);continue}
@@ -113,6 +125,7 @@ async function datadisConsumo(env,desde,hasta){
   }
   filas.sort((a,b)=>a.ts<b.ts?-1:a.ts>b.ts?1:0);
   return{rows:filas,meta:{cups:sup.cups,distribuidora:sup.distributorCode,
+    titular:env.DATADIS_AUTHORIZED_NIF||'propio',
     desde:desde,hasta:hasta,registros:filas.length,mesesConFallo:fallos}};
 }
 
@@ -213,6 +226,7 @@ export default{
     try{
       if(ruta==='/estado')return json({
         datadis:!!(env.DATADIS_USER&&env.DATADIS_PASS),
+        datadisAutorizado:!!env.DATADIS_AUTHORIZED_NIF,
         solarman:!!(env.SOLARMAN_APPID&&env.SOLARMAN_APPSECRET&&env.SOLARMAN_EMAIL&&env.SOLARMAN_PASS),
       },200,h);
 
