@@ -415,8 +415,14 @@ export default{
     if(req.method==='OPTIONS')return new Response(null,{status:204,headers:h});
     if(!c.ok)
       return json({error:'Origen no autorizado. Revisa ALLOWED_ORIGIN en el Worker.'},403,h);
-    if((req.headers.get('X-Panel-Key')||'')!==(env.PANEL_KEY||' '))
-      return json({error:'Clave de panel incorrecta.'},401,h);
+    // Distinguir los dos casos ahorra mucho tiempo: si PANEL_KEY no llega, lo
+    // habitual es haberla puesto en las variables de *compilación* (Settings →
+    // Build) en lugar de en las de ejecución (Settings → Variables and Secrets).
+    if(!env.PANEL_KEY)
+      return json({error:'El Worker no tiene PANEL_KEY configurada. Compruébalo en Settings → Variables and Secrets (las de ejecución, no las de Build).',
+        pistas:{ALLOWED_ORIGIN:env.ALLOWED_ORIGIN||null,IDE_USER:!!env.IDE_USER,IDE_PASS:!!env.IDE_PASS,DATADIS_USER:!!env.DATADIS_USER}},401,h);
+    if((req.headers.get('X-Panel-Key')||'').trim()!==String(env.PANEL_KEY).trim())
+      return json({error:'La clave de panel no coincide con la PANEL_KEY del Worker.'},401,h);
 
     const ruta=new URL(req.url).pathname.replace(/\/+$/,'');
     try{
