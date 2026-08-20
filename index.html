@@ -48,6 +48,11 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min
 .uz.loaded{border-color:var(--green2);border-style:solid}
 .uz h3{font-size:13px;margin-bottom:2px} .uz p{font-size:11px;color:var(--muted)}
 .uz .st{font-size:11px;color:var(--accent);margin-top:6px;font-weight:600}
+.uz .fl{font-size:10px;color:var(--dim);margin-top:6px;line-height:1.6}
+.uz .fl b{color:var(--accent2);font-weight:600}
+.uz .fl .warn{color:var(--orange)}
+.uz .clr{display:inline-block;margin-top:6px;font-size:10px;color:var(--muted);border:1px solid var(--border);border-radius:5px;padding:2px 8px;cursor:pointer}
+.uz .clr:hover{color:var(--red);border-color:var(--red)}
 input[type=file]{display:none}
 .drow{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
 .drow label{font-size:12px;color:var(--dim)}
@@ -135,7 +140,7 @@ input[type=file]{display:none}
   <div id="pUpload">
     <div class="uz" id="zA" onclick="$('fA').click()"><h3>📂 Inversor A — Ficheros de producción (.xlsx)</h3><p>Selecciona uno o varios ficheros .xlsx del Inversor A</p><div class="st" id="stA"></div><input type="file" id="fA" accept=".xlsx" multiple></div>
     <div class="uz" id="zB" onclick="$('fB').click()"><h3>📂 Inversor B — Ficheros de producción (.xlsx)</h3><p>Selecciona uno o varios ficheros .xlsx del Inversor B</p><div class="st" id="stB"></div><input type="file" id="fB" accept=".xlsx" multiple></div>
-    <div class="uz" id="zI" onclick="$('fI').click()"><h3>📂 Consumo i-DE (.xlsx)</h3><p>Fichero de consumo horario descargado de i-DE (hoja "Horarias")</p><div class="st" id="stI"></div><input type="file" id="fI" accept=".xlsx"></div>
+    <div class="uz" id="zI" onclick="$('fI').click()"><h3>📂 Consumo i-DE (.xlsx)</h3><p>Uno o varios ficheros de consumo horario de i-DE (hoja "Horarias"). Si el histórico se ha descargado en varios trozos, súbelos todos: se unen automáticamente y los días repetidos no se duplican.</p><div class="st" id="stI"></div><div class="fl" id="flI"></div><input type="file" id="fI" accept=".xlsx" multiple></div>
     <div class="drow"><label>Desde:</label><input type="date" id="dDesde"><label>Hasta:</label><input type="date" id="dHasta"><span style="font-size:10px;color:var(--muted)">(vacío = todo el rango)</span></div>
     <button class="btn btn1" id="btnGo" onclick="generate()" disabled>⚡ Generar informe</button>
     <div id="log"></div>
@@ -307,16 +312,18 @@ function ym(d){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0');
 function pDate(v){
   if(v instanceof Date)return v;
   if(typeof v==='number'){return new Date((v-25569)*864e5)}
-  if(typeof v==='string'){let d=new Date(v);if(!isNaN(d))return d;
+  if(typeof v==='string'){
+    // dd/mm/yyyy PRIMERO: new Date('05/01/2025') lo leería como mes/día (5 de enero -> 1 de mayo)
     const m=v.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\s*(\d{1,2})?:?(\d{2})?/);
-    if(m){d=new Date(m[3],m[2]-1,m[1],m[4]||0,m[5]||0);if(!isNaN(d))return d}}
+    if(m){const d=new Date(m[3],m[2]-1,m[1],m[4]||0,m[5]||0);if(!isNaN(d))return d}
+    const d2=new Date(v);if(!isNaN(d2))return d2}
   return null;
 }
 
 // ── File loading ──
 $('fA').onchange=e=>loadInv(e.target.files,'A');
 $('fB').onchange=e=>loadInv(e.target.files,'B');
-$('fI').onchange=e=>loadIBR(e.target.files[0]);
+$('fI').onchange=e=>loadIBR(e.target.files);
 function chk(){$('btnGo').disabled=!(RAW.A.length&&RAW.I.length)}
 
 function loadInv(files,L){
@@ -341,21 +348,89 @@ function loadInv(files,L){
   };r.readAsArrayBuffer(f)});
 }
 
-function loadIBR(file){const r=new FileReader();r.onload=e=>{
-  try{const wb=XLSX.read(e.target.result,{type:'array',cellDates:true});
-    let sn=wb.SheetNames.find(s=>s.toLowerCase().includes('horaria'))||wb.SheetNames[0];
-    const rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:''});
-    let hr=2;for(let i=0;i<Math.min(10,rows.length);i++){if(rows[i].some(c=>String(c).toLowerCase().includes('fecha'))){hr=i;break}}
-    RAW.I=[];for(let i=hr+1;i<rows.length;i++){const rw=rows[i];if(!rw||rw.length<5)continue;
-      const ts=pDate(rw[1]);if(!ts)continue;
-      const consumo=(+rw[4]||0)/1000,gen=(+rw[5]||0)/1000;
-      let periodo='P6';const pm=String(rw[3]||'').match(/(\d)/);if(pm)periodo='P'+pm[1];
-      RAW.I.push({ts,consumo,gen,periodo});}
-    RAW.I.sort((a,b)=>a.ts-b.ts);const days=new Set(RAW.I.map(r=>r.ts.toDateString())).size;
-    $('stI').textContent=`✓ ${RAW.I.length} reg, ${days} días`;$('zI').classList.add('loaded');
-    log(`IBR: ${RAW.I.length} reg, ${days} días`);chk();
-  }catch(er){log('⚠ IBR: '+er.message)}
-};r.readAsArrayBuffer(file)}
+// ── Consumo i-DE: admite VARIOS ficheros (el histórico de i-DE no se puede
+// descargar de una vez cuando supera el año). Se unen por día y los días que
+// aparecen en más de un fichero no se duplican: se conserva el más completo. ──
+let IBR_FILES=[];
+
+function parseIBR(buf){
+  const wb=XLSX.read(buf,{type:'array',cellDates:true});
+  const sn=wb.SheetNames.find(s=>s.toLowerCase().includes('horaria'))||wb.SheetNames[0];
+  const rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:''});
+  let hr=2;for(let i=0;i<Math.min(10,rows.length);i++){if(rows[i].some(c=>String(c).toLowerCase().includes('fecha'))){hr=i;break}}
+  const out=[];
+  for(let i=hr+1;i<rows.length;i++){const rw=rows[i];if(!rw||rw.length<5)continue;
+    const ts=pDate(rw[1]);if(!ts)continue;
+    const consumo=(+rw[4]||0)/1000,gen=(+rw[5]||0)/1000;
+    let periodo='P6';const pm=String(rw[3]||'').match(/(\d)/);if(pm)periodo='P'+pm[1];
+    out.push({ts,consumo,gen,periodo});}
+  return out;
+}
+
+function loadIBR(fl){
+  const nuevos=Array.from(fl||[]);$('fI').value='';
+  if(!nuevos.length)return;
+  let pend=0;
+  nuevos.forEach(f=>{
+    if(IBR_FILES.some(x=>x.name===f.name&&x.size===f.size)){log(`i-DE: «${f.name}» ya estaba cargado, se omite`);return}
+    const slot={name:f.name,size:f.size,rows:[],dias:0};IBR_FILES.push(slot);pend++;
+    const fin=()=>{if(--pend===0)mergeIBR()};
+    const r=new FileReader();
+    r.onload=e=>{try{slot.rows=parseIBR(e.target.result);if(!slot.rows.length){slot.error=true;log('⚠ i-DE '+f.name+': sin registros horarios válidos')}}
+      catch(er){slot.error=true;log('⚠ i-DE '+f.name+': '+er.message)}fin()};
+    r.onerror=()=>{slot.error=true;log('⚠ i-DE '+f.name+': no se pudo leer el fichero');fin()};
+    r.readAsArrayBuffer(f);
+  });
+  if(!pend)mergeIBR();
+}
+
+// Puntuación de un día dentro de un fichero: gana el que tenga más horas con
+// consumo, luego más registros y luego más kWh (un día "de borde" suele venir
+// incompleto o a cero en la descarga que lo corta).
+function scoreDia(rows){let nz=0,tot=0;rows.forEach(r=>{if(r.consumo>0)nz++;tot+=r.consumo});return[nz,rows.length,tot]}
+function cmpDia(a,b){for(let i=0;i<a.length;i++){if(a[i]!==b[i])return a[i]>b[i]?1:-1}return 0}
+function fdmy(d){const p=d.split('-');return p[2]+'/'+p[1]+'/'+p[0]}
+function esc(t){return String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+
+function mergeIBR(){
+  IBR_FILES=IBR_FILES.filter(f=>!f.error);
+  const mejor={},vistos={};
+  IBR_FILES.forEach((f,fi)=>{
+    const porDia={};
+    f.rows.forEach(r=>{const d=dk(r.ts);(porDia[d]=porDia[d]||[]).push(r)});
+    f.dias=Object.keys(porDia).length;
+    for(const d in porDia){
+      (vistos[d]=vistos[d]||new Set()).add(fi);
+      const sc=scoreDia(porDia[d]);
+      if(!mejor[d]||cmpDia(sc,mejor[d].sc)>0)mejor[d]={rows:porDia[d],sc};
+    }
+  });
+  const fechas=Object.keys(mejor).sort();
+  RAW.I=[];fechas.forEach(d=>{for(const r of mejor[d].rows)RAW.I.push(r)});
+  RAW.I.sort((a,b)=>a.ts-b.ts);
+
+  if(!IBR_FILES.length||!fechas.length){
+    RAW.I=[];$('stI').textContent='';$('flI').innerHTML='';$('zI').classList.remove('loaded');chk();return;
+  }
+  const solap=Object.keys(vistos).filter(d=>vistos[d].size>1);
+  const ini=fechas[0],fin=fechas[fechas.length-1];
+  const huecos=Math.round((new Date(fin+'T00:00:00')-new Date(ini+'T00:00:00'))/864e5)+1-fechas.length;
+  const nf=IBR_FILES.length,pl=n=>n===1?'':'s';
+
+  $('zI').classList.add('loaded');
+  $('stI').textContent=`✓ ${nf} fichero${pl(nf)} · ${fn(RAW.I.length)} reg · ${fn(fechas.length)} día${pl(fechas.length)} (${fdmy(ini)} → ${fdmy(fin)})`;
+  let det=IBR_FILES.map(f=>`<b>${esc(f.name)}</b> · ${fn(f.rows.length)} reg · ${fn(f.dias)} día${pl(f.dias)}`).join('<br>');
+  if(solap.length)det+=`<br>🔗 ${fn(solap.length)} día${pl(solap.length)} en más de un fichero: se ha conservado la versión más completa de cada uno.`;
+  if(huecos>0)det+=`<br><span class="warn">⚠ Faltan ${fn(huecos)} día${pl(huecos)} dentro de ${fdmy(ini)} → ${fdmy(fin)}: los ficheros no cubren el periodo entero.</span>`;
+  det+=`<br><span class="clr" onclick="event.stopPropagation();clearIBR()">✕ Vaciar consumo</span>`;
+  $('flI').innerHTML=det;
+  log(`i-DE: ${nf} fichero(s), ${RAW.I.length} reg, ${fechas.length} días (${fdmy(ini)} → ${fdmy(fin)})`+
+      (solap.length?`, ${solap.length} día(s) solapado(s) unificado(s)`:'')+
+      (huecos>0?`, ⚠ ${huecos} día(s) sin datos en el rango`:''));
+  chk();
+}
+
+function clearIBR(){IBR_FILES=[];RAW.I=[];$('fI').value='';mergeIBR();log('i-DE: ficheros de consumo vaciados')}
 
 // ── Processing ──
 function filt(arr,d,h){return arr.filter(r=>{if(d&&r.ts<d)return false;if(h&&r.ts>h)return false;return true})}
@@ -1011,9 +1086,10 @@ async function genPDF(){
 
 // ═══ UI ═══
 function setStep(n){for(let i=1;i<=4;i++){const e=$('s'+i);e.classList.remove('on','ok');if(i<n)e.classList.add('ok');if(i===n)e.classList.add('on')}}
-function reset(){RAW={A:[],B:[],I:[]};R=null;METEO=null;destroyCharts();
+function reset(){RAW={A:[],B:[],I:[]};IBR_FILES=[];R=null;METEO=null;destroyCharts();
   $('pResults').style.display='none';$('pUpload').style.display='block';$('log').innerHTML='';
   ['A','B','I'].forEach(k=>{$('st'+k).textContent='';$('z'+k).classList.remove('loaded')});
+  $('flI').innerHTML='';$('fA').value='';$('fB').value='';$('fI').value='';
   $('btnGo').disabled=true;setStep(1)}
 // D&D
 document.querySelectorAll('.uz').forEach(z=>{

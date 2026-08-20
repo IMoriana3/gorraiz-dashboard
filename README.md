@@ -6,7 +6,8 @@
 App **100 % cliente** (sin backend ni base de datos) que reproduce el informe FV aprobado de 5 páginas a partir de los ficheros de producción de los inversores y del consumo horario, y permite comparar dos periodos. Todo el procesado ocurre en el navegador; desplegada en GitHub Pages.
 
 ## Funcionalidades
-- Carga de `.xlsx`: Inversor A y B (producción, admite varios ficheros) + Consumo i-DE (hoja `Horarias`).
+- Carga de `.xlsx`: Inversor A y B (producción, admite varios ficheros) + Consumo i-DE (hoja `Horarias`, **admite varios ficheros**).
+- **Unión automática del consumo i-DE** cuando el histórico se descarga en varios trozos (i-DE no deja bajar más de un año de una vez): los ficheros se fusionan por día, los días presentes en más de un fichero **no se duplican** (se conserva la versión más completa de cada día) y se avisa si quedan días sin cubrir dentro del rango.
 - Informe de 5 páginas: Producción · Inversores · Consumo · Acumulados · Avanzado.
 - **Exportación a PDF** apaisado (A4 horizontal) de las 5 páginas.
 - **Comparativa entre dos periodos** (A vs B): KPIs, Producción y Económico, con su propio PDF de 3 páginas.
@@ -15,7 +16,7 @@ App **100 % cliente** (sin backend ni base de datos) que reproduce el informe FV
 
 ## Uso
 1. Abre `index.html` o el despliegue.
-2. Sube los `.xlsx` de producción (Inversor A / B) y el de consumo de i-DE (hoja `Horarias`).
+2. Sube los `.xlsx` de producción (Inversor A / B) y **los** de consumo de i-DE (hoja `Horarias`). Puedes soltarlos todos a la vez o ir añadiéndolos uno a uno; bajo la zona de carga se lista lo cargado, los días solapados unificados y un botón **✕ Vaciar consumo** para empezar de cero.
 3. Pulsa **⚡ Generar informe** y revisa las 5 páginas.
 4. **📄 Descargar PDF (5 páginas)** para exportar el informe.
 5. *(Opcional)* En **Comparativa entre dos periodos**, define el Periodo A y el B y genera su PDF de 3 páginas.
