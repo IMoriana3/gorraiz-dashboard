@@ -55,13 +55,23 @@ El alta en Datadis como organización exige certificado digital. Si no lo tienes
 npx wrangler secret put IDE_USER
 npx wrangler secret put IDE_PASS
 npx wrangler secret put IDE_CUPS   # opcional: si la cuenta tiene un solo contrato, sobra
+npx wrangler secret put IDE_FACTOR # opcional: 0.001 si el portal resulta servir Wh
 ```
+
+**Antes de desplegar puedes probarlo en local** con `npx wrangler dev` y los secretos en un `.dev.vars` (no lo subas al repositorio). Las llamadas sin cabecera `Origin` —curl, wrangler dev— se aceptan si traen la clave de panel: CORS solo protege llamadas de navegador.
+
+```bash
+curl -s localhost:8787/consumo -H 'X-Panel-Key: TU_CLAVE' \
+  -H 'content-type: application/json' -d '{"desde":"2025-06-01","hasta":"2025-06-30"}' | head -c 600
+```
+
+**Unidades.** No está confirmado si el portal sirve kWh o Wh. La respuesta incluye `meta.totalKWh` y `meta.mediaHoraria` para verlo de un vistazo, y si la media sale desproporcionada para esta instalación lo dice en `meta.aviso`. La corrección es `IDE_FACTOR=0.001`, sin tocar código.
 
 Si están configuradas las dos fuentes manda Datadis, por ser la oficial. Se puede forzar una en concreto mandando `{"fuente":"ide"}` o `{"fuente":"datadis"}` en el cuerpo de `/consumo`.
 
 **Esto no es una API pública.** Es la que usa por dentro el área privada del portal, la misma que emplean las integraciones de Home Assistant. Funciona, pero no está documentada ni soportada: puede cambiar sin aviso, y nada garantiza que i-DE no bloquee las llamadas desde una IP de Cloudflare. Datadis es la vía estable; esta es la que desbloquea el botón hoy.
 
-`/ide/diagnostico` vuelca la lista de contratos en crudo, útil si hay varios y hay que averiguar cuál es el de Gorraiz.
+`/ide/diagnostico` vuelca la lista de contratos en crudo, útil si hay varios y hay que averiguar cuál es el de Gorraiz. Pasándole `{"dia":"AAAA-MM-DD"}` añade además un día de consumo sin procesar: claves devueltas, número de valores y los primeros, que es lo que permite ver de una vez la forma real y la magnitud de las cifras.
 
 Y cuando lleguen las credenciales de Solarman:
 

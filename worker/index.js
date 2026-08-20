@@ -21,17 +21,29 @@ const ymd=d=>d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate(
 const dUTC=s=>new Date(s+'T00:00:00Z');
 
 function cors(env,req){
-  const org=req.headers.get('Origin')||'';
+  const org=req.headers.get('Origin');
+  // Sin cabecera Origin no es una llamada de navegador (curl, wrangler dev):
+  // CORS no pinta nada ahí y la clave de panel sigue siendo obligatoria.
+  if(!org)return{ok:true,h:{}};
   const permitidos=(env.ALLOWED_ORIGIN||'').split(',').map(s=>s.trim()).filter(Boolean);
-  // Sin ALLOWED_ORIGIN configurado no se abre a cualquiera: se deniega.
   const ok=permitidos.includes(org);
-  return{
+  return{ok:ok,h:{
     'Access-Control-Allow-Origin':ok?org:'null',
     'Access-Control-Allow-Headers':'content-type,x-panel-key',
     'Access-Control-Allow-Methods':'POST,GET,OPTIONS',
     'Access-Control-Max-Age':'86400',
     'Vary':'Origin',
-  };
+  }};
+}
+
+// Con 123,84 kWp y ~142.000 kWh/año de producción, una media horaria de
+// cientos de kWh no es plausible: casi seguro que los valores vienen en Wh.
+// Se avisa en lugar de corregir a ciegas; el ajuste va por IDE_FACTOR.
+function revisaUnidades(filas){
+  if(!filas.length)return null;
+  const total=filas.reduce((a,f)=>a+f.consumo,0),media=total/filas.length;
+  return{totalKWh:Math.round(total),mediaHoraria:+media.toFixed(2),
+    aviso:media>500?'La media horaria es de '+Math.round(media)+' kWh, desproporcionada para esta instalación: lo más probable es que el portal sirva Wh. Configura IDE_FACTOR=0.001 y repite.':null};
 }
 
 // Reintento con espera creciente: Datadis va lento y corta si se le aprieta.
@@ -199,6 +211,7 @@ function horasDelDia(y,m,d){
 }
 
 async function ideConsumo(env,desde,hasta){
+  const factor=+(env.IDE_FACTOR||1)||1;
   const ck=await ideLogin(env);
   const sel=await ideSelecciona(env,ck);
   const fmt=d=>pad(d.getUTCDate())+'-'+pad(d.getUTCMonth()+1)+'-'+d.getUTCFullYear();
@@ -224,8 +237,9 @@ async function ideConsumo(env,desde,hasta){
         for(const h of horas){
           if(i>=vals.length)break;
           const v=vals[i++];
-          const kwh=v&&typeof v==='object'?+v.valor:+v;
+          let kwh=v&&typeof v==='object'?+v.valor:+v;
           if(isNaN(kwh))continue;
+          kwh*=factor;
           const f=yy+'-'+pad(mm)+'-'+pad(dia);
           if(f<desde||f>hasta)continue;
           filas.push({ts:f+'T'+pad(h)+':00:00',consumo:kwh,gen:0,periodo:periodo(yy,mm,dia,h)});
@@ -236,9 +250,9 @@ async function ideConsumo(env,desde,hasta){
     }catch(e){fallos.push(mes+': '+e.message)}
   }
   filas.sort((a,b)=>a.ts<b.ts?-1:a.ts>b.ts?1:0);
-  return{rows:filas,meta:{fuente:'i-DE (portal)',contrato:sel.indice+1+' de '+sel.total,
-    desde:desde,hasta:hasta,registros:filas.length,mesesConFallo:fallos,
-    aviso:'API interna del portal de i-DE, no documentada. Contrasta un mes con el .xlsx antes de fiarte, sobre todo las unidades.'}};
+  const u=revisaUnidades(filas);
+  return{rows:filas,meta:Object.assign({fuente:'i-DE (portal)',contrato:sel.indice+1+' de '+sel.total,
+    desde:desde,hasta:hasta,registros:filas.length,mesesConFallo:fallos,factor:factor},u||{})};
 }
 
 // ── SOLARMAN ─────────────────────────────────────────────────────────────
@@ -327,9 +341,9 @@ async function solarmanDiagnostico(env,dia){
 // ── enrutado ─────────────────────────────────────────────────────────────
 export default{
   async fetch(req,env){
-    const h=cors(env,req);
+    const c=cors(env,req),h=c.h;
     if(req.method==='OPTIONS')return new Response(null,{status:204,headers:h});
-    if(h['Access-Control-Allow-Origin']==='null')
+    if(!c.ok)
       return json({error:'Origen no autorizado. Revisa ALLOWED_ORIGIN en el Worker.'},403,h);
     if((req.headers.get('X-Panel-Key')||'')!==(env.PANEL_KEY||' '))
       return json({error:'Clave de panel incorrecta.'},401,h);
@@ -367,7 +381,21 @@ export default{
       if(ruta==='/ide/diagnostico'){
         if(!env.IDE_USER)return json({error:'i-DE no está configurado.'},501,h);
         const ck=await ideLogin(env);
-        return json({contratos:await ideContratos(env,ck)},200,h);
+        const contratos=await ideContratos(env,ck);
+        const res={contratos:contratos};
+        // Un día en crudo: es lo que permite ver de una vez el nombre de los
+        // campos, la forma de 'valores' y la magnitud real de las cifras.
+        if(b.dia&&/^\d{4}-\d{2}-\d{2}$/.test(b.dia)){
+          await ideSelecciona(env,ck);
+          const p=b.dia.split('-'),f=p[2]+'-'+p[1]+'-'+p[0];
+          const r=await pedir(IDE+'/consumoNew/obtenerDatosConsumoDH/'+f+'/'+f+'/horas/USU/',{headers:ideCab(ck)});
+          const j=await r.json().catch(()=>null);
+          const d0=Array.isArray(j)?j[0]:j;
+          res.dia={http:r.status,claves:d0?Object.keys(d0):null,fechaDesde:d0&&d0.fechaDesde,
+            nValores:d0&&d0.valores?d0.valores.length:0,
+            primeros:d0&&d0.valores?d0.valores.slice(0,5):null};
+        }
+        return json(res,200,h);
       }
       if(ruta==='/produccion'){
         if(!env.SOLARMAN_APPID)return json({error:'Solarman aún no está configurado: faltan appId y appSecret.'},501,h);
