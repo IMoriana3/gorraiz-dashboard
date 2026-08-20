@@ -247,10 +247,17 @@ async function ideLogin(env){
         'Accept-Language':'es-ES,es;q=0.9'}},2);
     previa=galleta(w);
   }catch(e){}
-  const r=await pedir(IDE+'/loginNew/login/',{method:'POST',headers:ideCab(previa),
-    body:JSON.stringify([env.IDE_USER,env.IDE_PASS,'','Android 6.0','Móvil','Chrome 119.0.0.0','0','','s',''])});
-  if(r.status===503)
-    throw new Error('i-DE responde 503 al login. O el portal está caído, o está rechazando la petición por venir de un servidor. Compruébalo entrando tú en i-de.es; si la web va bien, es lo segundo y esta vía no sirve para este caso.');
+  let r;
+  try{
+    r=await pedir(IDE+'/loginNew/login/',{method:'POST',headers:ideCab(previa),
+      body:JSON.stringify([env.IDE_USER,env.IDE_PASS,'','Android 6.0','Móvil','Chrome 119.0.0.0','0','','s',''])});
+  }catch(e){
+    // pedir() reintenta los 5xx y acaba lanzando su error genérico, así que el
+    // caso interesante hay que explicarlo aquí y no comprobando r.status.
+    if(String(e.message).includes('503'))
+      throw new Error('i-DE responde 503 al login tras varios intentos. Si el portal te funciona en el navegador, está rechazando la petición por venir de un servidor, y esta vía no sirve: hay que ir por Datadis.');
+    throw e;
+  }
   if(!r.ok)throw new Error('i-DE: el login devolvió HTTP '+r.status+'.');
   const j=await r.json().catch(()=>({}));
   if(String(j.success)!=='true')

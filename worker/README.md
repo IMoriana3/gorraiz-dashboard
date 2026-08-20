@@ -92,7 +92,11 @@ curl -s localhost:8787/consumo -H 'X-Panel-Key: TU_CLAVE' \
 
 Si están configuradas las dos fuentes manda Datadis, por ser la oficial. Se puede forzar una en concreto mandando `{"fuente":"ide"}` o `{"fuente":"datadis"}` en el cuerpo de `/consumo`.
 
-**Esto no es una API pública.** Es la que usa por dentro el área privada del portal, la misma que emplean las integraciones de Home Assistant. Funciona, pero no está documentada ni soportada: puede cambiar sin aviso, y nada garantiza que i-DE no bloquee las llamadas desde una IP de Cloudflare. Datadis es la vía estable; esta es la que desbloquea el botón hoy.
+**Probado y NO funciona desde Cloudflare (agosto 2026).** El portal responde `503` al login, con el mismo resultado tras añadir visita previa para recoger cookies y cabeceras completas de navegador (`Accept`, `Accept-Language`, `Origin`, `Referer`, User-Agent real). El portal funcionaba con normalidad desde un navegador en esos mismos momentos, así que el rechazo es por venir la petición de un centro de datos, no por cómo está formada.
+
+Se deja el código porque puede servir desde otra red — un equipo en la oficina, por ejemplo — pero **no desde un Worker**. No merece la pena insistir imitando al navegador con más detalle: es una carrera que se pierde y deja el informe colgando de algo que se rompe sin aviso.
+
+**Esto tampoco es una API pública.** Es la que usa por dentro el área privada del portal, la misma que emplean las integraciones de Home Assistant: no está documentada ni soportada y puede cambiar en cualquier momento. Datadis es la vía buena.
 
 `/ide/diagnostico` vuelca la lista de contratos en crudo, útil si hay varios y hay que averiguar cuál es el de Gorraiz. Pasándole `{"dia":"AAAA-MM-DD"}` añade además un día de consumo sin procesar: claves devueltas, número de valores y los primeros, que es lo que permite ver de una vez la forma real y la magnitud de las cifras.
 
