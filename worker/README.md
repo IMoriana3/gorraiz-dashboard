@@ -29,9 +29,16 @@ Todas las rutas exigen la cabecera `X-Panel-Key` y un `Origin` que figure en `AL
 
 ### Desde GitHub (lo que está montado)
 
-El Worker se despliega conectando el repositorio en **Workers & Pages → Create application → Workers → Import a repository**. La configuración vive en el **`wrangler.toml` de la raíz**, no en esta carpeta: Cloudflare clona con la carpeta raíz por defecto y, si allí no encuentra un `wrangler.toml`, deduce que el repositorio es un sitio estático y publica todos los ficheros tal cual — incluido `.git`. Con el fichero en la raíz, despliega el Worker de verdad y no hace falta tocar ningún ajuste de compilación.
+El Worker se despliega conectando el repositorio en **Workers & Pages → Create application → Workers → Import a repository**. En **Settings → Build** debe quedar:
 
-Si prefieres moverlo a esta carpeta, tendrás que fijar *Root directory* a `worker` en la configuración de compilación del proyecto.
+- **Root directory**: `worker` ← imprescindible
+- **Build command**: vacío
+- **Deploy command**: `npx wrangler deploy`
+- **Production branch**: `main`
+
+El *Root directory* no es un detalle cosmético: si se deja en la raíz, wrangler no encuentra ningún `wrangler.toml`, deduce que el repositorio es un sitio estático y publica **todos** los ficheros tal cual, incluida la carpeta `.git`, sin llegar a desplegar el Worker.
+
+Cada `push` a `main` que toque esta carpeta redespliega solo.
 
 ### Sin instalar nada (desde el navegador)
 
@@ -42,8 +49,9 @@ Si no tienes Node en el equipo, `bundle.js` es el Worker entero en un solo fiche
 ### Con wrangler
 
 ```bash
+cd worker
 npx wrangler login
-npx wrangler deploy     # desde la raíz del repositorio, donde está wrangler.toml
+npx wrangler deploy
 ```
 
 Luego los secretos, uno a uno (`wrangler` los pide por teclado y nunca quedan en el repositorio):
