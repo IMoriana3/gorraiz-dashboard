@@ -40,6 +40,8 @@ El *Root directory* no es un detalle cosmético: si se deja en la raíz, wrangle
 
 Cada `push` a `main` que toque esta carpeta redespliega solo.
 
+**`keep_vars = true` en `wrangler.toml` no es opcional.** Por defecto, `wrangler deploy` borra del Worker todo lo configurado desde el panel que no figure en el fichero. Los secretos se guardan en el panel y no pueden estar en el fichero, así que sin ese ajuste cada despliegue los elimina — y el síntoma es desconcertante: los ves listados en el panel pero el Worker no los recibe.
+
 ### Sin instalar nada (desde el navegador)
 
 Si no tienes Node en el equipo, `bundle.js` es el Worker entero en un solo fichero, listo para pegar en el editor web de Cloudflare. En el panel de Cloudflare: **Workers & Pages → Create → Worker**, abre **Edit code**, borra lo que venga de ejemplo y pega el contenido de `bundle.js`. Luego, en **Settings → Variables and Secrets**, añade `ALLOWED_ORIGIN` como variable de texto y el resto como *Secret*.

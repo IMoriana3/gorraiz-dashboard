@@ -9,6 +9,12 @@ compatibility_date = "2025-01-01"
 workers_dev = true
 preview_urls = false
 
+# IMPRESCINDIBLE: por defecto, `wrangler deploy` BORRA todo lo configurado desde
+# el panel que no figure en este fichero. Los secretos (PANEL_KEY, IDE_USER,
+# IDE_PASS...) se guardan ahí y no pueden vivir aquí, así que sin esto cada
+# despliegue desde GitHub los eliminaba justo después de añadirlos.
+keep_vars = true
+
 # Origen(es) desde los que se acepta la llamada. Sin esto, el Worker deniega
 # todo: no se abre a cualquiera por descuido. Separar por comas si hace falta
 # añadir pruebas en local.
