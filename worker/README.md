@@ -21,6 +21,7 @@ Todas las rutas exigen la cabecera `X-Panel-Key` y un `Origin` que figure en `AL
 | `/consumo` | POST | `{desde, hasta}` en `AAAA-MM-DD` | `{rows:[{ts, consumo, gen, periodo}], meta}` |
 | `/produccion` | POST | `{desde, hasta}` | `{A:[{ts, pot, acum, dia}], B:[…], meta}` |
 | `/solarman/diagnostico` | POST | `{dia}` | Campos en crudo de un tramo, para mapear |
+| `/ide/diagnostico` | POST | — | Lista de contratos en crudo del portal de i-DE |
 
 `rows` sale con la misma forma que produce la lectura de un `.xlsx` de i-DE, así que el informe no distingue de dónde vienen los datos.
 
@@ -46,6 +47,22 @@ npx wrangler secret put DATADIS_AUTHORIZED_NIF   # SOLO si el CUPS es de un terc
 
 **El caso de Gorraiz no lo necesita:** el CUPS es de Amixalan y la cuenta de Datadis será de Amixalan, así que el suministro es propio. Este secreto queda para cuando haya que sacar el informe de un edificio de un tercero.
 
+### Alternativa: i-DE en vez de Datadis
+
+El alta en Datadis como organización exige certificado digital. Si no lo tienes a mano, el Worker puede tirar del portal de clientes de i-DE con las credenciales de siempre:
+
+```bash
+npx wrangler secret put IDE_USER
+npx wrangler secret put IDE_PASS
+npx wrangler secret put IDE_CUPS   # opcional: si la cuenta tiene un solo contrato, sobra
+```
+
+Si están configuradas las dos fuentes manda Datadis, por ser la oficial. Se puede forzar una en concreto mandando `{"fuente":"ide"}` o `{"fuente":"datadis"}` en el cuerpo de `/consumo`.
+
+**Esto no es una API pública.** Es la que usa por dentro el área privada del portal, la misma que emplean las integraciones de Home Assistant. Funciona, pero no está documentada ni soportada: puede cambiar sin aviso, y nada garantiza que i-DE no bloquee las llamadas desde una IP de Cloudflare. Datadis es la vía estable; esta es la que desbloquea el botón hoy.
+
+`/ide/diagnostico` vuelca la lista de contratos en crudo, útil si hay varios y hay que averiguar cuál es el de Gorraiz.
+
 Y cuando lleguen las credenciales de Solarman:
 
 ```bash
@@ -68,12 +85,16 @@ Después, en el dashboard: pega la URL del Worker y la `PANEL_KEY` en **⚡ Desc
 
 **Los periodos P1–P6 se calculan.** Datadis no los devuelve; el `.xlsx` de i-DE sí los traía. `periodos.js` implementa el calendario de la Circular 3/2020 (3.0TD y 6.1TD comparten estructura): festivos nacionales y fines de semana a P6, noches 0–8 h a P6, y punta/llano según temporada del mes. Incluye Viernes Santo por cálculo de Pascua. Los festivos autonómicos y locales no cuentan para el calendario tarifario.
 
+**Cambios de hora en i-DE.** El portal devuelve una lista horaria plana, sin marca de tiempo por valor: hay que repartirla por días contando horas. El último domingo de marzo tiene 23 y el de octubre 25, así que un reparto ingenuo de 24 en 24 desplazaría todo lo posterior al primer cambio de hora del rango. `horasDelDia()` lo contempla: en marzo se salta las 02 h y en octubre se emite dos veces, que es lo que realmente ocurre.
+
+**Cookies a mano.** El `fetch` de Workers no gestiona cookies. La sesión de i-DE se recoge del `Set-Cookie` del login y se reenvía en cada llamada.
+
 **Zona horaria.** El runtime de Cloudflare va en UTC, pero Datadis entrega hora peninsular. Por eso `periodos.js` no construye fechas con zona en ningún momento: trabaja con los componentes tal cual y saca el día de la semana en UTC.
 
 ## Estado de verificación
 
 La lógica está probada con las respuestas simuladas (`meses`, conversión horaria, recorte de rango, orden, duplicados, CORS, autenticación, caída de un mes suelto) y el calendario tarifario contra 17.544 horas de 2024–2025.
 
-Lo que **no** he podido comprobar es la llamada real: este entorno no tiene salida hacia `datadis.es` ni `solarmanpv.com`. La integración está escrita contra la documentación, así que la primera ejecución con credenciales reales es una prueba de verdad. La forma de validarla sin fiarse: pedir un mes del que ya tengas el `.xlsx` de i-DE y cargar los dos a la vez — el dashboard los une por día y el desglose dirá si cuadran.
+Lo que **no** he podido comprobar es la llamada real: este entorno no tiene salida hacia `datadis.es`, `i-de.es` ni `solarmanpv.com`. La integración está escrita contra la documentación, así que la primera ejecución con credenciales reales es una prueba de verdad. La forma de validarla sin fiarse: pedir un mes del que ya tengas el `.xlsx` de i-DE y cargar los dos a la vez — el dashboard los une por día y el desglose dirá si cuadran.
 
 Solarman queda escrito pero inerte hasta tener `appId`/`appSecret`. Como no he podido ver los nombres reales de los campos, `smValor()` busca por nombre (igual que la carga de `.xlsx` busca por cabecera) y existe `/solarman/diagnostico` para volcar un tramo en crudo y afinar el mapeo el primer día.

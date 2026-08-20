@@ -486,7 +486,8 @@ let API_ESTADO=null;
 async function estadoApi(){
   const c=apiCfg();if(!c.url){$('hintAuto').textContent='sin configurar';return}
   try{API_ESTADO=await apiCall('/estado');
-    $('hintAuto').innerHTML=`consumo ${API_ESTADO.datadis?'✓':'✗'} · producción ${API_ESTADO.solarman?'✓':'✗'}`;
+    const fuente=API_ESTADO.datadis?'Datadis':(API_ESTADO.ide?'i-DE':null);
+    $('hintAuto').innerHTML=`consumo ${fuente?'✓ '+fuente:'✗'} · producción ${API_ESTADO.solarman?'✓ Solarman':'✗'}`;
   }catch(e){$('hintAuto').innerHTML=`<span style="color:var(--red)">${esc(e.message)}</span>`}
 }
 async function traerDatos(){

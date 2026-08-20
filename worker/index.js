@@ -129,6 +129,118 @@ async function datadisConsumo(env,desde,hasta){
     desde:desde,hasta:hasta,registros:filas.length,mesesConFallo:fallos}};
 }
 
+// ── i-DE (portal de clientes) ────────────────────────────────────────────
+// Alternativa a Datadis cuando no se dispone de cuenta de organización: usa
+// las mismas credenciales del área privada de i-DE. OJO: es una API interna
+// del portal, no documentada ni soportada. Funciona, pero puede cambiar sin
+// aviso; Datadis es la vía estable.
+const IDE='https://www.i-de.es/consumidores/rest';
+const IDE_CAB={'content-type':'application/json; charset=utf-8',
+  'esVersionNueva':'1','idioma':'es','movilAPP':'si','tipoAPP':'ios',
+  'User-Agent':'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'};
+
+// El fetch de Workers no gestiona cookies: hay que recogerlas del login y
+// reenviarlas a mano en cada llamada posterior.
+function galleta(r){
+  const set=typeof r.headers.getSetCookie==='function'?r.headers.getSetCookie()
+    :(r.headers.get('set-cookie')?[r.headers.get('set-cookie')]:[]);
+  return set.map(c=>c.split(';')[0]).join('; ');
+}
+const ideCab=ck=>Object.assign({},IDE_CAB,ck?{cookie:ck}:{});
+
+async function ideLogin(env){
+  const r=await pedir(IDE+'/loginNew/login/',{method:'POST',headers:IDE_CAB,
+    body:JSON.stringify([env.IDE_USER,env.IDE_PASS,'','Android 6.0','Móvil','Chrome 119.0.0.0','0','','s',''])});
+  const j=await r.json().catch(()=>({}));
+  if(String(j.success)!=='true')
+    throw new Error('i-DE: login rechazado'+(j.message?(' ('+j.message+')'):'')+'. Revisa IDE_USER e IDE_PASS.');
+  const ck=galleta(r);
+  if(!ck)throw new Error('i-DE: el login no devolvió cookie de sesión.');
+  return ck;
+}
+
+// El portal trabaja sobre "el contrato seleccionado", así que si la cuenta
+// tiene varios hay que elegir el de Gorraiz antes de pedir consumos.
+async function ideContratos(env,ck){
+  const r=await pedir(IDE+'/cto/listaCtos/',{headers:ideCab(ck)});
+  const j=await r.json().catch(()=>({}));
+  const lista=Array.isArray(j)?j:(j.contratos||j.lista||[]);
+  if(!lista.length)throw new Error('i-DE: la cuenta no devuelve ningún contrato.');
+  return lista;
+}
+async function ideSelecciona(env,ck){
+  const lista=await ideContratos(env,ck);
+  let i=0;
+  if(env.IDE_CUPS){
+    const busca=env.IDE_CUPS.toUpperCase();
+    // El nombre del campo del CUPS varía según versión del portal, así que se
+    // busca por valor en lugar de fiarlo a una clave concreta.
+    i=lista.findIndex(c=>Object.values(c).some(v=>String(v).toUpperCase().includes(busca)));
+    if(i<0)throw new Error('i-DE: el CUPS '+env.IDE_CUPS+' no está entre los '+lista.length+' contratos de la cuenta.');
+  }
+  if(lista.length>1){
+    const r=await pedir(IDE+'/cto/seleccion/'+i,{headers:ideCab(ck)});
+    if(!r.ok)throw new Error('i-DE: no se pudo seleccionar el contrato (HTTP '+r.status+').');
+  }
+  return{indice:i,contrato:lista[i],total:lista.length};
+}
+
+// Cambios de hora: el último domingo de marzo tiene 23 horas y el de octubre
+// 25. Sin esto, el reparto de valores por día se desplazaría a partir de ahí.
+function ultimoDomingo(y,m){
+  const d=new Date(Date.UTC(y,m,0));
+  d.setUTCDate(d.getUTCDate()-d.getUTCDay());
+  return d.getUTCDate();
+}
+function horasDelDia(y,m,d){
+  if(m===3&&d===ultimoDomingo(y,3))return [0,1,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23];
+  if(m===10&&d===ultimoDomingo(y,10))return [0,1,2,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23];
+  return Array.from({length:24},(_,h)=>h);
+}
+
+async function ideConsumo(env,desde,hasta){
+  const ck=await ideLogin(env);
+  const sel=await ideSelecciona(env,ck);
+  const fmt=d=>pad(d.getUTCDate())+'-'+pad(d.getUTCMonth()+1)+'-'+d.getUTCFullYear();
+  const filas=[],fallos=[];
+  // Se pide mes a mes para no depender de cuánto rango acepta el portal de una
+  // vez y para acotar el efecto de un tramo que venga mal.
+  for(const mes of meses(desde,hasta)){
+    const p=mes.split('/'),y=+p[0],m=+p[1];
+    const ini=new Date(Date.UTC(y,m-1,1)),fin=new Date(Date.UTC(y,m,0));
+    try{
+      const r=await pedir(IDE+'/consumoNew/obtenerDatosConsumoDH/'+fmt(ini)+'/'+fmt(fin)+'/horas/USU/',{headers:ideCab(ck)});
+      if(!r.ok){fallos.push(mes+': HTTP '+r.status);continue}
+      const j=await r.json().catch(()=>null);
+      const d0=Array.isArray(j)?j[0]:j;
+      const vals=d0&&d0.valores;
+      if(!Array.isArray(vals)||!vals.length){fallos.push(mes+': sin valores');continue}
+      // fechaDesde manda sobre lo pedido: el portal puede recortar el rango.
+      const fd=String(d0.fechaDesde||'').split('-');
+      let dia=fd.length===3?+fd[0]:1,mm=fd.length===3?+fd[1]:m,yy=fd.length===3?+fd[2]:y;
+      let i=0;
+      while(i<vals.length){
+        const horas=horasDelDia(yy,mm,dia);
+        for(const h of horas){
+          if(i>=vals.length)break;
+          const v=vals[i++];
+          const kwh=v&&typeof v==='object'?+v.valor:+v;
+          if(isNaN(kwh))continue;
+          const f=yy+'-'+pad(mm)+'-'+pad(dia);
+          if(f<desde||f>hasta)continue;
+          filas.push({ts:f+'T'+pad(h)+':00:00',consumo:kwh,gen:0,periodo:periodo(yy,mm,dia,h)});
+        }
+        const ultimo=new Date(Date.UTC(yy,mm,0)).getUTCDate();
+        if(++dia>ultimo){dia=1;if(++mm>12){mm=1;yy++}}
+      }
+    }catch(e){fallos.push(mes+': '+e.message)}
+  }
+  filas.sort((a,b)=>a.ts<b.ts?-1:a.ts>b.ts?1:0);
+  return{rows:filas,meta:{fuente:'i-DE (portal)',contrato:sel.indice+1+' de '+sel.total,
+    desde:desde,hasta:hasta,registros:filas.length,mesesConFallo:fallos,
+    aviso:'API interna del portal de i-DE, no documentada. Contrasta un mes con el .xlsx antes de fiarte, sobre todo las unidades.'}};
+}
+
 // ── SOLARMAN ─────────────────────────────────────────────────────────────
 // Requiere appId/appSecret (se piden a customerservice@solarmanpv.com).
 async function sha256(txt){
@@ -227,6 +339,7 @@ export default{
       if(ruta==='/estado')return json({
         datadis:!!(env.DATADIS_USER&&env.DATADIS_PASS),
         datadisAutorizado:!!env.DATADIS_AUTHORIZED_NIF,
+        ide:!!(env.IDE_USER&&env.IDE_PASS),
         solarman:!!(env.SOLARMAN_APPID&&env.SOLARMAN_APPSECRET&&env.SOLARMAN_EMAIL&&env.SOLARMAN_PASS),
       },200,h);
 
@@ -238,8 +351,23 @@ export default{
         if(desde>hasta)return json({error:'La fecha inicial es posterior a la final.'},400,h);
       }
       if(ruta==='/consumo'){
-        if(!env.DATADIS_USER)return json({error:'Datadis no está configurado en el Worker.'},501,h);
-        return json(await datadisConsumo(env,desde,hasta),200,h);
+        // Datadis manda si está configurado (es la vía oficial y estable);
+        // i-DE queda como alternativa cuando no hay cuenta de organización.
+        const fuente=b.fuente||(env.DATADIS_USER?'datadis':(env.IDE_USER?'ide':''));
+        if(fuente==='datadis'){
+          if(!env.DATADIS_USER)return json({error:'Datadis no está configurado en el Worker.'},501,h);
+          return json(await datadisConsumo(env,desde,hasta),200,h);
+        }
+        if(fuente==='ide'){
+          if(!env.IDE_USER)return json({error:'i-DE no está configurado en el Worker.'},501,h);
+          return json(await ideConsumo(env,desde,hasta),200,h);
+        }
+        return json({error:'No hay ninguna fuente de consumo configurada (ni Datadis ni i-DE).'},501,h);
+      }
+      if(ruta==='/ide/diagnostico'){
+        if(!env.IDE_USER)return json({error:'i-DE no está configurado.'},501,h);
+        const ck=await ideLogin(env);
+        return json({contratos:await ideContratos(env,ck)},200,h);
       }
       if(ruta==='/produccion'){
         if(!env.SOLARMAN_APPID)return json({error:'Solarman aún no está configurado: faltan appId y appSecret.'},501,h);
