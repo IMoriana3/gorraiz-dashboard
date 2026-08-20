@@ -150,9 +150,12 @@ async function datadisConsumo(env,desde,hasta){
 // del portal, no documentada ni soportada. Funciona, pero puede cambiar sin
 // aviso; Datadis es la vía estable.
 const IDE='https://www.i-de.es/consumidores/rest';
+const IDE_UA='Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
 const IDE_CAB={'content-type':'application/json; charset=utf-8',
   'esVersionNueva':'1','idioma':'es','movilAPP':'si','tipoAPP':'ios',
-  'User-Agent':'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'};
+  'Accept':'application/json, text/plain, */*','Accept-Language':'es-ES,es;q=0.9',
+  'Origin':'https://www.i-de.es','Referer':'https://www.i-de.es/consumidores/web/guest/login',
+  'User-Agent':IDE_UA};
 
 // El fetch de Workers no gestiona cookies: hay que recogerlas del login y
 // reenviarlas a mano en cada llamada posterior.
@@ -164,12 +167,25 @@ function galleta(r){
 const ideCab=ck=>Object.assign({},IDE_CAB,ck?{cookie:ck}:{});
 
 async function ideLogin(env){
-  const r=await pedir(IDE+'/loginNew/login/',{method:'POST',headers:IDE_CAB,
+  // Visita previa a la página de login para recoger cookies antes del POST: el
+  // portal responde 503 a peticiones que llegan "en frío", sin haber pasado
+  // por la web. Si esta visita falla, se intenta el login igualmente.
+  let previa='';
+  try{
+    const w=await pedir('https://www.i-de.es/consumidores/web/guest/login',
+      {headers:{'User-Agent':IDE_UA,'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language':'es-ES,es;q=0.9'}},2);
+    previa=galleta(w);
+  }catch(e){}
+  const r=await pedir(IDE+'/loginNew/login/',{method:'POST',headers:ideCab(previa),
     body:JSON.stringify([env.IDE_USER,env.IDE_PASS,'','Android 6.0','Móvil','Chrome 119.0.0.0','0','','s',''])});
+  if(r.status===503)
+    throw new Error('i-DE responde 503 al login. O el portal está caído, o está rechazando la petición por venir de un servidor. Compruébalo entrando tú en i-de.es; si la web va bien, es lo segundo y esta vía no sirve para este caso.');
+  if(!r.ok)throw new Error('i-DE: el login devolvió HTTP '+r.status+'.');
   const j=await r.json().catch(()=>({}));
   if(String(j.success)!=='true')
     throw new Error('i-DE: login rechazado'+(j.message?(' ('+j.message+')'):'')+'. Revisa IDE_USER e IDE_PASS.');
-  const ck=galleta(r);
+  const ck=galleta(r)||previa;
   if(!ck)throw new Error('i-DE: el login no devolvió cookie de sesión.');
   return ck;
 }
