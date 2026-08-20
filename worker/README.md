@@ -27,6 +27,12 @@ Todas las rutas exigen la cabecera `X-Panel-Key` y un `Origin` que figure en `AL
 
 ## Despliegue
 
+### Desde GitHub (lo que está montado)
+
+El Worker se despliega conectando el repositorio en **Workers & Pages → Create application → Workers → Import a repository**. La configuración vive en el **`wrangler.toml` de la raíz**, no en esta carpeta: Cloudflare clona con la carpeta raíz por defecto y, si allí no encuentra un `wrangler.toml`, deduce que el repositorio es un sitio estático y publica todos los ficheros tal cual — incluido `.git`. Con el fichero en la raíz, despliega el Worker de verdad y no hace falta tocar ningún ajuste de compilación.
+
+Si prefieres moverlo a esta carpeta, tendrás que fijar *Root directory* a `worker` en la configuración de compilación del proyecto.
+
 ### Sin instalar nada (desde el navegador)
 
 Si no tienes Node en el equipo, `bundle.js` es el Worker entero en un solo fichero, listo para pegar en el editor web de Cloudflare. En el panel de Cloudflare: **Workers & Pages → Create → Worker**, abre **Edit code**, borra lo que venga de ejemplo y pega el contenido de `bundle.js`. Luego, en **Settings → Variables and Secrets**, añade `ALLOWED_ORIGIN` como variable de texto y el resto como *Secret*.
@@ -36,9 +42,8 @@ Si no tienes Node en el equipo, `bundle.js` es el Worker entero en un solo fiche
 ### Con wrangler
 
 ```bash
-cd worker
 npx wrangler login
-npx wrangler deploy
+npx wrangler deploy     # desde la raíz del repositorio, donde está wrangler.toml
 ```
 
 Luego los secretos, uno a uno (`wrangler` los pide por teclado y nunca quedan en el repositorio):

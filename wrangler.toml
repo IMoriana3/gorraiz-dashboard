@@ -1,0 +1,23 @@
+# Configuración del Worker de datos (el código vive en worker/).
+#
+# Está en la RAÍZ a propósito: Cloudflare despliega este repositorio desde
+# GitHub con la carpeta raíz por defecto, y si aquí no encuentra un
+# wrangler.toml deduce que el repositorio es un sitio estático y publica todos
+# los ficheros tal cual — incluido .git. Con este fichero, wrangler sabe que
+# lo que hay que desplegar es un Worker y de dónde sacarlo.
+name = "gorraiz-dashboard"
+main = "worker/index.js"
+compatibility_date = "2025-01-01"
+
+workers_dev = true
+preview_urls = false
+
+# Origen(es) desde los que se acepta la llamada. Sin esto, el Worker deniega
+# todo: no se abre a cualquiera por descuido. Separar por comas si hace falta
+# añadir pruebas en local.
+[vars]
+ALLOWED_ORIGIN = "https://imoriana3.github.io"
+
+# El resto NO va aquí: son secretos y se cargan desde el panel de Cloudflare
+# (Settings → Variables and Secrets) o con `wrangler secret put`.
+# Ver worker/README.md.
