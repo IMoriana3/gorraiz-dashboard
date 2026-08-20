@@ -14,6 +14,8 @@ App **100 % cliente** (sin backend ni base de datos) que reproduce el informe FV
 - Datos meteo vía Open-Meteo (GHI medio, horas de sol y temperatura) con conversión de unidades.
 - Cálculo de ahorro cruzando la producción horaria con los precios por periodo tarifario **P1–P6** (Impuesto Eléctrico + IVA). Métricas de rendimiento (kWh/kWp).
 
+- **Descarga automática con un botón** (opcional): trae el consumo directamente de Datadis sin descargar ni subir ficheros, pidiendo el histórico mes a mes por dentro. Requiere desplegar el Worker de `worker/` — ver [`worker/README.md`](worker/README.md). La producción vía Solarman queda escrita y se activa al obtener sus credenciales de API.
+
 ## Uso
 1. Abre `index.html` o el despliegue.
 2. Sube los `.xlsx` de producción (Inversor A / B) y **los** de consumo de i-DE (hoja `Horarias`). Puedes soltarlos todos a la vez o ir añadiéndolos uno a uno; bajo la zona de carga se lista lo cargado, los días solapados unificados y un botón **✕ Vaciar consumo** para empezar de cero.
@@ -23,6 +25,7 @@ App **100 % cliente** (sin backend ni base de datos) que reproduce el informe FV
 
 ## Stack
 HTML/CSS/JS sin framework (un único `index.html`) · SheetJS (xlsx) · Chart.js · jsPDF + html2canvas · Open-Meteo · GitHub Pages.
+Descarga automática (opcional): Cloudflare Worker en `worker/` contra Datadis y Solarman.
 
 ## Despliegue (URL)
 GitHub Pages: https://imoriana3.github.io/gorraiz-dashboard/ · `.nojekyll` incluido.

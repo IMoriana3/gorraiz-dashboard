@@ -53,6 +53,15 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min
 .uz .fl .warn{color:var(--orange)}
 .uz .clr{display:inline-block;margin-top:6px;font-size:10px;color:var(--muted);border:1px solid var(--border);border-radius:5px;padding:2px 8px;cursor:pointer}
 .uz .clr:hover{color:var(--red);border-color:var(--red)}
+.az{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:10px}
+.az h3{font-size:13px;margin-bottom:2px} .az p{font-size:11px;color:var(--muted);margin-bottom:8px}
+.az .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:11px}
+.az input[type=date],.az input[type=text],.az input[type=password]{background:var(--card2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 8px;font-size:11px;font-family:inherit}
+.az input[type=text],.az input[type=password]{flex:1;min-width:180px}
+.az .st{font-size:11px;margin-top:8px;font-weight:600;color:var(--accent)}
+.az .st .warn{color:var(--orange)} .az .st .err{color:var(--red)}
+.az .cfg{margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
+.az .hint{font-size:10px;color:var(--muted);margin-top:4px;line-height:1.5}
 input[type=file]{display:none}
 .drow{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
 .drow label{font-size:12px;color:var(--dim)}
@@ -141,6 +150,18 @@ input[type=file]{display:none}
     <div class="uz" id="zA" onclick="$('fA').click()"><h3>📂 Inversor A — Ficheros de producción (.xlsx)</h3><p>Selecciona uno o varios ficheros .xlsx del Inversor A</p><div class="st" id="stA"></div><input type="file" id="fA" accept=".xlsx" multiple></div>
     <div class="uz" id="zB" onclick="$('fB').click()"><h3>📂 Inversor B — Ficheros de producción (.xlsx)</h3><p>Selecciona uno o varios ficheros .xlsx del Inversor B</p><div class="st" id="stB"></div><input type="file" id="fB" accept=".xlsx" multiple></div>
     <div class="uz" id="zI" onclick="$('fI').click()"><h3>📂 Consumo i-DE (.xlsx)</h3><p>Uno o varios ficheros de consumo horario de i-DE (hoja "Horarias"). Si el histórico se ha descargado en varios trozos, súbelos todos: se unen automáticamente y los días repetidos no se duplican.</p><div class="st" id="stI"></div><div class="fl" id="flI"></div><input type="file" id="fI" accept=".xlsx" multiple></div>
+    <div class="az" id="zAuto">
+      <h3>⚡ Descarga automática</h3>
+      <p>Trae el consumo directamente de Datadis, sin descargar ni subir ficheros. El histórico se pide mes a mes por dentro, así que da igual que sean tres años.</p>
+      <div class="row">
+        <label>Desde:</label><input type="date" id="aDesde">
+        <label>Hasta:</label><input type="date" id="aHasta">
+        <button class="btn btn2" id="btnAuto" onclick="traerDatos()" style="padding:6px 14px;font-size:11px">⬇ Traer datos</button>
+        <span class="hint" id="hintAuto" style="margin:0"></span>
+      </div>
+      <div class="st" id="stAuto"></div>
+      <div class="cfg" id="cfgAuto"></div>
+    </div>
     <div class="drow"><label>Desde:</label><input type="date" id="dDesde"><label>Hasta:</label><input type="date" id="dHasta"><span style="font-size:10px;color:var(--muted)">(vacío = todo el rango)</span></div>
     <button class="btn btn1" id="btnGo" onclick="generate()" disabled>⚡ Generar informe</button>
     <div id="log"></div>
@@ -431,6 +452,83 @@ function mergeIBR(){
 }
 
 function clearIBR(){IBR_FILES=[];RAW.I=[];$('fI').value='';mergeIBR();log('i-DE: ficheros de consumo vaciados')}
+
+// ═══ DESCARGA AUTOMÁTICA (Datadis / Solarman vía Worker) ═══
+// El navegador no puede llamar a Datadis ni a Solarman: no mandan CORS y las
+// credenciales quedarían públicas en este HTML. Por eso se habla con un Worker
+// propio (carpeta worker/) que es quien guarda las credenciales.
+const API_KEY='gorraiz_api_cfg';
+function apiCfg(){try{return JSON.parse(localStorage.getItem(API_KEY))||{}}catch(e){return{}}}
+function apiSave(){
+  const c={url:$('aUrl').value.trim().replace(/\/+$/,''),key:$('aKey').value};
+  localStorage.setItem(API_KEY,JSON.stringify(c));
+  pintaCfg();estadoApi();log('Conexión guardada en este navegador');
+}
+function pintaCfg(){
+  const c=apiCfg();
+  $('cfgAuto').innerHTML=`<div class="row">
+    <label>Worker:</label><input type="text" id="aUrl" placeholder="https://gorraiz-datos.tu-cuenta.workers.dev" value="${esc(c.url||'')}">
+    <label>Clave:</label><input type="password" id="aKey" placeholder="clave de panel" value="${esc(c.key||'')}">
+    <button class="btn btn2" onclick="apiSave()" style="padding:5px 12px;font-size:11px">Guardar</button>
+  </div><div class="hint">Se guardan solo en este navegador (localStorage), nunca en el repositorio. Las credenciales de Datadis y Solarman viven en el Worker, no aquí.</div>`;
+}
+async function apiCall(ruta,body){
+  const c=apiCfg();
+  if(!c.url)throw new Error('Falta la dirección del Worker: rellénala abajo y pulsa Guardar.');
+  const r=await fetch(c.url+ruta,{method:body?'POST':'GET',
+    headers:{'content-type':'application/json','X-Panel-Key':c.key||''},
+    body:body?JSON.stringify(body):undefined});
+  const j=await r.json().catch(()=>({error:'respuesta ilegible del Worker'}));
+  if(!r.ok)throw new Error(j.error||('HTTP '+r.status));
+  return j;
+}
+let API_ESTADO=null;
+async function estadoApi(){
+  const c=apiCfg();if(!c.url){$('hintAuto').textContent='sin configurar';return}
+  try{API_ESTADO=await apiCall('/estado');
+    $('hintAuto').innerHTML=`consumo ${API_ESTADO.datadis?'✓':'✗'} · producción ${API_ESTADO.solarman?'✓':'✗'}`;
+  }catch(e){$('hintAuto').innerHTML=`<span style="color:var(--red)">${esc(e.message)}</span>`}
+}
+async function traerDatos(){
+  const desde=$('aDesde').value,hasta=$('aHasta').value;
+  if(!desde||!hasta){$('stAuto').innerHTML='<span class="err">Indica las fechas desde y hasta.</span>';return}
+  if(desde>hasta){$('stAuto').innerHTML='<span class="err">La fecha inicial es posterior a la final.</span>';return}
+  const b=$('btnAuto');b.disabled=true;const txt=b.textContent;b.textContent='⏳ Descargando…';
+  $('stAuto').textContent='Pidiendo datos al Worker; un histórico largo puede tardar un par de minutos.';
+  try{
+    const c=await apiCall('/consumo',{desde,hasta});
+    if(!c.rows||!c.rows.length)throw new Error('Datadis no ha devuelto ningún registro en ese rango.');
+    // Entra como un "fichero" más para reutilizar la unión por días y el aviso
+    // de huecos: así se puede mezclar con .xlsx antiguos sin duplicar nada.
+    const nombre=`Datadis ${fdmy(desde)} → ${fdmy(hasta)}`;
+    IBR_FILES=IBR_FILES.filter(f=>f.name!==nombre);
+    IBR_FILES.push({name:nombre,size:0,dias:0,
+      rows:c.rows.map(r=>({ts:new Date(r.ts),consumo:r.consumo,gen:r.gen,periodo:r.periodo}))});
+    mergeIBR();
+    let msg=`✓ Consumo: ${fn(c.rows.length)} registros de ${esc(c.meta.cups||'')}`;
+    if(c.meta.mesesConFallo&&c.meta.mesesConFallo.length)
+      msg+=`<br><span class="warn">⚠ Meses que Datadis no ha servido: ${esc(c.meta.mesesConFallo.join(' · '))}</span>`;
+    if(API_ESTADO&&API_ESTADO.solarman){
+      const p=await apiCall('/produccion',{desde,hasta});
+      ['A','B'].forEach(k=>{if(p[k]&&p[k].length){
+        RAW[k]=p[k].map(r=>({ts:new Date(r.ts),pot:r.pot,acum:r.acum,dia:r.dia})).sort((x,y)=>x.ts-y.ts);
+        const d=new Set(RAW[k].map(r=>dk(r.ts))).size;
+        $('st'+k).textContent=`✓ Solarman: ${fn(RAW[k].length)} reg, ${fn(d)} días`;$('z'+k).classList.add('loaded');
+      }});
+      msg+=`<br>✓ Producción: ${fn((p.A||[]).length)} reg inversor A · ${fn((p.B||[]).length)} reg inversor B`;
+    }else{
+      msg+='<br><span class="warn">Producción no disponible todavía: sigue subiendo los .xlsx de los inversores.</span>';
+    }
+    $('stAuto').innerHTML=msg;chk();
+  }catch(e){
+    $('stAuto').innerHTML=`<span class="err">✗ ${esc(e.message)}</span>`;log('⚠ Descarga automática: '+e.message);
+  }finally{b.disabled=false;b.textContent=txt}
+}
+(function initAuto(){
+  const hoy=new Date(),ini=new Date(hoy.getFullYear()-1,hoy.getMonth(),1);
+  $('aHasta').value=dk(hoy);$('aDesde').value=dk(ini);
+  pintaCfg();estadoApi();
+})();
 
 // ── Processing ──
 function filt(arr,d,h){return arr.filter(r=>{if(d&&r.ts<d)return false;if(h&&r.ts>h)return false;return true})}
@@ -1089,7 +1187,7 @@ function setStep(n){for(let i=1;i<=4;i++){const e=$('s'+i);e.classList.remove('o
 function reset(){RAW={A:[],B:[],I:[]};IBR_FILES=[];R=null;METEO=null;destroyCharts();
   $('pResults').style.display='none';$('pUpload').style.display='block';$('log').innerHTML='';
   ['A','B','I'].forEach(k=>{$('st'+k).textContent='';$('z'+k).classList.remove('loaded')});
-  $('flI').innerHTML='';$('fA').value='';$('fB').value='';$('fI').value='';
+  $('flI').innerHTML='';$('fA').value='';$('fB').value='';$('fI').value='';$('stAuto').innerHTML='';
   $('btnGo').disabled=true;setStep(1)}
 // D&D
 document.querySelectorAll('.uz').forEach(z=>{
