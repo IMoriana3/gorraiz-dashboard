@@ -39,10 +39,12 @@ npx wrangler secret put PANEL_KEY        # inventada por ti; es la que se teclea
 npx wrangler secret put DATADIS_USER     # NIF del titular, el usuario de datadis.es
 npx wrangler secret put DATADIS_PASS
 npx wrangler secret put DATADIS_CUPS     # opcional: si la cuenta tiene un solo suministro, sobra
-npx wrangler secret put DATADIS_AUTHORIZED_NIF   # CIF del titular, SOLO si el CUPS es de un cliente
+npx wrangler secret put DATADIS_AUTHORIZED_NIF   # SOLO si el CUPS es de un tercero; para Gorraiz NO
 ```
 
 **Sobre `DATADIS_AUTHORIZED_NIF`:** cuando el suministro no es de la propia cuenta sino de un cliente que te ha autorizado — el caso normal cuando la instaladora consulta el edificio de su cliente — la API exige el NIF/CIF del titular en `authorizedNif`, tanto al listar suministros como al pedir consumos. Sin él, la cuenta no ve el CUPS y Datadis responde una lista vacía. Si el suministro es propio, este secreto no debe configurarse: el parámetro no puede viajar.
+
+**El caso de Gorraiz no lo necesita:** el CUPS es de Amixalan y la cuenta de Datadis será de Amixalan, así que el suministro es propio. Este secreto queda para cuando haya que sacar el informe de un edificio de un tercero.
 
 Y cuando lleguen las credenciales de Solarman:
 
@@ -58,7 +60,7 @@ Después, en el dashboard: pega la URL del Worker y la `PANEL_KEY` en **⚡ Desc
 
 ## Notas de implementación
 
-**Registro como organización.** Para un CUPS a nombre de una empresa hay que registrarse en Datadis como *Organización*, no como *Particulares y autónomos*. Si el titular es un cliente, lo limpio es que cada parte tenga su cuenta y el titular conceda una autorización sobre ese CUPS: queda trazada, es revocable y evita custodiar credenciales ajenas.
+**Registro como organización.** El CUPS está a nombre de una empresa, así que la cuenta de Datadis se crea como *Organización* (con el CIF), no como *Particulares y autónomos*. Para un edificio de un tercero, lo limpio sería que cada parte tuviera su cuenta y el titular concediera una autorización sobre ese CUPS: queda trazada, es revocable y evita custodiar credenciales ajenas.
 
 **Datadis va mes a mes.** La API sirve como mucho un mes por llamada (`startDate`/`endDate` en formato `AAAA/MM`), que es exactamente el motivo por el que el histórico había que bajarlo a trozos. El Worker recorre los meses del rango por dentro y devuelve todo junto. Si un mes falla, los demás siguen y el mes caído se reporta en `meta.mesesConFallo` en lugar de tumbar la descarga entera.
 
