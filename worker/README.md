@@ -27,6 +27,14 @@ Todas las rutas exigen la cabecera `X-Panel-Key` y un `Origin` que figure en `AL
 
 ## Despliegue
 
+### Sin instalar nada (desde el navegador)
+
+Si no tienes Node en el equipo, `bundle.js` es el Worker entero en un solo fichero, listo para pegar en el editor web de Cloudflare. En el panel de Cloudflare: **Workers & Pages → Create → Worker**, abre **Edit code**, borra lo que venga de ejemplo y pega el contenido de `bundle.js`. Luego, en **Settings → Variables and Secrets**, añade `ALLOWED_ORIGIN` como variable de texto y el resto como *Secret*.
+
+`bundle.js` está generado: si tocas `index.js` o `periodos.js`, regenéralo con `node construir.mjs`.
+
+### Con wrangler
+
 ```bash
 cd worker
 npx wrangler login
