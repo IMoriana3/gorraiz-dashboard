@@ -444,13 +444,20 @@ export default{
     // Distinguir los dos casos ahorra mucho tiempo: si PANEL_KEY no llega, lo
     // habitual es haberla puesto en las variables de *compilación* (Settings →
     // Build) en lugar de en las de ejecución (Settings → Variables and Secrets).
+    const url=new URL(req.url);
+    const ruta=url.pathname.replace(/\/+$/,'');
+    // Las rutas de diagnóstico admiten la clave por parámetro y método GET,
+    // para poder abrirlas desde la barra del navegador. Solo ellas: /consumo y
+    // /produccion siguen exigiendo la cabecera.
+    const esDiag=ruta.endsWith('/diagnostico');
+    const clave=req.headers.get('X-Panel-Key')||(esDiag?(url.searchParams.get('k')||''):'');
+
     if(!env.PANEL_KEY)
       return json({error:'El Worker no tiene PANEL_KEY configurada. Compruébalo en Settings → Variables and Secrets (las de ejecución, no las de Build).',
         pistas:{ALLOWED_ORIGIN:env.ALLOWED_ORIGIN||null,IDE_USER:!!env.IDE_USER,IDE_PASS:!!env.IDE_PASS,DATADIS_USER:!!env.DATADIS_USER}},401,h);
-    if((req.headers.get('X-Panel-Key')||'').trim()!==String(env.PANEL_KEY).trim())
+    if(clave.trim()!==String(env.PANEL_KEY).trim())
       return json({error:'La clave de panel no coincide con la PANEL_KEY del Worker.'},401,h);
 
-    const ruta=new URL(req.url).pathname.replace(/\/+$/,'');
     try{
       if(ruta==='/estado')return json({
         datadis:!!(env.DATADIS_USER&&env.DATADIS_PASS),
@@ -459,7 +466,8 @@ export default{
         solarman:!!(env.SOLARMAN_APPID&&env.SOLARMAN_APPSECRET&&env.SOLARMAN_EMAIL&&env.SOLARMAN_PASS),
       },200,h);
 
-      const b=req.method==='POST'?await req.json().catch(()=>({})):{};
+      const b=req.method==='POST'?await req.json().catch(()=>({}))
+        :Object.fromEntries(url.searchParams);
       const desde=b.desde,hasta=b.hasta;
       if(ruta==='/consumo'||ruta==='/produccion'){
         if(!/^\d{4}-\d{2}-\d{2}$/.test(desde||'')||!/^\d{4}-\d{2}-\d{2}$/.test(hasta||''))
