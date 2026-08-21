@@ -496,35 +496,61 @@ async function traerDatos(){
   if(desde>hasta){$('stAuto').innerHTML='<span class="err">La fecha inicial es posterior a la final.</span>';return}
   const b=$('btnAuto');b.disabled=true;const txt=b.textContent;b.textContent='⏳ Descargando…';
   $('stAuto').textContent='Pidiendo datos al Worker; un histórico largo puede tardar un par de minutos.';
-  try{
-    const c=await apiCall('/consumo',{desde,hasta});
-    if(!c.rows||!c.rows.length)throw new Error('Datadis no ha devuelto ningún registro en ese rango.');
-    // Entra como un "fichero" más para reutilizar la unión por días y el aviso
-    // de huecos: así se puede mezclar con .xlsx antiguos sin duplicar nada.
-    const nombre=`Datadis ${fdmy(desde)} → ${fdmy(hasta)}`;
-    IBR_FILES=IBR_FILES.filter(f=>f.name!==nombre);
-    IBR_FILES.push({name:nombre,size:0,dias:0,
-      rows:c.rows.map(r=>({ts:new Date(r.ts),consumo:r.consumo,gen:r.gen,periodo:r.periodo}))});
-    mergeIBR();
-    let msg=`✓ Consumo: ${fn(c.rows.length)} registros de ${esc(c.meta.cups||'')}`;
-    if(c.meta.mesesConFallo&&c.meta.mesesConFallo.length)
-      msg+=`<br><span class="warn">⚠ Meses que Datadis no ha servido: ${esc(c.meta.mesesConFallo.join(' · '))}</span>`;
-    if(API_ESTADO&&API_ESTADO.solarman){
+  if(!API_ESTADO)await estadoApi();
+  const est=API_ESTADO||{};
+  // Las dos fuentes van por separado a propósito: que falle una no puede
+  // impedir traer la otra, que es lo que pasaba pidiendo el consumo primero.
+  const partes=[];let algo=false;
+
+  if(est.datadis||est.ide){
+    try{
+      const c=await apiCall('/consumo',{desde,hasta});
+      if(!c.rows||!c.rows.length)throw new Error('no ha devuelto ningún registro en ese rango');
+      // Entra como un "fichero" más para reutilizar la unión por días y el
+      // aviso de huecos: se puede mezclar con .xlsx antiguos sin duplicar.
+      const fuente=est.datadis?'Datadis':'i-DE';
+      const nombre=`${fuente} ${fdmy(desde)} → ${fdmy(hasta)}`;
+      IBR_FILES=IBR_FILES.filter(f=>f.name!==nombre);
+      IBR_FILES.push({name:nombre,size:0,dias:0,
+        rows:c.rows.map(r=>({ts:new Date(r.ts),consumo:r.consumo,gen:r.gen,periodo:r.periodo}))});
+      mergeIBR();algo=true;
+      partes.push(`✓ Consumo: ${fn(c.rows.length)} registros${c.meta&&c.meta.cups?' de '+esc(c.meta.cups):''}`);
+      if(c.meta&&c.meta.aviso)partes.push(`<span class="warn">⚠ ${esc(c.meta.aviso)}</span>`);
+      if(c.meta&&c.meta.mesesConFallo&&c.meta.mesesConFallo.length)
+        partes.push(`<span class="warn">⚠ Meses no servidos: ${esc(c.meta.mesesConFallo.join(' · '))}</span>`);
+    }catch(e){
+      partes.push(`<span class="err">✗ Consumo: ${esc(e.message)}</span>`);
+      log('⚠ Consumo: '+e.message);
+    }
+  }else{
+    partes.push('<span class="warn">Consumo no configurado: sigue subiendo los .xlsx de i-DE.</span>');
+  }
+
+  if(est.solarman){
+    try{
       const p=await apiCall('/produccion',{desde,hasta});
+      let n=0;
       ['A','B'].forEach(k=>{if(p[k]&&p[k].length){
         RAW[k]=p[k].map(r=>({ts:new Date(r.ts),pot:r.pot,acum:r.acum,dia:r.dia})).sort((x,y)=>x.ts-y.ts);
-        const d=new Set(RAW[k].map(r=>dk(r.ts))).size;
+        const d=new Set(RAW[k].map(r=>dk(r.ts))).size;n++;
         $('st'+k).textContent=`✓ Solarman: ${fn(RAW[k].length)} reg, ${fn(d)} días`;$('z'+k).classList.add('loaded');
       }});
-      msg+=`<br>✓ Producción: ${fn((p.A||[]).length)} reg inversor A · ${fn((p.B||[]).length)} reg inversor B`;
-    }else{
-      msg+='<br><span class="warn">Producción no disponible todavía: sigue subiendo los .xlsx de los inversores.</span>';
+      if(!n)throw new Error('no ha devuelto ningún registro en ese rango');
+      algo=true;
+      partes.push(`✓ Producción: ${fn((p.A||[]).length)} reg inversor A · ${fn((p.B||[]).length)} reg inversor B`);
+    }catch(e){
+      partes.push(`<span class="err">✗ Producción: ${esc(e.message)}</span>`);
+      log('⚠ Producción: '+e.message);
     }
-    $('stAuto').innerHTML=msg;chk();
-  }catch(e){
-    $('stAuto').innerHTML=`<span class="err">✗ ${esc(e.message)}</span>`;log('⚠ Descarga automática: '+e.message);
-  }finally{b.disabled=false;b.textContent=txt}
+  }else{
+    partes.push('<span class="warn">Producción no configurada: sigue subiendo los .xlsx de los inversores.</span>');
+  }
+
+  if(!algo)partes.push('<span class="warn">No se ha cargado nada; los datos que ya tuvieras siguen intactos.</span>');
+  $('stAuto').innerHTML=partes.join('<br>');chk();
+  b.disabled=false;b.textContent=txt;
 }
+
 (function initAuto(){
   const hoy=new Date(),ini=new Date(hoy.getFullYear()-1,hoy.getMonth(),1);
   $('aHasta').value=dk(hoy);$('aDesde').value=dk(ini);
