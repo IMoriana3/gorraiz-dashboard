@@ -369,6 +369,22 @@ async function ideConsumo(env,desde,hasta){
     desde:desde,hasta:hasta,registros:filas.length,mesesConFallo:fallos,factor:factor},u||{})};
 }
 
+// Solarman sella en UTC (comprobado: collectTime marcaba 05:04 UTC mientras el
+// reloj del inversor decía 07:05, las dos horas de Madrid en agosto). El
+// consumo se emite en hora local sin zona, así que la producción se pasa
+// también a hora peninsular: si no, abrir el informe desde otro huso
+// desplazaría una serie y la otra no.
+let fmtMadrid=null;
+try{
+  fmtMadrid=new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Madrid',
+    year:'numeric',month:'2-digit',day:'2-digit',
+    hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+}catch(e){}
+function horaLocal(d){
+  if(!fmtMadrid)return d.toISOString();
+  return fmtMadrid.format(d).replace(' ','T');
+}
+
 // ── SOLARMAN ─────────────────────────────────────────────────────────────
 // Requiere appId/appSecret (se piden a customerservice@solarmanpv.com).
 async function sha256(txt){
@@ -473,12 +489,23 @@ async function smInversores(env,tk,base){
     +'Respuesta de /station/v1.0/device: '+JSON.stringify(d).slice(0,400));
   return{stationId:sid,inv:inv};
 }
-// Los nombres de los campos varían entre firmwares, así que se busca por
-// nombre igual que la carga de .xlsx busca por cabecera de columna.
-function smValor(lista,claves){
+// Campos de los KSTAR G50KT, comprobados contra la respuesta real:
+//   APo_t1   Total AC Output Power (Active)
+//   Et_ge0   Cumulative Production (Active)
+//   Etdy_ge1 Daily Production (Active)
+// Se busca primero por clave exacta y solo después por nombre. Buscar por
+// nombre a secas es peligroso: la misma respuesta trae "Total Production Hour"
+// (horas, no kWh) y "Active Power Setting Value" (un ajuste, no una potencia),
+// que casaban con los patrones y habrían pasado por buenos sin quejarse.
+function smValor(lista,claves,nombres){
+  const cs=claves.map(k=>k.toLowerCase()),ns=(nombres||[]).map(n=>n.toLowerCase());
+  const num=it=>it.value===undefined||it.value===null||it.value===''?null:(isNaN(+it.value)?null:+it.value);
   for(const it of lista||[]){
-    const n=((it.name||'')+' '+(it.key||'')).toLowerCase();
-    if(claves.some(k=>n.includes(k)))return +it.value||0;
+    if(cs.includes(String(it.key||'').toLowerCase())){const v=num(it);if(v!==null)return v}
+  }
+  for(const it of lista||[]){
+    const n=String(it.name||'').toLowerCase();
+    if(ns.some(x=>n===x||n.startsWith(x+' ('))){const v=num(it);if(v!==null)return v}
   }
   return 0;
 }
@@ -492,10 +519,10 @@ async function smHistorico(env,tk,sn,desde,hasta,base){
     for(const fr of j.paramDataList||[]){
       const l=fr.dataList||[];
       if(!fr.collectTime)continue;
-      out.push({ts:new Date(+fr.collectTime*1000).toISOString(),
-        pot:smValor(l,['total ac output power','apo_t','active power']),
-        acum:smValor(l,['cumulative production','total production','et_ge0']),
-        dia:smValor(l,['daily production','etdy_ge','et_use1'])});
+      out.push({ts:horaLocal(new Date(+fr.collectTime*1000)),
+        pot:smValor(l,['APo_t1'],['total ac output power','total ac output power (active)']),
+        acum:smValor(l,['Et_ge0'],['cumulative production','cumulative production (active)']),
+        dia:smValor(l,['Etdy_ge1'],['daily production','daily production (active)'])});
     }
   }
   return out;

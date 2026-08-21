@@ -111,6 +111,12 @@ npx wrangler secret put SOLARMAN_STATION_ID # opcional: si hay una sola planta, 
 npx wrangler secret put SOLARMAN_ORGID      # SOLO si la cuenta es Business, no Smart
 ```
 
+**Campos de los inversores (KSTAR G50KT, comprobados en la instalación).** `APo_t1` potencia AC total, `Et_ge0` producción acumulada, `Etdy_ge1` producción diaria. Se buscan **por clave exacta** y solo después por nombre: buscar por nombre a secas es peligroso, porque la misma respuesta trae `HR_Ege_t1` *"Total Production Hour"* (horas, no kWh) y `SV_AP` *"Active Power Setting Value"* (un ajuste, no una potencia), que casaban con los patrones y habrían pasado por buenos sin quejarse.
+
+**Zona horaria de Solarman.** `collectTime` viene en UTC de verdad: en la instalación marcaba 05:04 UTC mientras el reloj del inversor decía 07:05, las dos horas de Madrid en agosto. Como el consumo se emite en hora local sin zona, la producción se convierte también a hora peninsular; si no, abrir el informe desde otro huso desplazaría una serie y la otra no.
+
+**Organizaciones.** Las plantas de una empresa cuelgan de la organización, no de la persona: el token personal ve cero plantas aunque el login sea correcto. Si la cuenta pertenece a una sola organización, el Worker rehace el login con su `orgId` automáticamente; con varias, el error las enumera y hay que fijar `SOLARMAN_ORGID`. En Gorraiz es Amixalan, `orgId 10865841`.
+
 **Smart contra Business.** El plan gratuito de la API es solo para cuentas SOLARMAN Smart con 3 plantas o menos. Y hay una diferencia técnica que no se anuncia: **una cuenta Business exige mandar `orgId` en el login**, y sin él responde `auth failed` aunque el correo y la contraseña sean correctos — indistinguible de una contraseña mal puesta.
 
 Los mensajes de error de Solarman despistan más de lo que ayudan: `appId or api is locked` puede ser tanto un appId sin activar como uno con un carácter de más o una llamada al centro de datos equivocado; `auth failed` puede ser credenciales erróneas o un `orgId` que falta. `/estado` devuelve la huella de cada credencial —longitud, extremos, si tiene espacios— para poder cotejarlas sin exponerlas.
