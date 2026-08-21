@@ -1276,7 +1276,9 @@ async function genPDF(){
   setStep(4);log('Generando PDF de 5 páginas...');
   const{jsPDF}=window.jspdf;const doc=new jsPDF('l','mm','a4');
   const W=297,H=210,M=15;
-  const per=R.prod.daily[0]?.date+' → '+R.prod.daily[R.prod.daily.length-1]?.date;
+  // Ojo: la fuente estándar de jsPDF no incluye la flecha "→" y la imprimía
+  // como basura ("!'"). El guion largo sí está en su codificación.
+  const per=R.prod.daily[0]?.date+' – '+R.prod.daily[R.prod.daily.length-1]?.date;
 
   function hdr(t,s){doc.setFillColor(26,60,52);doc.roundedRect(M,10,W-2*M,18,3,3,'F');
     try{doc.addImage(LOGO_B64,'JPEG',M+2,11.5,15,15)}catch(e){}
@@ -1285,7 +1287,36 @@ async function genPDF(){
   function ftr(p){doc.setFontSize(6);doc.setTextColor(150);
     doc.text('Amixalan Business Group — Fuentes: inversores + contador horario + factura Goiener. Modalidad: SIN excedentes.',M,H-8);
     doc.text('Pág '+p,W-M-8,H-8);doc.setTextColor(0)}
-  async function addChart(id,x,y,w,h){try{const cv=$(id);if(cv&&cv.tagName==='CANVAS'&&cv.width>10){doc.addImage(cv.toDataURL('image/png'),'PNG',x,y,w,h)}else{log('⚠ PDF '+id+': w='+cv?.width)}}catch(e){log('⚠ PDF '+id+': '+e.message)}}
+  // El PDF coloca cada gráfica en un hueco de tamaño fijo. Volcar ahí el lienzo
+  // tal cual lo deforma: el donut es cuadrado y salía ovalado, y las de arriba
+  // pasaban de una proporción de 3,2 a 6,2, con los textos aplastados. Aquí se
+  // redibuja cada una con la proporción de su hueco antes de capturarla.
+  async function addChart(id,x,y,w,h){
+    try{
+      const cv=$(id);
+      if(!cv||cv.tagName!=='CANVAS'||cv.width<=10){log('⚠ PDF '+id+': sin lienzo');return}
+      const ch=(window.Chart&&Chart.getChart)?Chart.getChart(cv):null;
+      const tipo=ch&&ch.config&&ch.config.type;
+      if(tipo==='doughnut'||tipo==='pie'){
+        // Deben seguir siendo redondos: se centra un cuadrado en el hueco.
+        const lado=Math.min(w,h);x+=(w-lado)/2;y+=(h-lado)/2;w=h=lado;
+      }
+      const caja=cv.parentElement&&cv.parentElement.classList.contains('cw')?cv.parentElement:null;
+      let previo=null;
+      if(ch&&caja){
+        previo={ar:caja.style.aspectRatio,mx:caja.style.maxHeight,mn:caja.style.minHeight};
+        caja.style.aspectRatio=(w/h).toFixed(3);
+        caja.style.maxHeight='none';caja.style.minHeight='0';
+        ch.resize();
+        await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+      }
+      doc.addImage(cv.toDataURL('image/png'),'PNG',x,y,w,h);
+      if(previo){
+        caja.style.aspectRatio=previo.ar;caja.style.maxHeight=previo.mx;caja.style.minHeight=previo.mn;
+        ch.resize();
+      }
+    }catch(e){log('⚠ PDF '+id+': '+e.message)}
+  }
 
   // Show all tabs on-screen for PDF capture
   document.querySelectorAll('.pcon').forEach(c=>c.classList.add('on'));
@@ -1307,7 +1338,7 @@ async function genPDF(){
   });
   doc.setTextColor(0);y+=20;
   // Main chart: producción diaria + GHI (full width, tall)
-  await addChart('c1daily',M,y,W-2*M,80);y+=83;
+  await addChart('c1daily',M,y,W-2*M,122);y+=125;
   // Meteo summary
   if(METEO&&METEO.length){const ag=METEO.reduce((s,m)=>s+m.ghi,0)/METEO.length;
     const as2=METEO.reduce((s,m)=>s+m.sol,0)/METEO.length;
@@ -1327,10 +1358,10 @@ async function genPDF(){
   // PAGE 2 — Detalle inversores y ahorro
   doc.addPage('l');hdr('Detalle de instalación, inversores y ahorro','Periodo: '+per+' · Modalidad: '+CFG.mod);y=32;
   // Perfil horario (full width, top ~28% of page)
-  await addChart('c2hourly',M,y,W-2*M,45);y+=48;
+  await addChart('c2hourly',M,y,W-2*M,57);y+=60;
   // Donut (left, ~35% width to keep it small) + Scatter (right, ~60%)
   const donutW=90,scatW=W-2*M-donutW-6;
-  await addChart('c2donut',M,y,donutW,45);await addChart('c2scatter',M+donutW+6,y,scatW,45);y+=48;
+  await addChart('c2donut',M,y,donutW,58);await addChart('c2scatter',M+donutW+6,y,scatW,58);y+=61;
   // Table ahorro periodos (right side) + ficha instalación (left side)
   const tblX=M,tblW=(W-2*M)*0.50;
   doc.setFontSize(9);doc.setFont(undefined,'bold');doc.setTextColor(0);doc.text('Ahorro por periodos',tblX,y);y+=4;
@@ -1381,7 +1412,7 @@ async function genPDF(){
 
   // PAGE 4 — Acumulados (2×2 grid like notebook)
   doc.addPage('l');hdr('Acumulados desde puesta en marcha — Edificio Gorraiz','Barras rayadas = proyección basada en datos reales');y=32;
-  const hw4=(W-2*M)/2-3;const hh4=68;
+  const hw4=(W-2*M)/2-3;const hh4=79;
   // Top: prod (left) + cons (right)
   await addChart('c4prod',M,y,hw4,hh4);await addChart('c4cons',M+hw4+6,y,hw4,hh4);y+=hh4+4;
   // Bottom: ahorro (left) + coste (right)
@@ -1391,14 +1422,16 @@ async function genPDF(){
   // PAGE 5 — Análisis avanzado
   doc.addPage('l');hdr('Análisis avanzado y tendencias — Edificio Gorraiz','Mapa solar, perfil tipo, vertido cero, payback');y=32;
   // Heatmap (left, wider) + Payback (right)
-  const heatW=(W-2*M)*0.60;
-  try{const hcv=$('c5heat');if(hcv&&hcv.width>10){doc.addImage(hcv.toDataURL('image/png'),'PNG',M,y,heatW,65)}}catch(e){}
+  // El mapa de calor se dibuja a mano y no se redibuja para el PDF, así que su
+  // hueco debe respetar la proporción del lienzo (3,2) o sale estirado.
+  const heatW=(W-2*M)*0.60,heatH=Math.round(heatW/3.2);
+  try{const hcv=$('c5heat');if(hcv&&hcv.width>10){doc.addImage(hcv.toDataURL('image/png'),'PNG',M,y,heatW,heatH)}}catch(e){}
   // Payback gauge (right column)
   if(R.analysis.hayPB){const pb=R.analysis.pb;const px=M+heatW+6;const bw=W-M-px;
-    doc.setFillColor(255);doc.setDrawColor(180);doc.roundedRect(px,y,bw,65,2,2,'FD');
+    doc.setFillColor(255);doc.setDrawColor(180);doc.roundedRect(px,y,bw,heatH,2,2,'FD');
     doc.setFontSize(10);doc.setFont(undefined,'bold');doc.setTextColor(0);doc.text('Retorno de la inversión',px+bw/2,y+7,{align:'center'});
     // Thermometer
-    const tx=px+8,tw2=12,th=48,ty_b=y+12;
+    const tx=px+8,tw2=12,th=heatH-20,ty_b=y+13;
     doc.setFillColor(240,240,240);doc.rect(tx,ty_b,tw2,th,'F');doc.setDrawColor(200);doc.rect(tx,ty_b,tw2,th,'S');
     const fc=pb.pct>50?[39,174,96]:pb.pct>25?[212,160,57]:[192,57,43];
     const fh2=th*Math.min(pb.pct/100,1);
@@ -1413,10 +1446,11 @@ async function genPDF(){
     if(pb.canP){info.push('Ahorro anual proy.: '+fn(pb.aAnual)+' €/año','Payback estimado: '+fd(pb.anos)+' años','Amortización: ~'+pb.anoAmort)}
     info.forEach((l,i)=>doc.text(l,txR,y+43+i*5));
   }
-  y+=68;
+  y+=heatH+3;
   // Perfil tipo (left) + Curtailment (right) — bottom half
   const hw5=(W-2*M)/2-3;
-  await addChart('c5perfil',M,y,hw5,50);await addChart('c5curt',M+hw5+6,y,hw5,50);
+  const hh5=Math.min(88,H-16-y);
+  await addChart('c5perfil',M,y,hw5,hh5);await addChart('c5curt',M+hw5+6,y,hw5,hh5);
   ftr(5);
 
   const d1=R.prod.daily[0]?.date.replace(/-/g,'')||'',d2=R.prod.daily[R.prod.daily.length-1]?.date.replace(/-/g,'')||'';
