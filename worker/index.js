@@ -344,15 +344,22 @@ async function smToken(env){
   throw new Error('Solarman: login rechazado. '+fallos.join(' · ')+pista);
 }
 async function smInversores(env,tk,base){
-  let sid=env.SOLARMAN_STATION_ID;
+  let sid=cred(env.SOLARMAN_STATION_ID);
   if(!sid){
     const l=await smPost(env,'/station/v1.0/list',{page:1,size:20},tk,base);
-    if(!l.stationList||!l.stationList.length)throw new Error('Solarman: la cuenta no tiene plantas.');
-    sid=l.stationList[0].id;
+    // El nombre de la lista ha cambiado entre versiones de su API, así que se
+    // aceptan las variantes conocidas antes de darla por vacía.
+    const lista=l.stationList||l.list||(l.data&&(l.data.stationList||l.data.list))||[];
+    if(!lista.length)throw new Error('Solarman: la cuenta no tiene plantas asociadas a este appId. '
+      +'Puede que la planta esté bajo otra cuenta, o compartida en lugar de propia. '
+      +'Respuesta de /station/v1.0/list: '+JSON.stringify(l).slice(0,400));
+    sid=lista[0].id;
   }
   const d=await smPost(env,'/station/v1.0/device?language=en',{stationId:+sid,deviceType:'INVERTER'},tk,base);
-  const inv=(d.deviceListItems||[]).map(x=>({sn:x.deviceSn,id:x.deviceId}));
-  if(!inv.length)throw new Error('Solarman: la planta '+sid+' no declara inversores.');
+  const disp=d.deviceListItems||d.list||(d.data&&(d.data.deviceListItems||d.data.list))||[];
+  const inv=disp.map(x=>({sn:x.deviceSn,id:x.deviceId}));
+  if(!inv.length)throw new Error('Solarman: la planta '+sid+' no declara inversores. '
+    +'Respuesta de /station/v1.0/device: '+JSON.stringify(d).slice(0,400));
   return{stationId:sid,inv:inv};
 }
 // Los nombres de los campos varían entre firmwares, así que se busca por
