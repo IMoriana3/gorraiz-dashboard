@@ -82,7 +82,10 @@ function periodo(y,mes,dia,h){
 // ═══════════════════════════════════════════════════════════════════════════
 
 const DATADIS='https://datadis.es';
-const SOLARMAN='https://globalapi.solarmanpv.com';
+// Solarman tiene varios centros de datos y el appId solo vale en el suyo:
+// llamar al que no toca devuelve "appId or api is locked", que suena a
+// problema de permisos y en realidad es de dominio. Se prueban por orden.
+const SOLARMAN_BASES=['https://globalapi.solarmanpv.com','https://api.solarmanpv.com'];
 
 // ── utilidades ───────────────────────────────────────────────────────────
 // no-store: sin esto, el navegador puede quedarse con una respuesta vieja y
@@ -357,8 +360,8 @@ async function sha256(txt){
   const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(txt));
   return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('');
 }
-async function smPost(env,ruta,cuerpo,tk){
-  const r=await pedir(SOLARMAN+ruta,{method:'POST',
+async function smPost(env,ruta,cuerpo,tk,base){
+  const r=await pedir((base||SOLARMAN_BASES[0])+ruta,{method:'POST',
     headers:Object.assign({'content-type':'application/json'},tk?{Authorization:'Bearer '+tk}:{}),
     body:JSON.stringify(cuerpo)});
   const j=await r.json().catch(()=>({}));
@@ -366,22 +369,30 @@ async function smPost(env,ruta,cuerpo,tk){
   return j;
 }
 async function smToken(env){
-  const r=await pedir(SOLARMAN+'/account/v1.0/token?appId='+encodeURIComponent(env.SOLARMAN_APPID)+'&language=en',
-    {method:'POST',headers:{'content-type':'application/json'},
-     body:JSON.stringify({appSecret:env.SOLARMAN_APPSECRET,email:env.SOLARMAN_EMAIL,
-       password:await sha256(env.SOLARMAN_PASS)})});
-  const j=await r.json();
-  if(!j.access_token)throw new Error('Solarman: login rechazado ('+(j.msg||j.error||'sin token')+').');
-  return j.access_token;
+  const bases=env.SOLARMAN_BASE?[env.SOLARMAN_BASE]:SOLARMAN_BASES;
+  const cuerpo=JSON.stringify({appSecret:env.SOLARMAN_APPSECRET,email:env.SOLARMAN_EMAIL,
+    password:await sha256(env.SOLARMAN_PASS)});
+  const fallos=[];
+  for(const base of bases){
+    const r=await pedir(base+'/account/v1.0/token?appId='+encodeURIComponent(env.SOLARMAN_APPID)+'&language=en',
+      {method:'POST',headers:{'content-type':'application/json'},body:cuerpo});
+    const j=await r.json().catch(()=>({}));
+    if(j.access_token)return{tk:j.access_token,base:base};
+    fallos.push(new URL(base).hostname+': '+(j.msg||j.error||('HTTP '+r.status)));
+  }
+  throw new Error('Solarman: login rechazado. '+fallos.join(' · ')+
+    (fallos.some(f=>/locked/i.test(f))
+      ? ' — "locked" suele significar que el appId todavía no está activado por su soporte, o que la cuenta pertenece a otro centro de datos. Se han probado todos los que conozco.'
+      : ''));
 }
-async function smInversores(env,tk){
+async function smInversores(env,tk,base){
   let sid=env.SOLARMAN_STATION_ID;
   if(!sid){
-    const l=await smPost(env,'/station/v1.0/list',{page:1,size:20},tk);
+    const l=await smPost(env,'/station/v1.0/list',{page:1,size:20},tk,base);
     if(!l.stationList||!l.stationList.length)throw new Error('Solarman: la cuenta no tiene plantas.');
     sid=l.stationList[0].id;
   }
-  const d=await smPost(env,'/station/v1.0/device?language=en',{stationId:+sid,deviceType:'INVERTER'},tk);
+  const d=await smPost(env,'/station/v1.0/device?language=en',{stationId:+sid,deviceType:'INVERTER'},tk,base);
   const inv=(d.deviceListItems||[]).map(x=>({sn:x.deviceSn,id:x.deviceId}));
   if(!inv.length)throw new Error('Solarman: la planta '+sid+' no declara inversores.');
   return{stationId:sid,inv:inv};
@@ -395,13 +406,13 @@ function smValor(lista,claves){
   }
   return 0;
 }
-async function smHistorico(env,tk,sn,desde,hasta){
+async function smHistorico(env,tk,sn,desde,hasta,base){
   const out=[];
   for(let d=dUTC(desde);d<=dUTC(hasta);d=new Date(d.getTime()+864e5)){
     const dia=ymd(d);
     // timeType 1 = por tramos dentro del día; el rango debe ser un solo día.
     const j=await smPost(env,'/device/v1.0/historical?language=en',
-      {deviceSn:sn,startTime:dia,endTime:dia,timeType:1},tk);
+      {deviceSn:sn,startTime:dia,endTime:dia,timeType:1},tk,base);
     for(const fr of j.paramDataList||[]){
       const l=fr.dataList||[];
       if(!fr.collectTime)continue;
@@ -414,23 +425,24 @@ async function smHistorico(env,tk,sn,desde,hasta){
   return out;
 }
 async function solarmanProduccion(env,desde,hasta){
-  const tk=await smToken(env);
-  const r=await smInversores(env,tk);
-  const res={meta:{stationId:r.stationId,inversores:r.inv.map(i=>i.sn)}};
+  const a=await smToken(env);
+  const r=await smInversores(env,a.tk,a.base);
+  const res={meta:{stationId:r.stationId,inversores:r.inv.map(i=>i.sn),centro:new URL(a.base).hostname}};
   for(let i=0;i<r.inv.length&&i<2;i++){
-    res[i===0?'A':'B']=await smHistorico(env,tk,r.inv[i].sn,desde,hasta);
+    res[i===0?'A':'B']=await smHistorico(env,a.tk,r.inv[i].sn,desde,hasta,a.base);
   }
   return res;
 }
 // Sin credenciales no se pueden comprobar los nombres reales de los campos:
 // esto devuelve un tramo en crudo para poder mapearlos con certeza el 1er día.
 async function solarmanDiagnostico(env,dia){
-  const tk=await smToken(env);
-  const r=await smInversores(env,tk);
+  const a=await smToken(env);
+  const r=await smInversores(env,a.tk,a.base);
   const j=await smPost(env,'/device/v1.0/historical?language=en',
-    {deviceSn:r.inv[0].sn,startTime:dia,endTime:dia,timeType:1},tk);
+    {deviceSn:r.inv[0].sn,startTime:dia,endTime:dia,timeType:1},a.tk,a.base);
   const fr=(j.paramDataList||[])[0]||{};
-  return{deviceSn:r.inv[0].sn,collectTime:fr.collectTime,
+  return{centro:new URL(a.base).hostname,planta:r.stationId,
+    inversores:r.inv.map(i=>i.sn),deviceSn:r.inv[0].sn,collectTime:fr.collectTime,
     campos:(fr.dataList||[]).map(x=>({key:x.key,name:x.name,value:x.value}))};
 }
 
