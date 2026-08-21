@@ -347,8 +347,30 @@ $('fB').onchange=e=>loadInv(e.target.files,'B');
 $('fI').onchange=e=>loadIBR(e.target.files);
 function chk(){$('btnGo').disabled=!(RAW.A.length&&RAW.I.length)}
 
+// La producción se une igual que el consumo: cada origen —ficheros o descarga—
+// es una fuente, y se combinan por marca de tiempo. Antes cada origen pisaba al
+// otro, así que descargar un rango borraba los .xlsx ya cargados y al revés.
+let PROD_FUENTES={A:[],B:[]};
+function ponFuenteProd(k,nombre,rows){
+  PROD_FUENTES[k]=PROD_FUENTES[k].filter(f=>f.nombre!==nombre);
+  PROD_FUENTES[k].push({nombre:nombre,rows:rows});
+  mergeProd(k);
+}
+function mergeProd(k){
+  const porTs={};
+  // El último origen añadido gana en caso de empate: es el dato más reciente.
+  PROD_FUENTES[k].forEach(f=>f.rows.forEach(r=>{porTs[+r.ts]=r}));
+  RAW[k]=Object.values(porTs).sort((a,b)=>a.ts-b.ts);
+  if(!RAW[k].length){$('st'+k).textContent='';$('z'+k).classList.remove('loaded');chk();return}
+  const dias=new Set(RAW[k].map(r=>dk(r.ts)));
+  const f=[...dias].sort();
+  $('st'+k).textContent=`✓ ${fn(RAW[k].length)} reg · ${fn(dias.size)} días (${fdmy(f[0])} → ${fdmy(f[f.length-1])})`
+    +(PROD_FUENTES[k].length>1?` · ${PROD_FUENTES[k].length} orígenes`:'');
+  $('z'+k).classList.add('loaded');chk();
+}
+
 function loadInv(files,L){
-  const k=L;RAW[k]=[];let done=0;const n=files.length;
+  const k=L;const acumulado=[];let done=0;const n=files.length;
   Array.from(files).forEach(f=>{const r=new FileReader();r.onload=e=>{
     try{const wb=XLSX.read(e.target.result,{type:'array',cellDates:true});
       const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:0});
@@ -359,13 +381,13 @@ function loadInv(files,L){
           if(cl.includes('producción acumulada')||cl.includes('produccion acumulada'))acum=+v||0;
           if(cl.includes('producción diaria')||cl.includes('produccion diaria'))dia=+v||0;
         }
-        if(ts)RAW[k].push({ts,pot,acum,dia});
+        if(ts)acumulado.push({ts,pot,acum,dia});
       });
     }catch(er){log('⚠ '+f.name+': '+er.message)}
-    if(++done===n){RAW[k].sort((a,b)=>a.ts-b.ts);
-      const days=new Set(RAW[k].map(r=>r.ts.toDateString())).size;
-      $('st'+k).textContent=`✓ ${n} fichero(s), ${RAW[k].length} reg, ${days} días`;
-      $('z'+k).classList.add('loaded');log(`Inv ${k}: ${RAW[k].length} reg, ${days} días`);chk()}
+    if(++done===n){
+      acumulado.sort((a,b)=>a.ts-b.ts);
+      ponFuenteProd(k,'Ficheros',acumulado);
+      log(`Inv ${k}: ${acumulado.length} reg de ${n} fichero(s)`);}
   };r.readAsArrayBuffer(f)});
 }
 
@@ -564,10 +586,10 @@ async function traerDatos(){
       }
       const p=acc;
       let n=0;
+      const nombre=`Solarman ${fdmy(desde)} → ${fdmy(hasta)}`;
       ['A','B'].forEach(k=>{if(p[k]&&p[k].length){
-        RAW[k]=p[k].map(r=>({ts:new Date(r.ts),pot:r.pot,acum:r.acum,dia:r.dia})).sort((x,y)=>x.ts-y.ts);
-        const d=new Set(RAW[k].map(r=>dk(r.ts))).size;n++;
-        $('st'+k).textContent=`✓ Solarman: ${fn(RAW[k].length)} reg, ${fn(d)} días`;$('z'+k).classList.add('loaded');
+        n++;ponFuenteProd(k,nombre,
+          p[k].map(r=>({ts:new Date(r.ts),pot:r.pot,acum:r.acum,dia:r.dia})).sort((x,y)=>x.ts-y.ts));
       }});
       if(!n)throw new Error('no ha devuelto ningún registro en ese rango');
       algo=true;
@@ -1245,7 +1267,7 @@ async function genPDF(){
 
 // ═══ UI ═══
 function setStep(n){for(let i=1;i<=4;i++){const e=$('s'+i);e.classList.remove('on','ok');if(i<n)e.classList.add('ok');if(i===n)e.classList.add('on')}}
-function reset(){RAW={A:[],B:[],I:[]};IBR_FILES=[];R=null;METEO=null;destroyCharts();
+function reset(){RAW={A:[],B:[],I:[]};IBR_FILES=[];PROD_FUENTES={A:[],B:[]};R=null;METEO=null;destroyCharts();
   $('pResults').style.display='none';$('pUpload').style.display='block';$('log').innerHTML='';
   ['A','B','I'].forEach(k=>{$('st'+k).textContent='';$('z'+k).classList.remove('loaded')});
   $('flI').innerHTML='';$('fA').value='';$('fB').value='';$('fI').value='';$('stAuto').innerHTML='';
