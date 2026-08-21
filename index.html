@@ -472,6 +472,20 @@ function pintaCfg(){
     <button class="btn btn2" onclick="apiSave()" style="padding:5px 12px;font-size:11px">Guardar</button>
   </div><div class="hint">Se guardan solo en este navegador (localStorage), nunca en el repositorio. Las credenciales de Datadis y Solarman viven en el Worker, no aquí.</div>`;
 }
+// Cloudflare limita a 50 subpeticiones por invocación del Worker. Cada día de
+// producción son dos llamadas (una por inversor) y cada mes de consumo una, así
+// que los rangos largos hay que trocearlos aquí en vez de pedirlos de una vez.
+function sumaDias(f,n){const d=new Date(f+'T12:00:00');d.setDate(d.getDate()+n);return dk(d)}
+function bloques(desde,hasta,dias){
+  const out=[];let ini=desde;
+  while(ini<=hasta&&out.length<400){
+    let fin=sumaDias(ini,dias-1);if(fin>hasta)fin=hasta;
+    out.push({desde:ini,hasta:fin});ini=sumaDias(fin,1);
+  }
+  return out;
+}
+function avance(txt,i,n){$('stAuto').textContent=n>1?`${txt}: bloque ${i} de ${n}…`:txt+'…'}
+
 async function apiCall(ruta,body){
   const c=apiCfg();
   if(!c.url)throw new Error('Falta la dirección del Worker: rellénala abajo y pulsa Guardar.');
@@ -504,8 +518,16 @@ async function traerDatos(){
 
   if(est.datadis||est.ide){
     try{
-      const c=await apiCall('/consumo',{desde,hasta});
-      if(!c.rows||!c.rows.length)throw new Error('no ha devuelto ningún registro en ese rango');
+      // 20 meses por bloque: por debajo del tope con margen de sobra.
+      const bl=bloques(desde,hasta,600),filas=[];let meta=null,fallos=[];
+      for(let i=0;i<bl.length;i++){
+        avance('Pidiendo consumo',i+1,bl.length);
+        const t=await apiCall('/consumo',bl[i]);
+        if(t.rows)filas.push(...t.rows);
+        if(t.meta){meta=t.meta;if(t.meta.mesesConFallo)fallos.push(...t.meta.mesesConFallo)}
+      }
+      const c={rows:filas,meta:Object.assign({},meta,{mesesConFallo:fallos})};
+      if(!c.rows.length)throw new Error('no ha devuelto ningún registro en ese rango');
       // Entra como un "fichero" más para reutilizar la unión por días y el
       // aviso de huecos: se puede mezclar con .xlsx antiguos sin duplicar.
       const fuente=est.datadis?'Datadis':'i-DE';
@@ -528,7 +550,15 @@ async function traerDatos(){
 
   if(est.solarman){
     try{
-      const p=await apiCall('/produccion',{desde,hasta});
+      // 15 días por bloque: 30 llamadas de inversor más las de sesión, holgado
+      // por debajo de las 50 que permite Cloudflare.
+      const bl=bloques(desde,hasta,15),acc={A:[],B:[]};
+      for(let i=0;i<bl.length;i++){
+        avance('Pidiendo producción',i+1,bl.length);
+        const t=await apiCall('/produccion',bl[i]);
+        ['A','B'].forEach(k=>{if(t[k]&&t[k].length)acc[k].push(...t[k])});
+      }
+      const p=acc;
       let n=0;
       ['A','B'].forEach(k=>{if(p[k]&&p[k].length){
         RAW[k]=p[k].map(r=>({ts:new Date(r.ts),pot:r.pot,acum:r.acum,dia:r.dia})).sort((x,y)=>x.ts-y.ts);
