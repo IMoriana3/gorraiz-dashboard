@@ -484,6 +484,15 @@ export default{
           // Decir cuáles faltan ahorra adivinar: en Cloudflare, añadir un
           // secreto crea una versión que puede quedarse sin desplegar.
           solarmanFaltan:faltan,
+          // Huella del appId para poder cotejarlo con el que dio Solarman sin
+          // exponerlo entero: un espacio o un carácter de más al pegarlo da el
+          // mismo error que un appId bloqueado.
+          solarmanAppId:env.SOLARMAN_APPID
+            ?{longitud:env.SOLARMAN_APPID.length,
+              empieza:env.SOLARMAN_APPID.slice(0,4),
+              acaba:env.SOLARMAN_APPID.slice(-4),
+              limpio:env.SOLARMAN_APPID===env.SOLARMAN_APPID.trim()}
+            :null,
         },200,h);
       }
 
