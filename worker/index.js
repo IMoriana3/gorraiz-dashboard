@@ -439,25 +439,45 @@ function smValor(lista,claves,nombres){
   }
   return 0;
 }
-async function smHistorico(env,tk,sn,desde,hasta,base){
+// Solarman solo sirve un día por llamada, así que un rango son muchas. En fila
+// el Worker acaba tardando tanto que la conexión se corta y el navegador
+// devuelve un escueto "Failed to fetch"; en tandas paralelas va sobrado. La
+// tanda se mantiene pequeña para no castigar su API ni acercarse al tope de
+// subpeticiones por invocación.
+const TANDA=6;
+async function enTandas(items,n,fn){
   const out=[];
-  for(let d=dUTC(desde);d<=dUTC(hasta);d=new Date(d.getTime()+864e5)){
-    const dia=ymd(d);
-    // timeType 1 = por tramos dentro del día; el rango debe ser un solo día.
-    const j=await smPost(env,'/device/v1.0/historical?language=en',
-      {deviceSn:sn,startTime:dia,endTime:dia,timeType:1},tk,base);
-    for(const fr of j.paramDataList||[]){
-      const l=fr.dataList||[];
-      if(!fr.collectTime)continue;
-      out.push({ts:horaLocal(new Date(+fr.collectTime*1000)),
-        pot:smValor(l,['APo_t1'],['total ac output power','total ac output power (active)']),
-        acum:smValor(l,['Et_ge0'],['cumulative production','cumulative production (active)']),
-        dia:smValor(l,['Etdy_ge1'],['daily production','daily production (active)'])});
-    }
+  for(let i=0;i<items.length;i+=n)out.push(...await Promise.all(items.slice(i,i+n).map(fn)));
+  return out;
+}
+
+async function smHistorico(env,tk,sn,desde,hasta,base){
+  const dias=[];
+  for(let d=dUTC(desde);d<=dUTC(hasta);d=new Date(d.getTime()+864e5))dias.push(ymd(d));
+  // timeType 1 = por tramos dentro del día; el rango debe ser un solo día.
+  // Cada día devuelve una lista de tramos, así que hay que aplanar: sin esto
+  // queda una lista de listas y no se lee ningún tramo.
+  const porDia=(await enTandas(dias,TANDA,dia=>
+    smPost(env,'/device/v1.0/historical?language=en',
+      {deviceSn:sn,startTime:dia,endTime:dia,timeType:1},tk,base)
+      .then(j=>j.paramDataList||[]).catch(()=>[]))).flat();
+  const out=[];
+  for(const fr of porDia){
+    const l=fr.dataList||[];
+    if(!fr.collectTime)continue;
+    out.push({ts:horaLocal(new Date(+fr.collectTime*1000)),
+      pot:smValor(l,['APo_t1'],['total ac output power','total ac output power (active)']),
+      acum:smValor(l,['Et_ge0'],['cumulative production','cumulative production (active)']),
+      dia:smValor(l,['Etdy_ge1'],['daily production','daily production (active)'])});
   }
   return out;
 }
 async function solarmanProduccion(env,desde,hasta){
+  // Aviso claro antes de intentarlo: por encima de esto el Worker se pasa de
+  // subpeticiones. El dashboard ya trocea, esto es la red de seguridad.
+  const nd=Math.round((dUTC(hasta)-dUTC(desde))/864e5)+1;
+  if(nd>20)throw new Error('El rango pedido son '+nd+' días y el máximo por llamada son 20: '
+    +'pídelo en tramos más cortos.');
   const a=await smSesion(env);
   const r=await smInversores(env,a.tk,a.base);
   const res={meta:{stationId:r.stationId,inversores:r.inv.map(i=>i.sn),

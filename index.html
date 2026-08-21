@@ -700,9 +700,10 @@ async function traerDatos(){
 
   if(est.solarman){
     try{
-      // 15 días por bloque: 30 llamadas de inversor más las de sesión, holgado
-      // por debajo de las 50 que permite Cloudflare.
-      const bl=bloques(desde,hasta,15),acc={A:[],B:[]};
+      // 10 días por bloque: 20 llamadas de inversor más las de sesión. El tope
+      // de Cloudflare son 50, pero lo que manda aquí es el tiempo: bloques más
+      // largos tardaban tanto que la conexión se cortaba.
+      const bl=bloques(desde,hasta,10),acc={A:[],B:[]};
       for(let i=0;i<bl.length;i++){
         avance('Pidiendo producción',i+1,bl.length);
         const t=await apiCall('/produccion',bl[i]);
