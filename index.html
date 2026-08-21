@@ -88,6 +88,13 @@ input[type=file]{display:none}
 /* Chart card */
 .cc{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;margin:10px 0}
 .cc h4{font-size:12px;font-weight:700;margin-bottom:6px;color:var(--text)}
+/* Caja de proporción fija para las gráficas. Sin esto, Chart.js interpreta el
+   atributo height del lienzo como PROPORCIÓN, no como altura: con height=220 y
+   el ancho por defecto de 300 sale una relación de 1,36, así que en pantalla
+   ancha una gráfica de 1.283 px acababa midiendo 941 px de alto. De ahí que
+   unas parecieran achatadas y otras estiradas según la columna en que iban. */
+.cw{position:relative;width:100%;aspect-ratio:3.2;min-height:230px;max-height:420px}
+.cw canvas{position:absolute;inset:0}
 .row{display:flex;gap:10px} .row>*{flex:1;min-width:0}
 
 /* Table */
@@ -477,6 +484,35 @@ function mergeIBR(){
 
 function clearIBR(){IBR_FILES=[];RAW.I=[];$('fI').value='';mergeIBR();log('i-DE: ficheros de consumo vaciados')}
 
+// ═══ PROPORCIÓN DE LAS GRÁFICAS ═══
+// Se envuelve cada lienzo en una caja de proporción fija y se le dice a Chart.js
+// que no mantenga la suya. Quedan fuera los donuts, que sí deben ser cuadrados,
+// y el mapa de calor, que se dibuja a mano y fija su propio tamaño.
+function encajaGraficas(){
+  document.querySelectorAll('.cc canvas').forEach(c=>{
+    const id=c.id||'';
+    if(id.includes('donut')||id.includes('heat'))return;
+    if(c.parentElement&&c.parentElement.classList.contains('cw'))return;
+    const caja=document.createElement('div');caja.className='cw';
+    c.parentNode.insertBefore(caja,c);caja.appendChild(c);
+  });
+}
+(function(){
+  if(typeof Chart!=='function')return;
+  const Base=Chart;
+  window.Chart=class extends Base{
+    constructor(item,cfg){
+      const t=cfg&&cfg.type;
+      if(cfg&&t!=='doughnut'&&t!=='pie'){
+        cfg.options=cfg.options||{};
+        if(cfg.options.maintainAspectRatio===undefined)cfg.options.maintainAspectRatio=false;
+      }
+      super(item,cfg);
+    }
+  };
+  Object.assign(window.Chart,Base);
+})();
+
 // ═══ MEMORIA ENTRE SESIONES ═══
 // El informe solo pinta como "real" los meses que tiene cargados, así que sin
 // esto había que volver a subir el histórico entero cada vez. Se guarda en el
@@ -735,6 +771,7 @@ async function traerDatos(){
 (function initAuto(){
   const hoy=new Date(),ini=new Date(hoy.getFullYear()-1,hoy.getMonth(),1);
   $('aHasta').value=dk(hoy);$('aDesde').value=dk(ini);
+  encajaGraficas();
   pintaCfg();
   // El estado tiene que llegar antes de mirar el almacén compartido.
   estadoApi().then(()=>cargaFuentes()).then(()=>bajaDatos()).then(()=>sugiereRango());
