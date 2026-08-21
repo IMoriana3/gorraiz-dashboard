@@ -315,8 +315,14 @@ async function smPost(env,ruta,cuerpo,tk,base){
 }
 async function smToken(env){
   const bases=env.SOLARMAN_BASE?[env.SOLARMAN_BASE]:SOLARMAN_BASES;
-  const cuerpo=JSON.stringify({appSecret:cred(env.SOLARMAN_APPSECRET),email:cred(env.SOLARMAN_EMAIL),
-    password:await sha256(cred(env.SOLARMAN_PASS))});
+  // Las cuentas SOLARMAN Business necesitan orgId en el login; las Smart no lo
+  // llevan. Sin él, una cuenta Business responde "auth failed" aunque el correo
+  // y la contraseña sean correctos.
+  const datos={appSecret:cred(env.SOLARMAN_APPSECRET),email:cred(env.SOLARMAN_EMAIL),
+    password:await sha256(cred(env.SOLARMAN_PASS))};
+  const org=cred(env.SOLARMAN_ORGID);
+  if(org)datos.orgId=isNaN(+org)?org:+org;
+  const cuerpo=JSON.stringify(datos);
   const fallos=[];
   for(const base of bases){
     const r=await pedir(base+'/account/v1.0/token?appId='+encodeURIComponent(cred(env.SOLARMAN_APPID))+'&language=en',
@@ -329,7 +335,10 @@ async function smToken(env){
   // dice: "locked" es del appId, "auth failed" es de la cuenta.
   let pista='';
   if(fallos.some(f=>/auth failed/i.test(f)))
-    pista=' — "auth failed" en un centro significa que el appId es válido ahí y lo que falla son las credenciales: revisa SOLARMAN_APPSECRET, SOLARMAN_EMAIL y SOLARMAN_PASS. Consulta /estado para ver la huella de cada una.';
+    pista=' — "auth failed" en un centro significa que el appId es válido ahí y lo que falla son las credenciales.'
+      +(org?' Se ha enviado orgId, así que revisa que sea el correcto, junto con SOLARMAN_APPSECRET, SOLARMAN_EMAIL y SOLARMAN_PASS.'
+           :' Si la cuenta es SOLARMAN Business en lugar de Smart, el login exige además SOLARMAN_ORGID; sin él falla aunque el correo y la contraseña sean correctos.')
+      +' Consulta /estado para ver la huella de cada credencial.';
   else if(fallos.some(f=>/locked/i.test(f)))
     pista=' — "locked" en todos los centros significa que el appId no está activado por su soporte, o que sobra algún carácter en él. Consulta /estado para ver su huella.';
   throw new Error('Solarman: login rechazado. '+fallos.join(' · ')+pista);
@@ -440,6 +449,7 @@ export default{
           solarmanAppSecret:huella(env.SOLARMAN_APPSECRET),
           solarmanEmail:huella(env.SOLARMAN_EMAIL),
           solarmanPass:huella(env.SOLARMAN_PASS),
+          solarmanOrgId:env.SOLARMAN_ORGID||null,
         },200,h);
       }
 
