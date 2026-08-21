@@ -108,7 +108,12 @@ npx wrangler secret put SOLARMAN_APPSECRET
 npx wrangler secret put SOLARMAN_EMAIL
 npx wrangler secret put SOLARMAN_PASS       # en claro: el Worker le aplica SHA-256 al vuelo
 npx wrangler secret put SOLARMAN_STATION_ID # opcional: si hay una sola planta, sobra
+npx wrangler secret put SOLARMAN_ORGID      # SOLO si la cuenta es Business, no Smart
 ```
+
+**Smart contra Business.** El plan gratuito de la API es solo para cuentas SOLARMAN Smart con 3 plantas o menos. Y hay una diferencia técnica que no se anuncia: **una cuenta Business exige mandar `orgId` en el login**, y sin él responde `auth failed` aunque el correo y la contraseña sean correctos — indistinguible de una contraseña mal puesta.
+
+Los mensajes de error de Solarman despistan más de lo que ayudan: `appId or api is locked` puede ser tanto un appId sin activar como uno con un carácter de más o una llamada al centro de datos equivocado; `auth failed` puede ser credenciales erróneas o un `orgId` que falta. `/estado` devuelve la huella de cada credencial —longitud, extremos, si tiene espacios— para poder cotejarlas sin exponerlas.
 
 Después, en el dashboard: pega la URL del Worker y la `PANEL_KEY` en **⚡ Descarga automática → Worker / Clave** y pulsa Guardar. Se quedan en el `localStorage` de ese navegador.
 
