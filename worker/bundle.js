@@ -129,6 +129,14 @@ function revisaUnidades(filas){
 // existiera el fallo sería visible (login rechazado), no silencioso.
 const cred=v=>typeof v==='string'?v.trim():v;
 
+// Huella de una credencial: lo justo para cotejarla sin revelarla. Un valor a
+// medias o con espacios produce errores que no se parecen a su causa.
+function huella(v){
+  if(!v)return null;
+  const n=v.length;
+  return{longitud:n,empieza:v.slice(0,2),acaba:v.slice(-2),limpio:v===v.trim()};
+}
+
 // Reintento con espera creciente: Datadis va lento y corta si se le aprieta.
 async function pedir(url,opt={},intentos=3){
   let ultimo;
@@ -387,10 +395,14 @@ async function smToken(env){
     if(j.access_token)return{tk:j.access_token,base:base};
     fallos.push(new URL(base).hostname+': '+(j.msg||j.error||('HTTP '+r.status)));
   }
-  throw new Error('Solarman: login rechazado. '+fallos.join(' · ')+
-    (fallos.some(f=>/locked/i.test(f))
-      ? ' — "locked" suele significar que el appId todavía no está activado por su soporte, o que la cuenta pertenece a otro centro de datos. Se han probado todos los que conozco.'
-      : ''));
+  // Los dos mensajes de Solarman apuntan a cosas muy distintas y ninguno lo
+  // dice: "locked" es del appId, "auth failed" es de la cuenta.
+  let pista='';
+  if(fallos.some(f=>/auth failed/i.test(f)))
+    pista=' — "auth failed" en un centro significa que el appId es válido ahí y lo que falla son las credenciales: revisa SOLARMAN_APPSECRET, SOLARMAN_EMAIL y SOLARMAN_PASS. Consulta /estado para ver la huella de cada una.';
+  else if(fallos.some(f=>/locked/i.test(f)))
+    pista=' — "locked" en todos los centros significa que el appId no está activado por su soporte, o que sobra algún carácter en él. Consulta /estado para ver su huella.';
+  throw new Error('Solarman: login rechazado. '+fallos.join(' · ')+pista);
 }
 async function smInversores(env,tk,base){
   let sid=env.SOLARMAN_STATION_ID;
@@ -494,12 +506,10 @@ export default{
           // Huella del appId para poder cotejarlo con el que dio Solarman sin
           // exponerlo entero: un espacio o un carácter de más al pegarlo da el
           // mismo error que un appId bloqueado.
-          solarmanAppId:env.SOLARMAN_APPID
-            ?{longitud:env.SOLARMAN_APPID.length,
-              empieza:env.SOLARMAN_APPID.slice(0,4),
-              acaba:env.SOLARMAN_APPID.slice(-4),
-              limpio:env.SOLARMAN_APPID===env.SOLARMAN_APPID.trim()}
-            :null,
+          solarmanAppId:huella(env.SOLARMAN_APPID),
+          solarmanAppSecret:huella(env.SOLARMAN_APPSECRET),
+          solarmanEmail:huella(env.SOLARMAN_EMAIL),
+          solarmanPass:huella(env.SOLARMAN_PASS),
         },200,h);
       }
 
