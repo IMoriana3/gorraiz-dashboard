@@ -376,11 +376,13 @@ export default{
     // Build) en lugar de en las de ejecución (Settings → Variables and Secrets).
     const url=new URL(req.url);
     const ruta=url.pathname.replace(/\/+$/,'');
-    // Las rutas de diagnóstico admiten la clave por parámetro y método GET,
-    // para poder abrirlas desde la barra del navegador. Solo ellas: /consumo y
-    // /produccion siguen exigiendo la cabecera.
-    const esDiag=ruta.endsWith('/diagnostico');
-    const clave=req.headers.get('X-Panel-Key')||(esDiag?(url.searchParams.get('k')||''):'');
+    // El estado y los diagnósticos admiten la clave por parámetro y método GET,
+    // para poder abrirlos desde la barra del navegador y comprobar la
+    // configuración sin herramientas. Solo ellos: /consumo y /produccion
+    // siguen exigiendo la cabecera, para no repartir la clave en direcciones
+    // que quedan en el historial y en los registros.
+    const abrible=ruta==='/estado'||ruta.endsWith('/diagnostico');
+    const clave=req.headers.get('X-Panel-Key')||(abrible?(url.searchParams.get('k')||''):'');
 
     if(!env.PANEL_KEY)
       return json({error:'El Worker no tiene PANEL_KEY configurada. Compruébalo en Settings → Variables and Secrets (las de ejecución, no las de Build).',
@@ -389,12 +391,19 @@ export default{
       return json({error:'La clave de panel no coincide con la PANEL_KEY del Worker.'},401,h);
 
     try{
-      if(ruta==='/estado')return json({
-        datadis:!!(env.DATADIS_USER&&env.DATADIS_PASS),
-        datadisAutorizado:!!env.DATADIS_AUTHORIZED_NIF,
-        ide:!!(env.IDE_USER&&env.IDE_PASS),
-        solarman:!!(env.SOLARMAN_APPID&&env.SOLARMAN_APPSECRET&&env.SOLARMAN_EMAIL&&env.SOLARMAN_PASS),
-      },200,h);
+      if(ruta==='/estado'){
+        const sm=['SOLARMAN_APPID','SOLARMAN_APPSECRET','SOLARMAN_EMAIL','SOLARMAN_PASS'];
+        const faltan=sm.filter(k=>!env[k]);
+        return json({
+          datadis:!!(env.DATADIS_USER&&env.DATADIS_PASS),
+          datadisAutorizado:!!env.DATADIS_AUTHORIZED_NIF,
+          ide:!!(env.IDE_USER&&env.IDE_PASS),
+          solarman:!faltan.length,
+          // Decir cuáles faltan ahorra adivinar: en Cloudflare, añadir un
+          // secreto crea una versión que puede quedarse sin desplegar.
+          solarmanFaltan:faltan,
+        },200,h);
+      }
 
       const b=req.method==='POST'?await req.json().catch(()=>({}))
         :Object.fromEntries(url.searchParams);
