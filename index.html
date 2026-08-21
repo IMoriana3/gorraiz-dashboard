@@ -160,6 +160,7 @@ input[type=file]{display:none}
         <span class="hint" id="hintAuto" style="margin:0"></span>
       </div>
       <div class="st" id="stAuto"></div>
+      <div class="fl" id="memo" style="margin-top:10px"></div>
       <div class="cfg" id="cfgAuto"></div>
     </div>
     <div class="drow"><label>Desde:</label><input type="date" id="dDesde"><label>Hasta:</label><input type="date" id="dHasta"><span style="font-size:10px;color:var(--muted)">(vacío = todo el rango)</span></div>
@@ -361,12 +362,12 @@ function mergeProd(k){
   // El último origen añadido gana en caso de empate: es el dato más reciente.
   PROD_FUENTES[k].forEach(f=>f.rows.forEach(r=>{porTs[+r.ts]=r}));
   RAW[k]=Object.values(porTs).sort((a,b)=>a.ts-b.ts);
-  if(!RAW[k].length){$('st'+k).textContent='';$('z'+k).classList.remove('loaded');chk();return}
+  if(!RAW[k].length){$('st'+k).textContent='';$('z'+k).classList.remove('loaded');chk();pintaMemoria();return}
   const dias=new Set(RAW[k].map(r=>dk(r.ts)));
   const f=[...dias].sort();
   $('st'+k).textContent=`✓ ${fn(RAW[k].length)} reg · ${fn(dias.size)} días (${fdmy(f[0])} → ${fdmy(f[f.length-1])})`
     +(PROD_FUENTES[k].length>1?` · ${PROD_FUENTES[k].length} orígenes`:'');
-  $('z'+k).classList.add('loaded');chk();
+  $('z'+k).classList.add('loaded');chk();guardaFuentes();
 }
 
 function loadInv(files,L){
@@ -466,7 +467,7 @@ function mergeIBR(){
   if(solap.length)det+=`<br>🔗 ${fn(solap.length)} día${pl(solap.length)} en más de un fichero: se ha conservado la versión más completa de cada uno.`;
   if(huecos>0)det+=`<br><span class="warn">⚠ Faltan ${fn(huecos)} día${pl(huecos)} dentro de ${fdmy(ini)} → ${fdmy(fin)}: los ficheros no cubren el periodo entero.</span>`;
   det+=`<br><span class="clr" onclick="event.stopPropagation();clearIBR()">✕ Vaciar consumo</span>`;
-  $('flI').innerHTML=det;
+  $('flI').innerHTML=det;guardaFuentes();
   log(`i-DE: ${nf} fichero(s), ${RAW.I.length} reg, ${fechas.length} días (${fdmy(ini)} → ${fdmy(fin)})`+
       (solap.length?`, ${solap.length} día(s) solapado(s) unificado(s)`:'')+
       (huecos>0?`, ⚠ ${huecos} día(s) sin datos en el rango`:''));
@@ -474,6 +475,72 @@ function mergeIBR(){
 }
 
 function clearIBR(){IBR_FILES=[];RAW.I=[];$('fI').value='';mergeIBR();log('i-DE: ficheros de consumo vaciados')}
+
+// ═══ MEMORIA ENTRE SESIONES ═══
+// El informe solo pinta como "real" los meses que tiene cargados, así que sin
+// esto había que volver a subir el histórico entero cada vez. Se guarda en el
+// navegador (IndexedDB, no localStorage: un año de producción a 5 minutos son
+// cientos de miles de registros y no cabría). Nunca sale del equipo.
+const DB_NOMBRE='gorraiz_datos',DB_STORE='fuentes';
+function abreDB(){
+  return new Promise((ok,mal)=>{
+    const r=indexedDB.open(DB_NOMBRE,1);
+    r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains(DB_STORE))r.result.createObjectStore(DB_STORE,{keyPath:'id'})};
+    r.onsuccess=()=>ok(r.result);r.onerror=()=>mal(r.error||new Error('IndexedDB no disponible'));
+  });
+}
+let guardando=null;
+function guardaFuentes(){
+  // Se encadena para no solapar escrituras cuando entran A y B casi a la vez.
+  guardando=(guardando||Promise.resolve()).then(async()=>{
+    try{
+      const d=await abreDB();
+      await new Promise((ok,mal)=>{
+        const tx=d.transaction(DB_STORE,'readwrite'),st=tx.objectStore(DB_STORE);
+        st.clear();
+        IBR_FILES.forEach(f=>st.put({id:'I|'+f.name,tipo:'I',nombre:f.name,rows:f.rows}));
+        ['A','B'].forEach(k=>PROD_FUENTES[k].forEach(f=>st.put({id:k+'|'+f.nombre,tipo:k,nombre:f.nombre,rows:f.rows})));
+        tx.oncomplete=ok;tx.onerror=()=>mal(tx.error);
+      });
+      d.close();pintaMemoria();
+    }catch(e){log('⚠ No se han podido guardar los datos en el navegador: '+e.message)}
+  });
+  return guardando;
+}
+async function cargaFuentes(){
+  try{
+    const d=await abreDB();
+    const todo=await new Promise((ok,mal)=>{
+      const st=d.transaction(DB_STORE,'readonly').objectStore(DB_STORE),q=st.getAll();
+      q.onsuccess=()=>ok(q.result||[]);q.onerror=()=>mal(q.error);
+    });
+    d.close();
+    if(!todo.length){pintaMemoria();return}
+    todo.forEach(f=>{
+      if(f.tipo==='I')IBR_FILES.push({name:f.nombre,size:0,dias:0,rows:f.rows});
+      else if(PROD_FUENTES[f.tipo])PROD_FUENTES[f.tipo].push({nombre:f.nombre,rows:f.rows});
+    });
+    mergeIBR();mergeProd('A');mergeProd('B');
+    log(`Recuperados datos guardados: ${fn(RAW.I.length)} reg de consumo, ${fn(RAW.A.length+RAW.B.length)} de producción`);
+    pintaMemoria();
+  }catch(e){log('⚠ No se han podido recuperar los datos guardados: '+e.message)}
+}
+async function olvidaTodo(){
+  if(!confirm('Se borrarán del navegador todos los datos cargados: consumo y producción. ¿Seguro?'))return;
+  try{const d=await abreDB();
+    await new Promise(ok=>{const tx=d.transaction(DB_STORE,'readwrite');tx.objectStore(DB_STORE).clear();tx.oncomplete=ok});
+    d.close();
+  }catch(e){}
+  IBR_FILES=[];PROD_FUENTES={A:[],B:[]};RAW={A:[],B:[],I:[]};
+  mergeIBR();mergeProd('A');mergeProd('B');pintaMemoria();log('Datos guardados borrados');
+}
+function pintaMemoria(){
+  const n=RAW.I.length+RAW.A.length+RAW.B.length;
+  $('memo').innerHTML=n
+    ? `💾 ${fn(n)} registros guardados en este navegador; se recuperan solos la próxima vez. `
+      +`<span class="clr" onclick="olvidaTodo()">✕ Olvidar todo</span>`
+    : '💾 Lo que cargues se guardará en este navegador para no tener que volver a subirlo.';
+}
 
 // ═══ DESCARGA AUTOMÁTICA (Datadis / Solarman vía Worker) ═══
 // El navegador no puede llamar a Datadis ni a Solarman: no mandan CORS y las
@@ -610,7 +677,7 @@ async function traerDatos(){
 (function initAuto(){
   const hoy=new Date(),ini=new Date(hoy.getFullYear()-1,hoy.getMonth(),1);
   $('aHasta').value=dk(hoy);$('aDesde').value=dk(ini);
-  pintaCfg();estadoApi();
+  pintaCfg();estadoApi();cargaFuentes();
 })();
 
 // ── Processing ──
