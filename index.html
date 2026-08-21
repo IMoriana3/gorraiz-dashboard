@@ -48,11 +48,11 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min
 .uz.loaded{border-color:var(--green2);border-style:solid}
 .uz h3{font-size:13px;margin-bottom:2px} .uz p{font-size:11px;color:var(--muted)}
 .uz .st{font-size:11px;color:var(--accent);margin-top:6px;font-weight:600}
-.uz .fl{font-size:10px;color:var(--dim);margin-top:6px;line-height:1.6}
-.uz .fl b{color:var(--accent2);font-weight:600}
-.uz .fl .warn{color:var(--orange)}
-.uz .clr{display:inline-block;margin-top:6px;font-size:10px;color:var(--muted);border:1px solid var(--border);border-radius:5px;padding:2px 8px;cursor:pointer}
-.uz .clr:hover{color:var(--red);border-color:var(--red)}
+.uz .fl,.az .fl{font-size:10px;color:var(--dim);margin-top:6px;line-height:1.6}
+.uz .fl b,.az .fl b{color:var(--accent2);font-weight:600}
+.uz .fl .warn,.az .fl .warn{color:var(--orange)}
+.uz .clr,.az .clr{display:inline-block;font-size:10px;color:var(--muted);border:1px solid var(--border);border-radius:5px;padding:1px 7px;margin-left:6px;cursor:pointer}
+.uz .clr:hover,.az .clr:hover{color:var(--red);border-color:var(--red)}
 .az{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:10px}
 .az h3{font-size:13px;margin-bottom:2px} .az p{font-size:11px;color:var(--muted);margin-bottom:8px}
 .az .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:11px}
@@ -161,7 +161,7 @@ input[type=file]{display:none}
       </div>
       <div class="hint" id="hueco"></div>
       <div class="st" id="stAuto"></div>
-      <div class="fl" id="memo" style="margin-top:10px"></div>
+      <div class="fl" id="memo"></div>
       <div class="cfg" id="cfgAuto"></div>
     </div>
     <div class="drow"><label>Desde:</label><input type="date" id="dDesde"><label>Hasta:</label><input type="date" id="dHasta"><span style="font-size:10px;color:var(--muted)">(vacío = todo el rango)</span></div>
@@ -574,13 +574,10 @@ function subeDatos(){
 function pintaMemoria(remoto){
   const n=RAW.I.length+RAW.A.length+RAW.B.length;
   const comp=API_ESTADO&&API_ESTADO.almacen;
-  let t=n
-    ? `💾 ${fn(n)} registros guardados en este navegador; se recuperan solos la próxima vez.`
-    : '💾 Lo que cargues se guardará en este navegador para no tener que volver a subirlo.';
-  if(comp)t+=' 🌐 El consumo se comparte con el Worker, así que otro compañero lo verá al abrir el dashboard'
-    +(remoto&&remoto.actualizado?` (última actualización: ${esc(remoto.actualizado.slice(0,16).replace('T',' '))})`:'')
-    +'. La producción no se comparte: se trae de Solarman con el botón.';
-  if(n)t+=` <span class="clr" onclick="olvidaTodo()">✕ Olvidar todo</span>`;
+  let t=n?`💾 ${fn(n)} registros guardados`:'💾 Lo que cargues se guardará para no volver a subirlo';
+  if(comp&&n)t+=' · 🌐 consumo accesible desde cualquier equipo';
+  else if(comp)t+=' · 🌐 el consumo, accesible desde cualquier equipo';
+  if(n)t+=`<span class="clr" onclick="olvidaTodo()">✕ Olvidar todo</span>`;
   $('memo').innerHTML=t;
 }
 
