@@ -152,7 +152,7 @@ input[type=file]{display:none}
     <div class="uz" id="zI" onclick="$('fI').click()"><h3>📂 Consumo i-DE (.xlsx)</h3><p>Uno o varios ficheros de consumo horario de i-DE (hoja "Horarias"). Si el histórico se ha descargado en varios trozos, súbelos todos: se unen automáticamente y los días repetidos no se duplican.</p><div class="st" id="stI"></div><div class="fl" id="flI"></div><input type="file" id="fI" accept=".xlsx" multiple></div>
     <div class="az" id="zAuto">
       <h3>⚡ Descarga automática</h3>
-      <p>Trae el consumo directamente de Datadis, sin descargar ni subir ficheros. El histórico se pide mes a mes por dentro, así que da igual que sean tres años.</p>
+      <p>Trae la producción de los inversores y, cuando Datadis esté dado de alta, también el consumo. El histórico se pide por bloques, así que da igual que sean tres años.</p>
       <div class="row">
         <label>Desde:</label><input type="date" id="aDesde">
         <label>Hasta:</label><input type="date" id="aHasta">
@@ -500,8 +500,7 @@ let API_ESTADO=null;
 async function estadoApi(){
   const c=apiCfg();if(!c.url){$('hintAuto').textContent='sin configurar';return}
   try{API_ESTADO=await apiCall('/estado');
-    const fuente=API_ESTADO.datadis?'Datadis':(API_ESTADO.ide?'i-DE':null);
-    $('hintAuto').innerHTML=`consumo ${fuente?'✓ '+fuente:'✗'} · producción ${API_ESTADO.solarman?'✓ Solarman':'✗'}`;
+    $('hintAuto').innerHTML=`consumo ${API_ESTADO.datadis?'✓ Datadis':'✗'} · producción ${API_ESTADO.solarman?'✓ Solarman':'✗'}`;
   }catch(e){$('hintAuto').innerHTML=`<span style="color:var(--red)">${esc(e.message)}</span>`}
 }
 async function traerDatos(){
@@ -516,7 +515,11 @@ async function traerDatos(){
   // impedir traer la otra, que es lo que pasaba pidiendo el consumo primero.
   const partes=[];let algo=false;
 
-  if(est.datadis||est.ide){
+  // A i-DE no se le pide: desde el Worker responde 503 siempre, porque rechaza
+  // el tráfico que no viene de un navegador doméstico. Pedirlo solo servía para
+  // enseñar un error rojo en cada descarga. El código sigue ahí por si algún
+  // día se ejecuta desde otra red.
+  if(est.datadis){
     try{
       // 20 meses por bloque: por debajo del tope con margen de sobra.
       const bl=bloques(desde,hasta,600),filas=[];let meta=null,fallos=[];
@@ -530,8 +533,7 @@ async function traerDatos(){
       if(!c.rows.length)throw new Error('no ha devuelto ningún registro en ese rango');
       // Entra como un "fichero" más para reutilizar la unión por días y el
       // aviso de huecos: se puede mezclar con .xlsx antiguos sin duplicar.
-      const fuente=est.datadis?'Datadis':'i-DE';
-      const nombre=`${fuente} ${fdmy(desde)} → ${fdmy(hasta)}`;
+      const nombre=`Datadis ${fdmy(desde)} → ${fdmy(hasta)}`;
       IBR_FILES=IBR_FILES.filter(f=>f.name!==nombre);
       IBR_FILES.push({name:nombre,size:0,dias:0,
         rows:c.rows.map(r=>({ts:new Date(r.ts),consumo:r.consumo,gen:r.gen,periodo:r.periodo}))});
@@ -545,7 +547,9 @@ async function traerDatos(){
       log('⚠ Consumo: '+e.message);
     }
   }else{
-    partes.push('<span class="warn">Consumo no configurado: sigue subiendo los .xlsx de i-DE.</span>');
+    partes.push(est.ide
+      ? 'Consumo: se sigue subiendo con los .xlsx de i-DE. La descarga automática solo funciona con Datadis.'
+      : '<span class="warn">Consumo no configurado: sigue subiendo los .xlsx de i-DE.</span>');
   }
 
   if(est.solarman){
