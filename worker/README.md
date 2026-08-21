@@ -111,6 +111,8 @@ npx wrangler secret put SOLARMAN_STATION_ID # opcional: si hay una sola planta, 
 npx wrangler secret put SOLARMAN_ORGID      # SOLO si la cuenta es Business, no Smart
 ```
 
+**El rango se trocea en el dashboard, no aquí.** Cloudflare limita a **50 subpeticiones por invocación** del Worker en el plan gratuito. Cada día de producción son dos llamadas —una por inversor— más las de sesión, así que pedir más de tres semanas de una vez lo revienta. El dashboard parte el rango en bloques de 15 días para producción y de 20 meses para consumo, y va acumulando. Si algún día se cambia el número de inversores de la planta, ese tamaño de bloque hay que revisarlo.
+
 **Campos de los inversores (KSTAR G50KT, comprobados en la instalación).** `APo_t1` potencia AC total, `Et_ge0` producción acumulada, `Etdy_ge1` producción diaria. Se buscan **por clave exacta** y solo después por nombre: buscar por nombre a secas es peligroso, porque la misma respuesta trae `HR_Ege_t1` *"Total Production Hour"* (horas, no kWh) y `SV_AP` *"Active Power Setting Value"* (un ajuste, no una potencia), que casaban con los patrones y habrían pasado por buenos sin quejarse.
 
 **Zona horaria de Solarman.** `collectTime` viene en UTC de verdad: en la instalación marcaba 05:04 UTC mientras el reloj del inversor decía 07:05, las dos horas de Madrid en agosto. Como el consumo se emite en hora local sin zona, la producción se convierte también a hora peninsular; si no, abrir el informe desde otro huso desplazaría una serie y la otra no.
