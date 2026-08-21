@@ -552,6 +552,31 @@ async function solarmanDiagnostico(env,dia){
     campos:(fr.dataList||[]).map(x=>({key:x.key,name:x.name,value:x.value}))};
 }
 
+// ── ALMACÉN COMPARTIDO ───────────────────────────────────────────────────
+// Solo el consumo. La producción no se guarda: Solarman ya es su archivo y
+// cualquiera puede traérsela con el botón, así que duplicarla sería mantener
+// dos verdades. Cuando Datadis esté dado de alta, esto pasará a ser una
+// comodidad en vez de una necesidad.
+const CLAVE_DATOS='consumo';
+const TOPE=20*1024*1024;   // KV admite 25 MB por valor; se deja margen
+
+async function leeDatos(env){
+  if(!env.DATOS)return null;
+  return (await env.DATOS.get(CLAVE_DATOS,'json'))||{fuentes:[],actualizado:null};
+}
+async function escribeDatos(env,cuerpo){
+  if(!env.DATOS)throw new Error('No hay almacén configurado en el Worker.');
+  const fuentes=Array.isArray(cuerpo&&cuerpo.fuentes)?cuerpo.fuentes:null;
+  if(!fuentes)throw new Error('Se esperaba una lista de fuentes.');
+  const guardar={fuentes:fuentes,actualizado:cuerpo.actualizado||null,por:cuerpo.por||null};
+  const txt=JSON.stringify(guardar);
+  if(txt.length>TOPE)throw new Error('Los datos ocupan '+Math.round(txt.length/1048576)
+    +' MB y el máximo son 20. Reduce el rango guardado.');
+  await env.DATOS.put(CLAVE_DATOS,txt);
+  return{ok:true,fuentes:fuentes.length,
+    registros:fuentes.reduce((n,f)=>n+((f.rows&&f.rows.length)||0),0),bytes:txt.length};
+}
+
 // ── enrutado ─────────────────────────────────────────────────────────────
 export default{
   async fetch(req,env){
@@ -598,6 +623,7 @@ export default{
           solarmanEmail:huella(env.SOLARMAN_EMAIL),
           solarmanPass:huella(env.SOLARMAN_PASS),
           solarmanOrgId:env.SOLARMAN_ORGID||null,
+          almacen:!!env.DATOS,
         },200,h);
       }
 
@@ -608,6 +634,11 @@ export default{
         if(!/^\d{4}-\d{2}-\d{2}$/.test(desde||'')||!/^\d{4}-\d{2}-\d{2}$/.test(hasta||''))
           return json({error:'Faltan las fechas (desde/hasta en formato AAAA-MM-DD).'},400,h);
         if(desde>hasta)return json({error:'La fecha inicial es posterior a la final.'},400,h);
+      }
+      if(ruta==='/datos'){
+        if(!env.DATOS)return json({error:'No hay almacén configurado: falta el enlace KV llamado DATOS en el Worker.'},501,h);
+        if(req.method==='POST')return json(await escribeDatos(env,b),200,h);
+        return json(await leeDatos(env),200,h);
       }
       if(ruta==='/consumo'){
         // Datadis manda si está configurado (es la vía oficial y estable);

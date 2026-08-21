@@ -159,6 +159,7 @@ input[type=file]{display:none}
         <button class="btn btn2" id="btnAuto" onclick="traerDatos()" style="padding:6px 14px;font-size:11px">⬇ Traer datos</button>
         <span class="hint" id="hintAuto" style="margin:0"></span>
       </div>
+      <div class="hint" id="hueco"></div>
       <div class="st" id="stAuto"></div>
       <div class="fl" id="memo" style="margin-top:10px"></div>
       <div class="cfg" id="cfgAuto"></div>
@@ -467,7 +468,7 @@ function mergeIBR(){
   if(solap.length)det+=`<br>🔗 ${fn(solap.length)} día${pl(solap.length)} en más de un fichero: se ha conservado la versión más completa de cada uno.`;
   if(huecos>0)det+=`<br><span class="warn">⚠ Faltan ${fn(huecos)} día${pl(huecos)} dentro de ${fdmy(ini)} → ${fdmy(fin)}: los ficheros no cubren el periodo entero.</span>`;
   det+=`<br><span class="clr" onclick="event.stopPropagation();clearIBR()">✕ Vaciar consumo</span>`;
-  $('flI').innerHTML=det;guardaFuentes();
+  $('flI').innerHTML=det;guardaFuentes();subeDatos();
   log(`i-DE: ${nf} fichero(s), ${RAW.I.length} reg, ${fechas.length} días (${fdmy(ini)} → ${fdmy(fin)})`+
       (solap.length?`, ${solap.length} día(s) solapado(s) unificado(s)`:'')+
       (huecos>0?`, ⚠ ${huecos} día(s) sin datos en el rango`:''));
@@ -534,12 +535,53 @@ async function olvidaTodo(){
   IBR_FILES=[];PROD_FUENTES={A:[],B:[]};RAW={A:[],B:[],I:[]};
   mergeIBR();mergeProd('A');mergeProd('B');pintaMemoria();log('Datos guardados borrados');
 }
-function pintaMemoria(){
+// ── Almacén compartido (solo consumo) ──
+// La producción no se sube: Solarman ya es su archivo y cualquiera la trae con
+// el botón. Subir también eso sería mantener dos verdades de lo mismo.
+let RESTAURANDO=false,subida=null;
+async function bajaDatos(){
+  if(!API_ESTADO||!API_ESTADO.almacen)return;
+  try{
+    const d=await apiCall('/datos');
+    if(!d.fuentes||!d.fuentes.length)return;
+    let nuevas=0;
+    d.fuentes.forEach(f=>{
+      if(IBR_FILES.some(x=>x.name===f.nombre))return;
+      IBR_FILES.push({name:f.nombre,size:0,dias:0,
+        rows:(f.rows||[]).map(r=>({ts:new Date(r.ts),consumo:r.consumo,gen:r.gen,periodo:r.periodo}))});
+      nuevas++;
+    });
+    if(nuevas){RESTAURANDO=true;mergeIBR();RESTAURANDO=false;
+      log(`Consumo compartido: ${nuevas} fuente(s) recuperadas del Worker`)}
+    pintaMemoria(d);
+  }catch(e){log('⚠ Almacén compartido: '+e.message)}
+}
+function subeDatos(){
+  if(RESTAURANDO||!API_ESTADO||!API_ESTADO.almacen)return;
+  // Se espera un momento para no escribir una vez por cada fichero de una tanda.
+  clearTimeout(subida);
+  subida=setTimeout(async()=>{
+    try{
+      const r=await apiCall('/datos',{actualizado:new Date().toISOString(),
+        fuentes:IBR_FILES.map(f=>({nombre:f.name,rows:f.rows.map(x=>({ts:x.ts.toISOString(),
+          consumo:x.consumo,gen:x.gen,periodo:x.periodo}))}))});
+      log(`Consumo compartido: guardadas ${r.fuentes} fuente(s), ${fn(r.registros)} registros`);
+      pintaMemoria();
+    }catch(e){log('⚠ No se ha podido compartir el consumo: '+e.message)}
+  },1500);
+}
+
+function pintaMemoria(remoto){
   const n=RAW.I.length+RAW.A.length+RAW.B.length;
-  $('memo').innerHTML=n
-    ? `💾 ${fn(n)} registros guardados en este navegador; se recuperan solos la próxima vez. `
-      +`<span class="clr" onclick="olvidaTodo()">✕ Olvidar todo</span>`
+  const comp=API_ESTADO&&API_ESTADO.almacen;
+  let t=n
+    ? `💾 ${fn(n)} registros guardados en este navegador; se recuperan solos la próxima vez.`
     : '💾 Lo que cargues se guardará en este navegador para no tener que volver a subirlo.';
+  if(comp)t+=' 🌐 El consumo se comparte con el Worker, así que otro compañero lo verá al abrir el dashboard'
+    +(remoto&&remoto.actualizado?` (última actualización: ${esc(remoto.actualizado.slice(0,16).replace('T',' '))})`:'')
+    +'. La producción no se comparte: se trae de Solarman con el botón.';
+  if(n)t+=` <span class="clr" onclick="olvidaTodo()">✕ Olvidar todo</span>`;
+  $('memo').innerHTML=t;
 }
 
 // ═══ DESCARGA AUTOMÁTICA (Datadis / Solarman vía Worker) ═══
@@ -592,6 +634,24 @@ async function estadoApi(){
     $('hintAuto').innerHTML=`consumo ${API_ESTADO.datadis?'✓ Datadis':'✗'} · producción ${API_ESTADO.solarman?'✓ Solarman':'✗'}`;
   }catch(e){$('hintAuto').innerHTML=`<span style="color:var(--red)">${esc(e.message)}</span>`}
 }
+// Con los datos ya recordados, pedir de nuevo lo que se tiene es gastar
+// llamadas para nada: se propone arrancar el día siguiente al último cubierto.
+function sugiereRango(){
+  const dias=[...new Set([].concat(RAW.A,RAW.B).map(r=>dk(r.ts)))].sort();
+  const hoy=dk(new Date());
+  if(!dias.length){$('hueco').textContent='';return}
+  const ultimo=dias[dias.length-1];
+  if(ultimo>=hoy){
+    $('aDesde').value=hoy;
+    $('hueco').innerHTML=`Ya tienes producción hasta el <b>${fdmy(ultimo)}</b>: no falta nada por traer.`;
+    return;
+  }
+  const siguiente=sumaDias(ultimo,1);
+  $('aDesde').value=siguiente;$('aHasta').value=hoy;
+  $('hueco').innerHTML=`Ya tienes producción hasta el <b>${fdmy(ultimo)}</b>, así que solo se pedirá `
+    +`desde el <b>${fdmy(siguiente)}</b>. Cambia las fechas si quieres rehacer un tramo.`;
+}
+
 async function traerDatos(){
   const desde=$('aDesde').value,hasta=$('aHasta').value;
   if(!desde||!hasta){$('stAuto').innerHTML='<span class="err">Indica las fechas desde y hasta.</span>';return}
@@ -670,14 +730,16 @@ async function traerDatos(){
   }
 
   if(!algo)partes.push('<span class="warn">No se ha cargado nada; los datos que ya tuvieras siguen intactos.</span>');
-  $('stAuto').innerHTML=partes.join('<br>');chk();
+  $('stAuto').innerHTML=partes.join('<br>');chk();sugiereRango();
   b.disabled=false;b.textContent=txt;
 }
 
 (function initAuto(){
   const hoy=new Date(),ini=new Date(hoy.getFullYear()-1,hoy.getMonth(),1);
   $('aHasta').value=dk(hoy);$('aDesde').value=dk(ini);
-  pintaCfg();estadoApi();cargaFuentes();
+  pintaCfg();
+  // El estado tiene que llegar antes de mirar el almacén compartido.
+  estadoApi().then(()=>cargaFuentes()).then(()=>bajaDatos()).then(()=>sugiereRango());
 })();
 
 // ── Processing ──
