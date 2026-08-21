@@ -122,6 +122,13 @@ function revisaUnidades(filas){
     aviso:media>500?'La media horaria es de '+Math.round(media)+' kWh, desproporcionada para esta instalación: lo más probable es que el portal sirva Wh. Configura IDE_FACTOR=0.001 y repite.':null};
 }
 
+// Al pegar credenciales en el panel es fácil arrastrar un espacio, y el error
+// que provoca no se parece en nada a su causa: Solarman, por ejemplo, responde
+// "appId or api is locked", que suena a permisos. Se recortan siempre. Una
+// credencial con espacios al principio o al final a propósito no existe, y si
+// existiera el fallo sería visible (login rechazado), no silencioso.
+const cred=v=>typeof v==='string'?v.trim():v;
+
 // Reintento con espera creciente: Datadis va lento y corta si se le aprieta.
 async function pedir(url,opt={},intentos=3){
   let ultimo;
@@ -140,7 +147,7 @@ async function pedir(url,opt={},intentos=3){
 // Autenticación: NIF + contraseña de la cuenta de datadis.es. Devuelve el JWT
 // en texto plano, no en JSON.
 async function datadisToken(env){
-  const body=new URLSearchParams({username:env.DATADIS_USER,password:env.DATADIS_PASS});
+  const body=new URLSearchParams({username:cred(env.DATADIS_USER),password:cred(env.DATADIS_PASS)});
   const r=await pedir(DATADIS+'/nikola-auth/tokens/login',{method:'POST',body,
     headers:{'content-type':'application/x-www-form-urlencoded'}});
   if(!r.ok)throw new Error('Datadis: login rechazado (HTTP '+r.status+'). Revisa DATADIS_USER (NIF) y DATADIS_PASS.');
@@ -166,7 +173,7 @@ async function datadisSuministro(env,tk){
   if(!Array.isArray(lista)||!lista.length)throw new Error(env.DATADIS_AUTHORIZED_NIF
     ?('Datadis: no hay suministros autorizados para el NIF '+env.DATADIS_AUTHORIZED_NIF+'. ¿Ha aceptado el titular la autorización?')
     :'Datadis: la cuenta no tiene ningún suministro dado de alta. Si el CUPS es de un cliente, configura DATADIS_AUTHORIZED_NIF.');
-  const cups=env.DATADIS_CUPS;
+  const cups=cred(env.DATADIS_CUPS);
   const s=cups?lista.find(x=>String(x.cups||'').toUpperCase().startsWith(cups.toUpperCase())):lista[0];
   if(!s)throw new Error('Datadis: el CUPS '+cups+' no está en esta cuenta. Disponibles: '+lista.map(x=>x.cups).join(', '));
   return s;
@@ -253,7 +260,7 @@ async function ideLogin(env){
   let r;
   try{
     r=await pedir(IDE+'/loginNew/login/',{method:'POST',headers:ideCab(previa),
-      body:JSON.stringify([env.IDE_USER,env.IDE_PASS,'','Android 6.0','Móvil','Chrome 119.0.0.0','0','','s',''])});
+      body:JSON.stringify([cred(env.IDE_USER),cred(env.IDE_PASS),'','Android 6.0','Móvil','Chrome 119.0.0.0','0','','s',''])});
   }catch(e){
     // pedir() reintenta los 5xx y acaba lanzando su error genérico, así que el
     // caso interesante hay que explicarlo aquí y no comprobando r.status.
@@ -370,11 +377,11 @@ async function smPost(env,ruta,cuerpo,tk,base){
 }
 async function smToken(env){
   const bases=env.SOLARMAN_BASE?[env.SOLARMAN_BASE]:SOLARMAN_BASES;
-  const cuerpo=JSON.stringify({appSecret:env.SOLARMAN_APPSECRET,email:env.SOLARMAN_EMAIL,
-    password:await sha256(env.SOLARMAN_PASS)});
+  const cuerpo=JSON.stringify({appSecret:cred(env.SOLARMAN_APPSECRET),email:cred(env.SOLARMAN_EMAIL),
+    password:await sha256(cred(env.SOLARMAN_PASS))});
   const fallos=[];
   for(const base of bases){
-    const r=await pedir(base+'/account/v1.0/token?appId='+encodeURIComponent(env.SOLARMAN_APPID)+'&language=en',
+    const r=await pedir(base+'/account/v1.0/token?appId='+encodeURIComponent(cred(env.SOLARMAN_APPID))+'&language=en',
       {method:'POST',headers:{'content-type':'application/json'},body:cuerpo});
     const j=await r.json().catch(()=>({}));
     if(j.access_token)return{tk:j.access_token,base:base};
