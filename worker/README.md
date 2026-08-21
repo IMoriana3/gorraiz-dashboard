@@ -125,6 +125,16 @@ Los mensajes de error de Solarman despistan más de lo que ayudan: `appId or api
 
 Después, en el dashboard: pega la URL del Worker y la `PANEL_KEY` en **⚡ Descarga automática → Worker / Clave** y pulsa Guardar. Se quedan en el `localStorage` de ese navegador.
 
+## Almacén compartido del consumo
+
+Los `.xlsx` de consumo solo existen en el equipo de quien los descarga, así que sin esto un compañero abría el dashboard y lo veía vacío. El Worker guarda esas fuentes en un espacio KV (`binding = "DATOS"`, configurado en `wrangler.toml`) y las sirve en `/datos`; el dashboard las sube al cargar ficheros y se las baja al abrir.
+
+**La producción no se guarda a propósito.** Solarman ya es su archivo y cualquiera la trae con el botón: duplicarla sería mantener dos verdades de lo mismo, con el riesgo de que se separen sin que nadie se entere.
+
+Sin el enlace KV el Worker funciona igual: `/datos` responde que no hay almacén y cada navegador se queda con su copia local en IndexedDB.
+
+**Límite conocido:** quien tenga la `PANEL_KEY` puede leer y sobrescribir el consumo guardado. No hay control de quién escribe ni historial de cambios. Entre unas pocas personas de confianza es razonable; para más manos habría que añadir identidad y permisos.
+
 ## Notas de implementación
 
 **Registro como organización.** El CUPS está a nombre de una empresa, así que la cuenta de Datadis se crea como *Organización* (con el CIF), no como *Particulares y autónomos*. Para un edificio de un tercero, lo limpio sería que cada parte tuviera su cuenta y el titular concediera una autorización sobre ese CUPS: queda trazada, es revocable y evita custodiar credenciales ajenas.

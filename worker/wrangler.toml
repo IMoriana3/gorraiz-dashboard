@@ -25,10 +25,8 @@ ALLOWED_ORIGIN = "https://imoriana3.github.io"
 # (Settings → Variables and Secrets) o con `wrangler secret put`.
 
 # Almacén compartido del consumo, para que el histórico no viva solo en el
-# navegador de una persona. Hay que crear el espacio KV en el panel de
-# Cloudflare (Storage & databases -> KV -> Create) y pegar aquí su ID.
-# Sin esto el Worker funciona igual: /datos responde que no hay almacén y
-# cada navegador se queda con su copia local.
-# [[kv_namespaces]]
-# binding = "DATOS"
-# id = "pega-aqui-el-id-del-espacio-KV"
+# navegador de una persona. El identificador no es un secreto: sin acceso a
+# la cuenta de Cloudflare no sirve de nada, y por eso puede vivir aquí.
+[[kv_namespaces]]
+binding = "DATOS"
+id = "060df5733aad4c61b01cbf05e4d7510b"
