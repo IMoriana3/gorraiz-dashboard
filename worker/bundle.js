@@ -383,14 +383,14 @@ async function smPost(env,ruta,cuerpo,tk,base){
   if(j.success===false)throw new Error('Solarman '+ruta+': '+(j.msg||j.code||'error'));
   return j;
 }
-async function smToken(env){
+async function smToken(env,orgForzado){
   const bases=env.SOLARMAN_BASE?[env.SOLARMAN_BASE]:SOLARMAN_BASES;
   // Las cuentas SOLARMAN Business necesitan orgId en el login; las Smart no lo
   // llevan. Sin él, una cuenta Business responde "auth failed" aunque el correo
   // y la contraseña sean correctos.
   const datos={appSecret:cred(env.SOLARMAN_APPSECRET),email:cred(env.SOLARMAN_EMAIL),
     password:await sha256(cred(env.SOLARMAN_PASS))};
-  const org=cred(env.SOLARMAN_ORGID);
+  const org=orgForzado!==undefined&&orgForzado!==null?String(orgForzado):cred(env.SOLARMAN_ORGID);
   if(org)datos.orgId=isNaN(+org)?org:+org;
   const cuerpo=JSON.stringify(datos);
   const fallos=[];
@@ -419,16 +419,40 @@ async function smToken(env){
 // organizaciones de la cuenta para no tener que averiguar el número a mano.
 async function smOrganizaciones(env,tk,base){
   const j=await smPost(env,'/account/v1.0/info?language=en',{},tk,base).catch(()=>({}));
-  // El nombre de la lista varía entre versiones, así que se busca cualquier
-  // array cuyos elementos tengan un id: es lo único que se necesita.
+  // El nombre de la lista y el del identificador varían entre versiones: la
+  // real devuelve orgInfoList con companyId, no una clave llamada 'id'.
   const busca=o=>{
     for(const v of Object.values(o||{})){
-      if(Array.isArray(v)&&v.length&&v[0]&&typeof v[0]==='object'&&('id'in v[0]))return v;
+      if(Array.isArray(v)&&v.length&&v[0]&&typeof v[0]==='object'&&orgId(v[0])!=null)return v;
       if(v&&typeof v==='object'&&!Array.isArray(v)){const r=busca(v);if(r)return r}
     }
     return null;
   };
   return{orgs:busca(j)||[],crudo:j};
+}
+const orgId=o=>o.companyId!=null?o.companyId:(o.orgId!=null?o.orgId:(o.id!=null?o.id:null));
+const orgNombre=o=>o.companyName||o.orgName||o.name||'sin nombre';
+const listaPlantas=l=>l.stationList||l.list||(l.data&&(l.data.stationList||l.data.list))||[];
+
+// Abre sesión resolviendo el caso de las plantas de empresa: si el token
+// personal no ve ninguna planta y la cuenta pertenece a una sola organización,
+// se repite el login con su orgId en lugar de obligar a configurarlo a mano.
+async function smSesion(env){
+  const a=await smToken(env);
+  if(cred(env.SOLARMAN_ORGID))return a;
+  const l=await smPost(env,'/station/v1.0/list',{page:1,size:20},a.tk,a.base);
+  if(listaPlantas(l).length)return a;
+  const o=await smOrganizaciones(env,a.tk,a.base);
+  if(o.orgs.length===1){
+    const b=await smToken(env,orgId(o.orgs[0]));
+    return{tk:b.tk,base:b.base,org:{id:orgId(o.orgs[0]),nombre:orgNombre(o.orgs[0]),automatico:true}};
+  }
+  if(o.orgs.length>1)throw new Error('Solarman: el token personal no ve ninguna planta y la cuenta pertenece a '
+    +o.orgs.length+' organizaciones: '+o.orgs.map(x=>orgNombre(x)+' (orgId '+orgId(x)+')').join(' · ')
+    +'. Configura SOLARMAN_ORGID con la que tenga la planta.');
+  throw new Error('Solarman: el token no ve ninguna planta y no se le encuentra ninguna organización, '
+    +'así que la planta debe de estar bajo otra cuenta o compartida en lugar de propia. '
+    +'Respuesta de /account/v1.0/info: '+JSON.stringify(o.crudo).slice(0,300));
 }
 
 async function smInversores(env,tk,base){
@@ -437,17 +461,9 @@ async function smInversores(env,tk,base){
     const l=await smPost(env,'/station/v1.0/list',{page:1,size:20},tk,base);
     // El nombre de la lista ha cambiado entre versiones de su API, así que se
     // aceptan las variantes conocidas antes de darla por vacía.
-    const lista=l.stationList||l.list||(l.data&&(l.data.stationList||l.data.list))||[];
-    if(!lista.length){
-      const o=await smOrganizaciones(env,tk,base);
-      const nombres=o.orgs.map(x=>(x.name||x.orgName||x.company||'sin nombre')+' (orgId '+x.id+')');
-      throw new Error('Solarman: el token actual no ve ninguna planta. '
-        +(o.orgs.length
-          ? 'La cuenta pertenece a '+o.orgs.length+' organización(es): '+nombres.join(' · ')
-            +'. Las plantas de empresa cuelgan de la organización, no de la persona: configura SOLARMAN_ORGID con el número que corresponda a Gorraiz y vuelve a probar.'
-          : 'Y no se le encuentra ninguna organización, así que la planta debe de estar bajo otra cuenta o compartida en lugar de propia. Respuesta de /account/v1.0/info: '+JSON.stringify(o.crudo).slice(0,300))
-        +' Respuesta de /station/v1.0/list: '+JSON.stringify(l).slice(0,200));
-    }
+    const lista=listaPlantas(l);
+    if(!lista.length)throw new Error('Solarman: la organización no tiene plantas. '
+      +'Respuesta de /station/v1.0/list: '+JSON.stringify(l).slice(0,250));
     sid=lista[0].id;
   }
   const d=await smPost(env,'/station/v1.0/device?language=en',{stationId:+sid,deviceType:'INVERTER'},tk,base);
@@ -485,9 +501,10 @@ async function smHistorico(env,tk,sn,desde,hasta,base){
   return out;
 }
 async function solarmanProduccion(env,desde,hasta){
-  const a=await smToken(env);
+  const a=await smSesion(env);
   const r=await smInversores(env,a.tk,a.base);
-  const res={meta:{stationId:r.stationId,inversores:r.inv.map(i=>i.sn),centro:new URL(a.base).hostname}};
+  const res={meta:{stationId:r.stationId,inversores:r.inv.map(i=>i.sn),
+    centro:new URL(a.base).hostname,organizacion:a.org||null}};
   for(let i=0;i<r.inv.length&&i<2;i++){
     res[i===0?'A':'B']=await smHistorico(env,a.tk,r.inv[i].sn,desde,hasta,a.base);
   }
@@ -496,14 +513,14 @@ async function solarmanProduccion(env,desde,hasta){
 // Sin credenciales no se pueden comprobar los nombres reales de los campos:
 // esto devuelve un tramo en crudo para poder mapearlos con certeza el 1er día.
 async function solarmanDiagnostico(env,dia){
-  const a=await smToken(env);
+  const a=await smSesion(env);
   const orgs=(await smOrganizaciones(env,a.tk,a.base)).orgs
-    .map(x=>({id:x.id,nombre:x.name||x.orgName||x.company||null}));
+    .map(x=>({id:orgId(x),nombre:orgNombre(x)}));
   const r=await smInversores(env,a.tk,a.base);
   const j=await smPost(env,'/device/v1.0/historical?language=en',
     {deviceSn:r.inv[0].sn,startTime:dia,endTime:dia,timeType:1},a.tk,a.base);
   const fr=(j.paramDataList||[])[0]||{};
-  return{centro:new URL(a.base).hostname,organizaciones:orgs,planta:r.stationId,
+  return{centro:new URL(a.base).hostname,organizaciones:orgs,orgUsada:a.org||cred(env.SOLARMAN_ORGID)||null,planta:r.stationId,
     inversores:r.inv.map(i=>i.sn),deviceSn:r.inv[0].sn,collectTime:fr.collectTime,
     campos:(fr.dataList||[]).map(x=>({key:x.key,name:x.name,value:x.value}))};
 }
