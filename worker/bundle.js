@@ -484,10 +484,25 @@ async function smInversores(env,tk,base){
   }
   const d=await smPost(env,'/station/v1.0/device?language=en',{stationId:+sid,deviceType:'INVERTER'},tk,base);
   const disp=d.deviceListItems||d.list||(d.data&&(d.data.deviceListItems||d.data.list))||[];
-  const inv=disp.map(x=>({sn:x.deviceSn,id:x.deviceId}));
+  let inv=disp.map(x=>({sn:x.deviceSn,id:x.deviceId}));
   if(!inv.length)throw new Error('Solarman: la planta '+sid+' no declara inversores. '
     +'Respuesta de /station/v1.0/device: '+JSON.stringify(d).slice(0,400));
-  return{stationId:sid,inv:inv};
+  // Sin esto, A y B dependen del orden en que Solarman devuelva los equipos:
+  // un orden que es suyo, puede cambiar, y no tiene por qué coincidir con el
+  // que se usa en el informe. Con los números de serie configurados, la
+  // asignación es explícita.
+  const snA=cred(env.SOLARMAN_INV_A),snB=cred(env.SOLARMAN_INV_B);
+  let porSerie=false;
+  if(snA||snB){
+    const busca=sn=>sn?inv.find(x=>String(x.sn).toUpperCase().endsWith(sn.toUpperCase())):null;
+    const a=busca(snA),b=busca(snB);
+    if(a||b){
+      const resto=inv.filter(x=>x!==a&&x!==b);
+      inv=[a||resto.shift(),b||resto.shift()].filter(Boolean).concat(resto);
+      porSerie=true;
+    }
+  }
+  return{stationId:sid,inv:inv,porSerie:porSerie};
 }
 // Campos de los KSTAR G50KT, comprobados contra la respuesta real:
 //   APo_t1   Total AC Output Power (Active)
@@ -551,6 +566,7 @@ async function solarmanProduccion(env,desde,hasta){
   const a=await smSesion(env);
   const r=await smInversores(env,a.tk,a.base);
   const res={meta:{stationId:r.stationId,inversores:r.inv.map(i=>i.sn),
+    asignacion:r.porSerie?'por número de serie configurado':'por el orden que devuelve Solarman',
     centro:new URL(a.base).hostname,organizacion:a.org||null}};
   for(let i=0;i<r.inv.length&&i<2;i++){
     res[i===0?'A':'B']=await smHistorico(env,a.tk,r.inv[i].sn,desde,hasta,a.base);
@@ -559,16 +575,40 @@ async function solarmanProduccion(env,desde,hasta){
 }
 // Sin credenciales no se pueden comprobar los nombres reales de los campos:
 // esto devuelve un tramo en crudo para poder mapearlos con certeza el 1er día.
+// Reparto mañana/tarde de un día: en una cubierta Este-Oeste, el inversor
+// orientado al Este produce más antes del mediodía y el del Oeste después.
+// Es la forma de saber cuál es cuál sin fiarse de etiquetas ni del orden.
+function perfilDia(filas){
+  let manana=0,tarde=0,total=0;
+  filas.forEach(f=>{
+    const h=+f.ts.slice(11,13);
+    if(h<14)manana+=f.pot;else tarde+=f.pot;
+    total=Math.max(total,f.dia);
+  });
+  const sum=manana+tarde||1;
+  return{diaKWh:+total.toFixed(1),
+    manana:Math.round(manana/sum*100)+'%',tarde:Math.round(tarde/sum*100)+'%',
+    orientacion:manana>tarde*1.15?'apunta al Este':(tarde>manana*1.15?'apunta al Oeste':'sin sesgo claro')};
+}
+
 async function solarmanDiagnostico(env,dia){
   const a=await smSesion(env);
   const orgs=(await smOrganizaciones(env,a.tk,a.base)).orgs
     .map(x=>({id:orgId(x),nombre:orgNombre(x)}));
   const r=await smInversores(env,a.tk,a.base);
+  // Un día de cada inversor, para poder compararlos entre sí.
+  const perfiles=await Promise.all(r.inv.slice(0,2).map(async(i,n)=>{
+    const filas=await smHistorico(env,a.tk,i.sn,dia,dia,a.base);
+    return Object.assign({letra:n===0?'A':'B',sn:i.sn,tramos:filas.length},perfilDia(filas));
+  }));
   const j=await smPost(env,'/device/v1.0/historical?language=en',
     {deviceSn:r.inv[0].sn,startTime:dia,endTime:dia,timeType:1},a.tk,a.base);
   const fr=(j.paramDataList||[])[0]||{};
-  return{centro:new URL(a.base).hostname,organizaciones:orgs,orgUsada:a.org||cred(env.SOLARMAN_ORGID)||null,planta:r.stationId,
-    inversores:r.inv.map(i=>i.sn),deviceSn:r.inv[0].sn,collectTime:fr.collectTime,
+  return{centro:new URL(a.base).hostname,organizaciones:orgs,orgUsada:a.org||cred(env.SOLARMAN_ORGID)||null,
+    planta:r.stationId,inversores:r.inv.map(i=>i.sn),
+    asignacion:r.porSerie?'por número de serie configurado':'por el orden que devuelve Solarman',
+    perfiles:perfiles,
+    deviceSn:r.inv[0].sn,collectTime:fr.collectTime,
     campos:(fr.dataList||[]).map(x=>({key:x.key,name:x.name,value:x.value}))};
 }
 
@@ -643,6 +683,8 @@ export default{
           solarmanEmail:huella(env.SOLARMAN_EMAIL),
           solarmanPass:huella(env.SOLARMAN_PASS),
           solarmanOrgId:env.SOLARMAN_ORGID||null,
+          solarmanInvA:env.SOLARMAN_INV_A||null,
+          solarmanInvB:env.SOLARMAN_INV_B||null,
           almacen:!!env.DATOS,
         },200,h);
       }
