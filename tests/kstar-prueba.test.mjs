@@ -160,3 +160,70 @@ test('redirige manualmente y no filtra location del login',async t=>{
   assert.equal(JSON.stringify(body).includes(ENV.SPC_PASS),false);
   assert.equal(upstream.mock.callCount(),1);
 });
+
+
+test('ante error KSTAR en resumen diario conserva la muestra segura del histórico, sin inventar kWh diarios', async t => {
+  const upstream=t.mock.method(globalThis,'fetch',async(url,init)=>{
+    const p=new URL(url);
+    if(p.pathname==='/api/authentication/form')
+      return json({token:{access_token:'fictional-private-token',expires_in:3600}});
+    if(p.pathname==='/api/station/monitor/detail/meter/list')
+      return json({code:200,rows:[{deviceId:'M_TEST',stationId:ENV.SPC_STATION_ID}],total:1});
+    if(p.pathname==='/api/meter/monitor/detail/history/data')
+      return json({code:200,total:2,rows:[
+        {saveTime:'2026-10-19 00:00:00',positiveActiveElec:15,reverseActiveElec:4},
+        {saveTime:'2026-10-19 23:30:00',positiveActiveElec:19,reverseActiveElec:6},
+      ]});
+    if(p.pathname==='/api/station/monitor/detail/self')
+      return json({code:40027,success:false,msg:'provider response with fictional-private-token and '+ENV.SPC_PASS, data:null});
+    throw Error('Unexpected request');
+  });
+  const r=await worker.fetch(request(),ENV);
+  assert.equal(r.status,502);
+  const body=await r.json();
+  assert.equal(body.ok,false);
+  assert.equal(body.code,'SPC_PROVIDER_ERROR');
+  assert.equal(body.etapa,'resumen_diario');
+  assert.equal(body.proveedor.codigo,'40027');
+  assert.equal(body.proveedor.success,false);
+  assert.equal(body.proveedor.tipoDatos,'sin_datos');
+  assert.equal(body.historico.registros,2);
+  assert.equal(body.historico.medidor,'M_TEST');
+  assert.equal(body.historico.primeraFila.positivaSinValidar,15);
+  assert.equal(body.historico.ultimaFila.inversaSinValidar,6);
+  assert.equal(body.importKWh,undefined);
+  assert.equal(body.exportKWh,undefined);
+  assert.equal(upstream.mock.callCount(),4);
+  const literal=JSON.stringify(body);
+  assert.equal(literal.includes(ENV.SPC_USER),false);
+  assert.equal(literal.includes(ENV.SPC_PASS),false);
+  assert.equal(literal.includes('fictional-private-token'),false);
+  assert.equal(literal.includes('provider response'),false);
+});
+
+test('sin histórico, código no numérico no se devuelve y se conservan nulos',async t=>{
+  const upstream=t.mock.method(globalThis,'fetch',async url=>{
+    const p=new URL(url);
+    if(p.pathname==='/api/authentication/form')
+      return json({token:{access_token:'fictional-token',expires_in:3600}});
+    if(p.pathname==='/api/station/monitor/detail/meter/list')
+      return json({code:200,rows:[{deviceId:'M_TEST',stationId:ENV.SPC_STATION_ID}],total:1});
+    if(p.pathname==='/api/meter/monitor/detail/history/data')
+      return json({code:200,rows:[],total:0});
+    if(p.pathname==='/api/station/monitor/detail/self')
+      return json({code:'private-station-id-do-not-disclose',error:true,data:[]});
+    throw Error('unexpected');
+  });
+  const r=await worker.fetch(request(),ENV);
+  assert.equal(r.status,502);
+  const body=await r.json();
+  assert.equal(body.code,'SPC_PROVIDER_ERROR');
+  assert.equal(body.proveedor.codigo,null);
+  assert.equal(body.proveedor.tipoDatos,'lista');
+  assert.equal(body.historico.registros,0);
+  assert.equal(body.historico.primeraFila,null);
+  assert.equal(body.historico.ultimaFila,null);
+  assert.equal(JSON.stringify(body).includes('private-station-id-do-not-disclose'),false);
+  assert.equal(upstream.mock.callCount(),4);
+});
+

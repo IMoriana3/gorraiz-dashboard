@@ -47,6 +47,14 @@ Si el POST sin credenciales falla en transporte mientras los GET devuelven HTTP,
 
 Este sondeo no cambia configuración de planta, no valida el usuario y no confirma la API de lectura. La primera conexión autenticada continúa pendiente. Si se usó una cuenta con permisos de control durante HTTP, considerar cambiar su contraseña, porque pudo haber quedado expuesta durante la petición, incluso si terminó con error.
 
+## Resultado real 20/10/2026: `SPC_PROVIDER_ERROR` en `resumen_diario`
+
+El usuario ha superado el login, listado de medidores e histórico. El resumen diario `GET /station/monitor/detail/self` devuelve error de aplicación. Se verificó en el JavaScript público que KSTAR utiliza **exactamente** `GET /station/monitor/detail/self` con parámetros `{startTime, stationId}`, por lo que no se cambia el endpoint a ciegas.
+
+El comprobador actualizado devuelve información **saneada** para depurar un único ensayo: `proveedor.codigo` (solo números, si existen), `proveedor.success`, `proveedor.tipoDatos`, y `historico` con medidor, número de registros y dos muestras de los campos `positiveActiveElec` y `reverseActiveElec`. Estas muestras pueden ser acumulados o lecturas parciales; **no equivalen a importación/exportación diaria hasta demostrar unidades y cobertura**. El Worker nunca publica mensajes ni respuestas completas del proveedor, porque podrían incluir secretos.
+
+**No repetir una sesión por HTTP con cuenta principal de control.** La siguiente ejecución, solo si existe una cuenta de prueba limitada, debe realizarse con el bundle actualizado, y comprobarse el código numérico antes de decidir si el problema se debe a permisos, fecha o datos ausentes.
+
 ## 4. Cierre
 
 Borrar los secretos y desactivar el Worker temporal una vez validado el formato. El dashboard principal y la PR #36 permanecen sin desplegar a producción; el cron SPC continúa desactivado.

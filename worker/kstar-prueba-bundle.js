@@ -320,6 +320,13 @@ function createSpcClient(env, options = {}) {
     validateSpcRange(date, date);
     const {meterId, meterCount} = await discoverMeter();
     const h = await history(meterId, date);
+    // El comprobador independiente puede conocer la cobertura y las
+    // primeras/últimas lecturas aunque el resumen de estación falle.
+    // No altera el resultado, no persiste datos ni cambia el flujo normal.
+    if (typeof options.onHistory === 'function') {
+      try { options.onHistory({meterId, meterCount, rows: h.rows, totalDeclarado: h.total, paginas: h.pages}); }
+      catch { /* El diagnóstico opcional no debe invalidar una lectura real. */ }
+    }
     const daily = normaliseSpcDaily(await request('/station/monitor/detail/self', {
       params: {stationId: cfg.stationId, startTime: date},
     }), date);
@@ -623,6 +630,40 @@ async function probeNetwork() {
   return {ok: true, sinCredencialesKstar: true, resultados};
 }
 
+
+function safeHistoryInfo(raw) {
+  if (!raw || !Array.isArray(raw.rows)) return null;
+  const rows = raw.rows;
+  const muestra = row => row ? {
+    fechaHoraLiteral: typeof row.saveTime === 'string' ? row.saveTime.slice(0,48) : null,
+    positivaSinValidar: typeof row.positiveActiveElec === 'number' ? row.positiveActiveElec : null,
+    inversaSinValidar: typeof row.reverseActiveElec === 'number' ? row.reverseActiveElec : null,
+  } : null;
+  return {
+    medidor: typeof raw.meterId === 'string' ? raw.meterId.slice(0,100) : null,
+    medidoresEnEstacion: Number.isSafeInteger(raw.meterCount) ? raw.meterCount : null,
+    registros: rows.length,
+    totalDeclarado: Number.isSafeInteger(raw.totalDeclarado) ? raw.totalDeclarado : null,
+    paginas: Number.isSafeInteger(raw.paginas) ? raw.paginas : null,
+    primeraFila: muestra(rows[0]),
+    ultimaFila: muestra(rows[rows.length-1]),
+    aviso: 'Lecturas crudas del medidor; orden, unidades, acumulados y cobertura diaria sin validar. NO equivalen a kWh diarios.',
+  };
+}
+function safeProviderInfo(response, payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+  const val = payload.code === undefined || payload.code === null ? '' : String(payload.code);
+  const codigo = /^\d{1,10}$/.test(val) ? val : null;
+  const data = payload.data;
+  const tipoDatos = data === null || data === undefined ? 'sin_datos'
+    : Array.isArray(data) ? 'lista'
+      : typeof data === 'object' ? 'objeto' : 'otro';
+  return {http: response.status, codigo,
+    success: typeof payload.success === 'boolean' ? payload.success : null,
+    errorPresente: payload.error !== undefined && payload.error !== null && payload.error !== false,
+    tipoDatos};
+}
+
 export default {
   async fetch(req, env) {
     const path = new URL(req.url).pathname;
@@ -647,12 +688,26 @@ export default {
     try { body = JSON.parse(text); }
     catch { return output({error: 'Formato de consulta incorrecto.'}, 400); }
     if (!validPastDate(body?.dia)) return output({error: 'Selecciona un día cerrado válido.'}, 400);
-    let etapa = 'preparacion', detalleRed = null;
+    let etapa = 'preparacion', detalleRed = null, proveedor = null, historico = null;
     // En la prueba aislada usamos redirección manual: nunca seguir un 302
     // con la contraseña o el Bearer a otro destino. No registrar URLs ni headers.
     const fetchDiagnostic = async (url, init) => {
       etapa = stageOf(url);
-      try { return await fetch(url, {...init, redirect: 'manual'}); }
+      try {
+        const response = await fetch(url, {...init, redirect: 'manual'});
+        if (etapa === 'resumen_diario') {
+          // Nunca se publican mensajes crudos ni respuestas completas del
+          // proveedor: podrían contener datos identificables o tokens.
+          try {
+            const len = Number(response.headers.get('content-length') || 0);
+            if (len < 20000 && /application\/json/i.test(response.headers.get('content-type') || '')) {
+              const raw = await response.clone().text();
+              if (raw.length <= 20000) proveedor = safeProviderInfo(response, JSON.parse(raw));
+            }
+          } catch { /* No interferir con la respuesta original. */ }
+        }
+        return response;
+      }
       catch (error) {
         detalleRed = init.signal?.aborted || error?.name === 'AbortError'
           ? 'tiempo_agotado' : 'fallo_de_transporte';
@@ -661,18 +716,25 @@ export default {
     };
     try {
       // Sesión efímera por solicitud para no retener tokens KSTAR en el Worker de ensayo.
-      const r = await spcDiagnostico(env, body.dia, {fetch: fetchDiagnostic, sessionCache: new Map()});
+      const r = await spcDiagnostico(env, body.dia, {
+        fetch: fetchDiagnostic, sessionCache: new Map(),
+        onHistory: raw => { historico = safeHistoryInfo(raw); },
+      });
       // Solo campos y kWh; nunca se envían el token, el login ni el histórico crudo.
       return output({ok: true, dia: r.dia, stationId: r.stationId,
         meterId: r.meterId, registros: r.registros,
         importKWh: r.daily?.[0]?.importKWh ?? null, exportKWh: r.daily?.[0]?.exportKWh ?? null,
         selfConsumptionKWh: r.daily?.[0]?.selfConsumptionKWh ?? null,
         complete: r.complete === true,
+        ...(historico ? {historico} : {}),
+        ...(proveedor ? {proveedor} : {}),
         nota: r.complete ? 'Compara estos datos con el portal KSTAR.' : 'Lecturas parciales. No utilizarlas como cierre validado.'});
     } catch (error) {
       const safe = safeSpcError(error);
       return output({ok: false, code: safe.code, error: safe.message,
-        etapa, ...(detalleRed ? {detalleRed} : {})}, safe.status);
+        etapa, ...(detalleRed ? {detalleRed} : {}),
+        ...(proveedor ? {proveedor} : {}),
+        ...(historico ? {historico} : {})}, safe.status);
     }
   },
 };
