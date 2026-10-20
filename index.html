@@ -10,6 +10,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="energia.js"></script>
+<script type="module" src="spc-horario.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&family=JetBrains+Mono:wght@500;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
@@ -62,6 +64,12 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min
 .az .st .warn{color:var(--orange)} .az .st .err{color:var(--red)}
 .az .cfg{margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
 .az .hint{font-size:10px;color:var(--muted);margin-top:4px;line-height:1.5}
+.hint{font-size:11px;color:var(--muted);line-height:1.5;margin:6px 0}
+.spc-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.spc-head .btn{padding:6px 12px;font-size:11px}
+.spc-head .btn:disabled{opacity:.5;cursor:not-allowed}
+#zSpc .krow{margin:10px 0 6px} #zSpc .kbox{min-width:130px}
+#zSpc .warn{color:var(--orange)} #zSpc .err{color:var(--red)}
 input[type=file]{display:none}
 .drow{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
 .drow label{font-size:12px;color:var(--dim)}
@@ -141,7 +149,7 @@ input[type=file]{display:none}
 </header>
 <div class="hdr">
   <img id="logo" alt="Amixalan">
-  <div style="flex:1"><h1>Informe FV — Edificio Gorraiz</h1><div class="hdr-sub">123.84 kWp · Autoconsumo SIN excedentes · Generador de informes</div></div>
+  <div style="flex:1"><h1>Informe FV — Edificio Gorraiz</h1><div class="hdr-sub">123.84 kWp · Autoconsumo fotovoltaico · Generador de informes</div></div>
   <div class="hdr-right"><div>AMIXALAN BUSINESS GROUP</div><div>Monitorización fotovoltaica</div></div>
 </div>
 <div class="main">
@@ -156,10 +164,10 @@ input[type=file]{display:none}
   <div id="pUpload">
     <div class="uz" id="zA" onclick="$('fA').click()"><h3>📂 Inversor A — Ficheros de producción (.xlsx)</h3><p>Selecciona uno o varios ficheros .xlsx del Inversor A</p><div class="st" id="stA"></div><input type="file" id="fA" accept=".xlsx" multiple></div>
     <div class="uz" id="zB" onclick="$('fB').click()"><h3>📂 Inversor B — Ficheros de producción (.xlsx)</h3><p>Selecciona uno o varios ficheros .xlsx del Inversor B</p><div class="st" id="stB"></div><input type="file" id="fB" accept=".xlsx" multiple></div>
-    <div class="uz" id="zI" onclick="$('fI').click()"><h3>📂 Consumo i-DE (.xlsx)</h3><p>Carga los ficheros de consumo horario de i-DE (hoja "Horarias"). Se unirán sin duplicar los días repetidos.</p><div class="st" id="stI"></div><div class="fl" id="flI"></div><input type="file" id="fI" accept=".xlsx" multiple></div>
+    <div class="uz" id="zI" style="display:none" onclick="$('fI').click()"><h3>📂 Consumo i-DE (.xlsx)</h3><p>Carga los ficheros de consumo horario de i-DE (hoja "Horarias"). Se unirán sin duplicar los días repetidos.</p><div class="st" id="stI"></div><div class="fl" id="flI"></div><input type="file" id="fI" accept=".xlsx" multiple></div>
     <div class="az" id="zAuto">
       <h3>⚡ Descarga automática</h3>
-      <p>Descarga la producción de los inversores y, si Datadis está activado, el consumo. Puedes pedir varios años.</p>
+      <p>Trae producción FV de Solarman e importación/exportación de KSTAR SPC01. Las fuentes anteriores i-DE/Datadis quedan archivadas.</p>
       <div class="row">
         <label>Desde:</label><input type="date" id="aDesde">
         <label>Hasta:</label><input type="date" id="aHasta">
@@ -170,6 +178,28 @@ input[type=file]{display:none}
       <div class="st" id="stAuto"></div>
       <div class="fl" id="memo"></div>
       <div class="cfg" id="cfgAuto"></div>
+    </div>
+    <div class="az" id="zSpc">
+      <div class="spc-head"><h3>Intercambio de red · KSTAR SPC01</h3><button class="btn btn2" id="btnSpc" onclick="comprobarSpc()" disabled>Comprobar SPC</button></div>
+      <div class="cfg" id="cfgKstar"></div>
+      <div class="st" id="spcEstado" role="status">Estado de SPC sin comprobar.</div>
+      <div class="krow">
+        <div class="kbox"><div class="kl">Días con datos</div><div class="kv" id="spcDias">—</div><div class="ks" id="spcFechas">Sin datos guardados</div></div>
+        <div class="kbox"><div class="kl">Importación de red</div><div class="kv" id="spcImport">—</div><div class="ks" id="spcImportDias">Sin datos</div></div>
+        <div class="kbox"><div class="kl">Vertido a red</div><div class="kv" id="spcExport">—</div><div class="ks" id="spcExportDias">Sin datos</div></div>
+      </div>
+      <div class="hint" id="spcCobertura"></div>
+      <div class="hint" id="spcUltimo"></div>
+      <div class="hint" id="spcAviso"></div>
+      <div class="st" id="spcAccion" role="status"></div>
+    </div>
+    <div class="az" id="zPrecios">
+      <h3>Valoración económica</h3>
+      <p>Importa los precios medios mensuales calculados de tus facturas. Se guardan solo en este navegador.</p>
+      <div class="row"><button class="btn btn2" onclick="$('fPrecios').click()" style="padding:6px 12px;font-size:11px">Importar precios (.json)</button><button class="btn btn2" onclick="quitaPrecios()" style="padding:6px 12px;font-size:11px">Quitar precios</button><input type="file" id="fPrecios" accept=".json,application/json"></div>
+      <div class="st" id="preciosEstado" role="status"></div>
+      <label class="hint" style="display:block;margin-top:8px"><input type="checkbox" id="precioFuturo"> Estimar los días posteriores con el último precio disponible</label>
+      <div class="hint">La media mensual puede incluir gestión y otros conceptos del término de energía. Es una estimación del ahorro por autoconsumo, no el precio marginal horario ni el ahorro de toda la factura. El vertido no se valora sin un precio de compensación.</div>
     </div>
     <div class="drow"><label>Desde:</label><input type="date" id="dDesde"><label>Hasta:</label><input type="date" id="dHasta"><span style="font-size:10px;color:var(--muted)">(vacío = todo el rango)</span></div>
     <button class="btn btn1" id="btnGo" onclick="generate()" disabled>⚡ Generar informe</button>
@@ -206,7 +236,8 @@ input[type=file]{display:none}
         <div class="cc" style="flex:0 0 280px;max-width:280px"><h4>Reparto por inversor</h4><canvas id="c2donut" height="200"></canvas></div>
         <div class="cc" style="flex:1"><h4>Equilibrio inversores (kWh/día)</h4><canvas id="c2scatter" height="200"></canvas></div>
       </div>
-      <div class="slbl">Ahorro por periodos (P1-P6)</div>
+      <div class="slbl">Valoración mensual del autoconsumo</div>
+      <div class="hint" id="ahorroNota"></div>
       <table class="tbl" id="tblAhorro"></table>
       <div class="ficha"><b>Ficha rápida de la instalación</b><ul id="fichaUl"></ul></div>
     </div>
@@ -215,28 +246,30 @@ input[type=file]{display:none}
     <div class="pcon" id="p3">
       <div class="slbl">Balance energético</div>
       <div class="krow" id="k3"></div>
-      <div class="cc"><h4>Consumo diario — total vs red vs FV</h4><canvas id="c3daily" height="200"></canvas></div>
+      <div class="hint" id="balanceCobertura"></div>
+      <div class="st" id="spcPeriodosKwh"></div>
+      <div class="cc"><h4>Balance diario — consumo, importación, autoconsumo y vertido</h4><canvas id="c3daily" height="200"></canvas></div>
       <div class="row">
         <div class="cc" style="flex:1.2"><h4>Consumo medio por día de la semana</h4><canvas id="c3week" height="180"></canvas></div>
-        <div class="cc" style="flex:1.2"><h4>Perfil horario medio del consumo</h4><canvas id="c3hourly" height="180"></canvas></div>
+        <div class="cc" style="flex:1.2"><h4>Importación horaria KSTAR · pendiente de validar intervalos</h4><canvas id="c3hourly" height="180"></canvas></div>
         <div class="cc" style="flex:0 0 240px;max-width:240px"><h4>Cobertura FV</h4><canvas id="c3donut" height="180"></canvas></div>
       </div>
       <div style="font-size:10px;color:var(--muted);margin-top:6px;padding:0 4px">
-        Nota: el Excel del contador muestra la energía comprada a red. Al ser una instalación SIN excedentes,
-        el consumo total del edificio se reconstruye sumando la producción FV medida a la energía comprada.
+        Autoconsumo = producción FV − vertido. Consumo = importación + autoconsumo. El balance usa días cerrados con ambos inversores y datos SPC. Los acumulados de los inversores deben incluir el cierre del día: un Excel recortado puede estar incompleto aunque contenga registros de ambos equipos. No se reconstruye el consumo horario con totales diarios.
       </div>
     </div>
 
     <!-- PAGE 4 -->
     <div class="pcon" id="p4">
-      <div class="slbl">Acumulados desde puesta en marcha</div>
+      <div class="slbl">Histórico acumulado</div>
+      <div class="hint" id="evolCobertura"></div>
       <div class="row">
-        <div class="cc"><h4>Producción mensual + previsión (kWh)</h4><canvas id="c4prod" height="200"></canvas></div>
-        <div class="cc"><h4>Consumo mensual + previsión por franja (kWh)</h4><canvas id="c4cons" height="200"></canvas></div>
+        <div class="cc"><h4>Producción mensual registrada (kWh)</h4><canvas id="c4prod" height="200"></canvas></div>
+        <div class="cc"><h4>Balance mensual de días completos (kWh)</h4><canvas id="c4cons" height="200"></canvas></div>
       </div>
       <div class="row">
-        <div class="cc"><h4>Ahorro mensual y acumulado + proyección (€)</h4><canvas id="c4ahorro" height="200"></canvas></div>
-        <div class="cc"><h4>Coste mensual energía: con FV vs sin FV (€ IE+IVA)</h4><canvas id="c4coste" height="200"></canvas></div>
+        <div class="cc"><h4>Ahorro mensual y acumulado · con IE, sin IVA</h4><canvas id="c4ahorro" height="200"></canvas></div>
+        <div class="cc"><h4>Energía de red valorada · con IE, sin IVA</h4><canvas id="c4coste" height="200"></canvas></div>
       </div>
     </div>
 
@@ -248,13 +281,13 @@ input[type=file]{display:none}
         <div class="cc" style="flex:1"><h4>Retorno de la inversión</h4><div id="paybackBox"></div></div>
       </div>
       <div class="row">
-        <div class="cc"><h4>Perfil día tipo laborable: consumo vs FV</h4><canvas id="c5perfil" height="200"></canvas></div>
-        <div class="cc"><h4>Energía mensual: aprovechada vs perdida por vertido cero</h4><canvas id="c5curt" height="200"></canvas></div>
+        <div class="cc"><h4>Día laborable: importación y producción FV</h4><canvas id="c5perfil" height="200"></canvas></div>
+        <div class="cc"><h4>Autoconsumo y vertido mensual medido</h4><canvas id="c5curt" height="200"></canvas></div>
       </div>
     </div>
 
     <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
-      <button class="btn btn1" onclick="genPDF()">📄 Descargar PDF (5 páginas)</button>
+      <button class="btn btn1" onclick="genPDF()">📄 Descargar PDF</button>
       <button class="btn btn2" onclick="reset()">↩ Nuevo informe</button>
     </div>
 
@@ -284,8 +317,9 @@ input[type=file]{display:none}
       <!-- C-PAGE 1: KPI table + franja bars -->
       <div class="pcon on" id="cp1">
         <div class="slbl">Indicadores clave: Periodo A vs Periodo B</div>
+        <div class="hint" id="compCobertura"></div>
         <table class="tbl" id="tblComp"></table>
-        <div class="cc"><h4>Consumo por franja horaria</h4><canvas id="ccFranja" height="180"></canvas></div>
+        <div class="cc"><h4>Importación por P1–P6 · pendiente de validación horaria</h4><canvas id="ccFranja" height="180"></canvas></div>
       </div>
       <!-- C-PAGE 2: Production daily + hourly profiles -->
       <div class="pcon" id="cp2">
@@ -295,7 +329,7 @@ input[type=file]{display:none}
         </div>
         <div class="row">
           <div class="cc"><h4>Perfil horario medio: producción FV</h4><canvas id="ccPerfilPV" height="180"></canvas></div>
-          <div class="cc"><h4>Perfil horario medio: consumo edificio</h4><canvas id="ccPerfilCons" height="180"></canvas></div>
+          <div class="cc"><h4>Importación horaria KSTAR · sin datos validados</h4><canvas id="ccPerfilCons" height="180"></canvas></div>
         </div>
       </div>
       <!-- C-PAGE 3: Economic balance + daily consumption -->
@@ -312,7 +346,7 @@ input[type=file]{display:none}
     </div>
   </div>
 </div>
-<div class="footer">Amixalan Business Group — Fuentes: inversores + contador horario + factura Goiener · Modalidad: SIN excedentes (vertido cero)</div>
+<div class="footer">Amixalan Business Group — Fuentes operativas: Solarman y KSTAR SPC · precios medios de factura, estimativos</div>
 
 <script>
 const $=id=>document.getElementById(id);
@@ -323,8 +357,7 @@ Chart.defaults.scale.ticks.font={size:10};Chart.defaults.plugins.title.font={siz
 const LOGO_B64="data:image/jpeg;base64,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";
 $("logo").src=LOGO_B64;
 
-const CFG={kwp:123.84,mod:'Autoconsumo SIN excedentes (vertido cero)',modulos:'288 módulos de 430 Wp',inversores:'2 × 50 kW (KSTAR G50KT)',cubierta:'Este-Oeste',prodAnual:141793,inv:80432.64,
-  precios:{P1:.194,P2:.160,P3:.160,P4:.139,P5:.139,P6:.139},IE:.051127,IVA:.21,factor_e:.2,umbral_pv:.1,umbral_cero:.5};
+const CFG={kwp:123.84,mod:'Autoconsumo fotovoltaico',modulos:'288 módulos de 430 Wp',inversores:'2 × 50 kW (KSTAR G50KT)',cubierta:'Este-Oeste',prodAnual:141793,inv:80432.64,factor_e:.2};
 const PERFIL_SOLAR={1:.045,2:.060,3:.085,4:.095,5:.115,6:.125,7:.130,8:.115,9:.095,10:.070,11:.040,12:.025};
 const TEMP_REF={1:5,2:6.2,3:9,4:10.8,5:14.5,6:18.3,7:20.8,8:20.9,9:17.5,10:13.3,11:8.5,12:5.5};
 const HDD_BASE=15,CDD_BASE=24;
@@ -332,8 +365,17 @@ function hddCdd(m){const t=TEMP_REF[m]||12;return[Math.max(0,HDD_BASE-t),Math.ma
 function diasMes(m){return[31,28,31,30,31,30,31,31,30,31,30,31][(m-1)%12]}
 let RAW={A:[],B:[],I:[]},R=null,CHARTS={},METEO=null;
 function log(m){const e=$('log');e.innerHTML+=m+'<br>';e.scrollTop=9e9}
-function fn(x,d=0){return d?x.toLocaleString('es-ES',{minimumFractionDigits:d,maximumFractionDigits:d}):x.toLocaleString('es-ES',{maximumFractionDigits:0})}
+function fn(x,d=0){
+  if(!Number.isFinite(x))return '—';
+  if(d){const factor=10**d;x=Math.round((x+Math.sign(x)*Number.EPSILON*Math.max(1,Math.abs(x)))*factor)/factor;if(Object.is(x,-0))x=0}
+  return d?x.toLocaleString('es-ES',{minimumFractionDigits:d,maximumFractionDigits:d}):x.toLocaleString('es-ES',{maximumFractionDigits:0});
+}
 function fd(x){return fn(x,1)}
+function sumaValores(xs){const v=xs.filter(Number.isFinite);return v.length?v.reduce((a,b)=>a+b,0):null}
+function divide(n,d){return Number.isFinite(n)&&Number.isFinite(d)&&d>0?n/d:null}
+function escala(v,f){return Number.isFinite(v)?v*f:null}
+function euros(v){return Number.isFinite(v)?fn(v,2)+' €':'—'}
+function kwh(v){return Number.isFinite(v)?(v>=1000?fn(v/1000,2)+' MWh':fn(v,1)+' kWh'):'—'}
 function dk(d){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),dd=String(d.getDate()).padStart(2,'0');return y+'-'+m+'-'+dd}
 function hk(d){return dk(d)+'T'+String(d.getHours()).padStart(2,'0')}
 function ym(d){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0');return y+'-'+m}
@@ -354,7 +396,7 @@ function pDate(v){
 $('fA').onchange=e=>loadInv(e.target.files,'A');
 $('fB').onchange=e=>loadInv(e.target.files,'B');
 $('fI').onchange=e=>loadIBR(e.target.files);
-function chk(){$('btnGo').disabled=!(RAW.A.length&&RAW.I.length)}
+function chk(){$('btnGo').disabled=!(RAW.A.length||RAW.B.length)}
 
 // La producción se une igual que el consumo: cada origen —ficheros o descarga—
 // es una fuente, y se combinan por marca de tiempo. Antes cada origen pisaba al
@@ -382,13 +424,14 @@ function loadInv(files,L){
   const k=L;const acumulado=[];let done=0;const n=files.length;
   Array.from(files).forEach(f=>{const r=new FileReader();r.onload=e=>{
     try{const wb=XLSX.read(e.target.result,{type:'array',cellDates:true});
-      const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:0});
-      rows.forEach(row=>{let ts=null,pot=0,acum=0,dia=0;
+      const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:null});
+      const numero=v=>v!==null&&v!==''&&Number.isFinite(+v)?+v:null;
+      rows.forEach(row=>{let ts=null,pot=null,acum=null,dia=null;
         for(const[c,v]of Object.entries(row)){const cl=c.toLowerCase();
           if(cl.includes('tiempo'))ts=pDate(v);
-          if(cl.includes('potencia total c')||cl.includes('potencia total ac'))pot=+v||0;
-          if(cl.includes('producción acumulada')||cl.includes('produccion acumulada'))acum=+v||0;
-          if(cl.includes('producción diaria')||cl.includes('produccion diaria'))dia=+v||0;
+          if(cl.includes('potencia total c')||cl.includes('potencia total ac'))pot=numero(v);
+          if(cl.includes('producción acumulada')||cl.includes('produccion acumulada'))acum=numero(v);
+          if(cl.includes('producción diaria')||cl.includes('produccion diaria'))dia=numero(v);
         }
         if(ts)acumulado.push({ts,pot,acum,dia});
       });
@@ -414,7 +457,7 @@ function parseIBR(buf){
   for(let i=hr+1;i<rows.length;i++){const rw=rows[i];if(!rw||rw.length<5)continue;
     const ts=pDate(rw[1]);if(!ts)continue;
     const consumo=(+rw[4]||0)/1000,gen=(+rw[5]||0)/1000;
-    let periodo='P6';const pm=String(rw[3]||'').match(/(\d)/);if(pm)periodo='P'+pm[1];
+    let periodo=null;const pm=String(rw[3]||'').match(/([1-6])/);if(pm)periodo='P'+pm[1];
     out.push({ts,consumo,gen,periodo});}
   return out;
 }
@@ -513,11 +556,248 @@ function encajaGraficas(){
   Object.assign(window.Chart,Base);
 })();
 
+// ═══ SPC: FUENTES DIARIAS SEPARADAS DEL CONSUMO I-DE ═══
+// Se conservan los campos y las horas del portal. Los contadores acumulados
+// no se convierten aquí en energía horaria ni se mezclan con RAW.I.
+let SPC_FUENTES=[],SPC_PRUEBA=null,SPC_OCUPADO=false;
+const KSTAR_ONLY=true;
+const KSTAR_URL_KEY='gorraiz_kstar_url_v1',KSTAR_SESSION_KEY='gorraiz_kstar_key_sesion_v1';
+const KSTAR_STATION='2026032317114373',KSTAR_METER='210261430F3060020000661';
+function kstarCfg(){
+  try{return {url:(localStorage.getItem(KSTAR_URL_KEY)||'').trim(),
+    key:sessionStorage.getItem(KSTAR_SESSION_KEY)||''}}catch{return{url:'',key:''}}
+}
+function pintaKstarCfg(){
+  const cfg=kstarCfg();
+  $('cfgKstar').innerHTML=`<div class="row">
+    <label>Worker KSTAR independiente:</label><input type="url" id="kstarUrl" placeholder="https://gorraiz-kstar-prueba.tu-subdominio.workers.dev" value="${esc(cfg.url)}">
+    <label>Clave de prueba:</label><input type="password" id="kstarKey" autocomplete="off" placeholder="KSTAR_TEST_KEY (no contraseña del proveedor)" value="" minlength="24">
+    <button class="btn btn2" type="button" onclick="guardarKstarCfg()">Guardar sesión KSTAR</button>
+    <button class="btn btn2" type="button" onclick="borrarKstarCfg()">Desconectar KSTAR</button></div>
+    <div class="hint">La clave temporal solo se conserva durante la sesión del navegador; las credenciales de KSTAR siguen en Cloudflare. El tramo Cloudflare → KSTAR por HTTP carece de cifrado.</div>`;
+}
+function guardarKstarCfg(){
+  try{
+    const raw=$('kstarUrl').value.trim().replace(/\/+$/,'');
+    const parsed=new URL(raw);
+    if(parsed.protocol!=='https:'||!parsed.hostname.endsWith('.workers.dev')||parsed.username||parsed.password||
+      parsed.search||parsed.hash||parsed.pathname!=='/')
+      throw new Error('Usa la URL HTTPS principal del Worker de pruebas de Cloudflare, sin rutas ni parámetros.');
+    const clave=$('kstarKey').value;
+    if(clave.length<24&&!kstarCfg().key)throw new Error('Introduce KSTAR_TEST_KEY (mínimo 24 caracteres).');
+    localStorage.setItem(KSTAR_URL_KEY,raw);
+    if(clave.length>=24)sessionStorage.setItem(KSTAR_SESSION_KEY,clave);
+    SPC_PRUEBA=null;pintaKstarCfg();pintaSpc();estadoApi();
+    $('spcAccion').textContent='Worker KSTAR configurado. Elige un día cerrado y pulsa «Comprobar SPC».';
+  }catch(e){$('spcAccion').textContent=e.message}
+}
+function borrarKstarCfg(){
+  localStorage.removeItem(KSTAR_URL_KEY);sessionStorage.removeItem(KSTAR_SESSION_KEY);
+  SPC_PRUEBA=null;pintaKstarCfg();pintaSpc();estadoApi();
+}
+async function kstarCall(desde,hasta){
+  const cfg=kstarCfg();
+  if(!cfg.url||cfg.key.length<24)throw new Error('Guarda la URL y la clave temporal de KSTAR.');
+  if(desde!==hasta||!spcFecha(desde)||desde>=spcHoy('Europe/Madrid'))
+    throw new Error('KSTAR solo admite un día cerrado por consulta.');
+  const r=await fetch(cfg.url+'/spc/intercambio',{method:'POST',cache:'no-store',
+    headers:{'content-type':'application/json','X-KSTAR-Test-Key':cfg.key},
+    body:JSON.stringify({desde,hasta})});
+  const p=await r.json().catch(()=>({error:'Respuesta ilegible del Worker KSTAR.'}));
+  if(!r.ok)throw new Error(p.error||('Error de KSTAR HTTP '+r.status));
+  if(!p||!Array.isArray(p.rows)||!Array.isArray(p.daily)||p.daily.length!==1||
+    p.daily[0].date!==desde||p.meta?.stationId!==KSTAR_STATION||
+    p.meta?.meterId!==KSTAR_METER||p.meta?.dailyScope!=='station'||
+    p.meta?.historyScope!=='meter'||p.meta?.fuente!=='spc')
+    throw new Error('Datos KSTAR rechazados: estación, contador, día o formato incorrectos.');
+  return p;
+}
+function spcFecha(v){
+  if(typeof v!=='string'||!/^\d{4}-\d{2}-\d{2}(?:$|[ T])/.test(v))return '';
+  const d=v.slice(0,10),n=Date.parse(d+'T00:00:00Z');
+  return Number.isFinite(n)&&new Date(n).toISOString().slice(0,10)===d?d:'';
+}
+function spcHoy(zona='Europe/Madrid'){
+  try{
+    const p=new Intl.DateTimeFormat('en-CA',{timeZone:zona,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+    const val=k=>p.find(x=>x.type===k).value;return val('year')+'-'+val('month')+'-'+val('day');
+  }catch(e){return dk(new Date())}
+}
+function spcSumaDias(d,n){const t=new Date(d+'T00:00:00Z');t.setUTCDate(t.getUTCDate()+n);return t.toISOString().slice(0,10)}
+function bloquesSpc(desde,hasta,dias){
+  if(!spcFecha(desde)||!spcFecha(hasta)||desde>hasta)throw new Error('Revisa las fechas de SPC.');
+  const out=[];
+  for(let d=desde;d<=hasta;){let h=spcSumaDias(d,dias-1);if(h>hasta)h=hasta;out.push({desde:d,hasta:h});d=spcSumaDias(h,1)}
+  return out;
+}
+function spcNumero(v){return typeof v==='number'&&Number.isFinite(v)}
+function spcTieneDatos(p){return !!(p&&((Array.isArray(p.rows)&&p.rows.length)||(Array.isArray(p.daily)&&p.daily.some(d=>d&&['importKWh','exportKWh','selfConsumptionKWh'].some(k=>spcNumero(d[k]))))))}
+function ponFuenteSpc(date,payload,cache=false){
+  if(!spcFecha(date)||!spcTieneDatos(payload))return false;
+  const previa=SPC_FUENTES.find(f=>f.date===date),meta={...(payload.meta||{}),fuente:'spc',desde:date,hasta:date};
+  if(previa&&previa.meta.completo===true&&meta.completo===false)return false;
+  // Una copia antigua del servidor no debe pisar una consulta más reciente.
+  const instante=m=>Date.parse(m.fetchedAt||m.actualizado||'');
+  if(cache&&previa&&instante(previa.meta||{})>instante(meta))return false;
+  const nueva={date,rows:(payload.rows||[]).map(r=>({...r})),
+    daily:(payload.daily||[]).filter(d=>spcFecha(d.date)===date).map(d=>({...d})),meta};
+  if(!spcTieneDatos(nueva))return false;
+  SPC_FUENTES=SPC_FUENTES.filter(f=>f.date!==date);SPC_FUENTES.push(nueva);
+  SPC_FUENTES.sort((a,b)=>a.date.localeCompare(b.date));return true;
+}
+function incorporaSpc(payload,rango,cache=false){
+  if(!payload||!Array.isArray(payload.rows)||!Array.isArray(payload.daily))throw new Error('Respuesta SPC sin el formato de datos esperado.');
+  let n=0;
+  if(Array.isArray(payload.fuentes)){
+    // El servidor conserva el día consultado: no se deduce del huso de saveTime.
+    payload.fuentes.forEach(f=>{if(f&&f.date>=rango.desde&&f.date<=rango.hasta&&ponFuenteSpc(f.date,f,cache))n++});
+  }else if(rango.desde===rango.hasta){
+    if(ponFuenteSpc(rango.desde,payload,cache))n++;
+  }else if(spcTieneDatos(payload))throw new Error('La caché SPC no identifica los datos de cada día.');
+  if(n){guardaFuentes();pintaSpc()}
+  return n;
+}
+function getSpcDaily(){
+  const dias=new Map();
+  SPC_FUENTES.forEach(f=>f.daily.forEach(d=>{if(spcFecha(d.date))dias.set(d.date,{...d,meta:{...f.meta}})}));
+  return [...dias.values()].sort((a,b)=>a.date.localeCompare(b.date));
+}
+function getSpcRows(){
+  const filas=new Map();
+  SPC_FUENTES.forEach(f=>f.rows.forEach(r=>{
+    const clave=[f.meta.stationId||'',f.meta.meterId||'',String(r.saveTime)].join('|');
+    filas.set(clave,{...r,meta:{...f.meta}});
+  }));
+  return [...filas.values()].sort((a,b)=>String(a.saveTime).localeCompare(String(b.saveTime)));
+}
+function spcCoberturaTexto(){
+  const d=$('aDesde').value,h=$('aHasta').value;
+  if(!spcFecha(d)||!spcFecha(h)||d>h)return 'Elige las fechas para ver la cobertura de SPC.';
+  const n=SPC_FUENTES.filter(f=>f.date>=d&&f.date<=h).length;
+  const total=Math.round((Date.parse(h+'T00:00:00Z')-Date.parse(d+'T00:00:00Z'))/864e5)+1;
+  return `SPC: ${fn(n)} de ${fn(total)} días con datos guardados en el rango elegido.`;
+}
+function spcMomento(v){const d=new Date(v);return v&&!isNaN(d)?d.toLocaleString('es-ES'):''}
+function pintaSpc(){
+  const est=API_ESTADO||{},ultimo=est.spcUltima||{},kc=kstarCfg(),
+    kstarListo=!!(kc.url&&kc.key.length>=24),config=!!apiCfg().url||!!kc.url;
+  const mensaje=$('spcEstado');
+  if(SPC_PRUEBA){
+    mensaje.innerHTML=SPC_PRUEBA.ok?`Conexión comprobada${est.spcUnencryptedTransport?' (HTTP SIN CIFRAR)':''} · ${esc(spcMomento(SPC_PRUEBA.actualizado))}`:`<span class="err">${esc(SPC_PRUEBA.error)}</span>`;
+  }else if(!config)mensaje.textContent='Configura el Worker KSTAR independiente para consultar SPC.';
+  else if(kc.url&&!kstarListo)mensaje.textContent='KSTAR guardado; falta la clave temporal de esta sesión.';
+  else if(kstarListo)mensaje.textContent='KSTAR independiente configurado · pendiente de comprobar la lectura.';
+  else if(!API_ESTADO)mensaje.textContent='Estado de SPC sin comprobar.';
+  else if(!est.spc)mensaje.textContent='Conexión SPC pendiente de configurar en el servidor.';
+  else if(ultimo.status==='error')mensaje.innerHTML=`<span class="err">Última consulta SPC sin completar: ${esc(ultimo.lastError&&ultimo.lastError.message||'revisa la conexión.')}</span>`;
+  else if(ultimo.lastSuccess||est.spcLastSuccess)mensaje.textContent='Última consulta correcta: '+spcMomento(ultimo.lastSuccess||est.spcLastSuccess)+(ultimo.status==='partial'?' · datos parciales':'');
+  else mensaje.textContent='SPC configurado'+(est.spcUnencryptedTransport?' · HTTP SIN CIFRAR':'')+' · conexión pendiente de comprobar.';
+  $('btnSpc').disabled=SPC_OCUPADO||!(kstarListo||est.spc);
+  const dias=getSpcDaily(),fechas=SPC_FUENTES.map(f=>f.date),n=fechas.length;
+  $('spcDias').textContent=n?fn(n):'—';
+  $('spcFechas').textContent=n?`${fdmy(fechas[0])} → ${fdmy(fechas[n-1])} · guardados`:'Sin datos guardados';
+  [['importKWh','spcImport','spcImportDias'],['exportKWh','spcExport','spcExportDias']].forEach(([campo,id,sub])=>{
+    const datos=dias.filter(d=>spcNumero(d[campo]));
+    $(id).textContent=datos.length?fn(datos.reduce((s,d)=>s+d[campo],0),1)+' kWh':'—';
+    $(sub).textContent=datos.length?`Dato en ${fn(datos.length)} de ${fn(n)} días`:'Sin datos de energía';
+  });
+  $('spcCobertura').textContent=spcCoberturaTexto();
+  const ultima=SPC_FUENTES[n-1];
+  const lectura=ultima&&(ultima.rows||[]).map(r=>r.saveTime).filter(v=>v!==null&&v!==undefined&&v!=='').sort((a,b)=>String(a).localeCompare(String(b))).pop();
+  $('spcUltimo').textContent=lectura?'Última lectura del portal: '+String(lectura):(ultima?'Último día con datos: '+fdmy(ultima.date):'');
+  const avisos=[];
+  if(est.spcUnencryptedTransport||kstarListo)avisos.push('ATENCIÓN: Cloudflare → KSTAR utiliza HTTP sin cifrar. Solo consultas manuales con una cuenta de lectura limitada.');
+  if(SPC_FUENTES.some(f=>f.date===spcHoy(f.meta.timezone||'Europe/Madrid')))avisos.push('El día en curso es parcial y se actualiza al traer datos.');
+  if(SPC_FUENTES.some(f=>f.meta.sinHistorico||f.meta.completo===false))avisos.push('Hay días con datos parciales o sin histórico del contador.');
+  if(n&&dias.some(d=>!spcNumero(d.importKWh)||!spcNumero(d.exportKWh)))avisos.push('Los valores que faltan no se cuentan como cero.');
+  $('spcAviso').textContent=avisos.join(' ');
+}
+async function cargaCacheSpc(){
+  // El Worker aislado no usa caché de servidor: IndexedDB conserva sus días.
+  if(kstarCfg().url)return;
+  if(!apiCfg().url||!(API_ESTADO&&(API_ESTADO.spc||API_ESTADO.spcLastSuccess||(API_ESTADO.spcUltima||{}).lastSuccess)||SPC_FUENTES.length))return;
+  const desde=$('aDesde').value,hasta=$('aHasta').value,fallos=[];let n=0;
+  try{
+    for(const rango of bloquesSpc(desde,hasta,31)){
+      try{
+        const p=await apiCall('/spc/datos',rango);n+=incorporaSpc(p,rango,true);
+        if(p.meta&&p.meta.diasErrores&&p.meta.diasErrores.length)fallos.push(...p.meta.diasErrores);
+      }catch(e){fallos.push(`${fdmy(rango.desde)} → ${fdmy(rango.hasta)}: ${e.message}`)}
+    }
+    if(n)log(`SPC: ${fn(n)} días recuperados del servidor`);
+    if(fallos.length)$('spcAccion').innerHTML=`<span class="warn">No se pudo leer toda la caché SPC. Se conservan los datos guardados. ${esc(fallos.slice(0,3).join(' · '))}</span>`;
+  }catch(e){$('spcAccion').innerHTML=`<span class="err">${esc(e.message)}</span>`}
+  pintaSpc();
+}
+async function comprobarSpc(){
+  if(SPC_OCUPADO)return;
+  const dia=$('aHasta').value||spcHoy();
+  if(!spcFecha(dia)){$('spcAccion').textContent='Indica una fecha válida en «Hasta».';return}
+  SPC_OCUPADO=true;pintaSpc();$('spcAccion').textContent=`Comprobando SPC para el ${fdmy(dia)}…`;
+  try{
+    const separado=!!kstarCfg().url;
+    const p=separado?await kstarCall(dia,dia):await apiCall('/spc/diagnostico',{dia});
+    if(!separado&&p.ok!==true)throw new Error(p.error||'SPC no ha confirmado la consulta.');
+    const n=separado?p.rows.length:p.registros||0;
+    const completo=separado?p.meta.completo:p.complete;
+    if(separado)incorporaSpc(p,{desde:dia,hasta:dia});
+    SPC_PRUEBA={ok:true,actualizado:p.meta?.actualizado||p.actualizado||new Date().toISOString()};
+    $('spcAccion').textContent=`KSTAR: ${fn(n)} lecturas. ${completo?'Día cerrado guardado en el navegador.':'Día parcial, aún no válido para el balance.'}`;
+  }catch(e){SPC_PRUEBA={ok:false,error:e.message};$('spcAccion').innerHTML=`<span class="err">No se pudo comprobar SPC: ${esc(e.message)}</span>`}
+  finally{SPC_OCUPADO=false;await estadoApi();pintaSpc()}
+}
+
+// ═══ PRECIOS PRIVADOS: SOLO EN ESTE NAVEGADOR ═══
+const PRECIOS_KEY='gorraiz_precios_mensuales_v1',PRECIOS_FUTURO_KEY='gorraiz_precios_futuro';
+let PRECIOS=null,PRECIO_FUTURO=false;
+function pintaPrecios(){
+  $('precioFuturo').checked=PRECIO_FUTURO;
+  if(!PRECIOS){$('preciosEstado').textContent='Sin precios cargados. Los importes del informe aparecerán como —.';return}
+  const p=PRECIOS.periods;
+  $('preciosEstado').textContent=`${PRECIOS.label||'Precios mensuales'} · ${p.length} periodos · ${fdmy(p[0].from)} → ${fdmy(p[p.length-1].to)}${PRECIO_FUTURO?' · estimación futura activada':''}`;
+}
+function refrescaValoracion(){
+  if(R){R=calculaInforme(R.from,R.to);render();if(COMP.da)genComp()}
+}
+async function importaPrecios(file){
+  if(!file)return;
+  try{
+    const p=GorraizEnergia.validatePricingConfig(JSON.parse(await file.text()));
+    localStorage.setItem(PRECIOS_KEY,JSON.stringify(p));PRECIOS=p;
+    pintaPrecios();refrescaValoracion();
+  }catch(e){$('preciosEstado').innerHTML=`<span class="err">No se han cargado los precios: ${esc(e.message)}</span>`}
+  $('fPrecios').value='';
+}
+function quitaPrecios(){
+  PRECIOS=null;PRECIO_FUTURO=false;localStorage.removeItem(PRECIOS_KEY);localStorage.removeItem(PRECIOS_FUTURO_KEY);
+  pintaPrecios();refrescaValoracion();
+}
+function iniciaPrecios(){
+  try{
+    const p=localStorage.getItem(PRECIOS_KEY);if(p)PRECIOS=GorraizEnergia.validatePricingConfig(JSON.parse(p));
+    PRECIO_FUTURO=localStorage.getItem(PRECIOS_FUTURO_KEY)==='true';pintaPrecios();
+  }catch(e){$('preciosEstado').textContent='No se pudieron recuperar los precios. Importa de nuevo el archivo JSON.'}
+  $('fPrecios').addEventListener('change',e=>importaPrecios(e.target.files[0]));
+  $('precioFuturo').addEventListener('change',()=>{
+    PRECIO_FUTURO=$('precioFuturo').checked;localStorage.setItem(PRECIOS_FUTURO_KEY,String(PRECIO_FUTURO));
+    pintaPrecios();refrescaValoracion();
+  });
+}
+function textoCobertura(v){
+  const c=v.coverage;
+  return `${fn(c.completeDays)} de ${fn(c.expectedDays)} días con balance completo; ${fn(c.pricedDays)} con precio. `+
+    (c.missingEnergyDays?`${fn(c.missingEnergyDays)} días abiertos o sin datos suficientes. `:'')+
+    (c.missingPriceDays?`${fn(c.missingPriceDays)} días de balance sin precio. `:'')+
+    (c.forwardEstimatedDays?`${fn(c.forwardEstimatedDays)} días valorados con el último precio disponible. `:'')+
+    'Los totales incluyen solo los días cubiertos.';
+}
+function notaValoracion(v){return textoCobertura(v)+' Los acumulados de ambos inversores deben incluir el cierre del día; un Excel recortado puede estar incompleto. Precio medio mensual de factura, estimativo; puede incluir gestión. Ahorro con IE y sin IVA; el efecto con IVA se muestra aparte. Compensación de excedentes no valorada.'}
+
 // ═══ MEMORIA ENTRE SESIONES ═══
 // El informe solo pinta como "real" los meses que tiene cargados, así que sin
 // esto había que volver a subir el histórico entero cada vez. Se guarda en el
 // navegador (IndexedDB, no localStorage: un año de producción a 5 minutos son
-// cientos de miles de registros y no cabría). Nunca sale del equipo.
+// cientos de miles de registros y no cabría). SPC conserva su propia fuente.
 const DB_NOMBRE='gorraiz_datos',DB_STORE='fuentes';
 function abreDB(){
   return new Promise((ok,mal)=>{
@@ -537,6 +817,7 @@ function guardaFuentes(){
         st.clear();
         IBR_FILES.forEach(f=>st.put({id:'I|'+f.name,tipo:'I',nombre:f.name,rows:f.rows}));
         ['A','B'].forEach(k=>PROD_FUENTES[k].forEach(f=>st.put({id:k+'|'+f.nombre,tipo:k,nombre:f.nombre,rows:f.rows})));
+        SPC_FUENTES.forEach(f=>st.put({id:'S|'+f.date,tipo:'S',fecha:f.date,payload:f}));
         tx.oncomplete=ok;tx.onerror=()=>mal(tx.error);
       });
       d.close();pintaMemoria();
@@ -552,30 +833,32 @@ async function cargaFuentes(){
       q.onsuccess=()=>ok(q.result||[]);q.onerror=()=>mal(q.error);
     });
     d.close();
-    if(!todo.length){pintaMemoria();return}
+    if(!todo.length){pintaMemoria();pintaSpc();return}
     todo.forEach(f=>{
       if(f.tipo==='I')IBR_FILES.push({name:f.nombre,size:0,dias:0,rows:f.rows});
+      else if(f.tipo==='S'&&f.payload)ponFuenteSpc(f.fecha,f.payload);
       else if(PROD_FUENTES[f.tipo])PROD_FUENTES[f.tipo].push({nombre:f.nombre,rows:f.rows});
     });
     mergeIBR();mergeProd('A');mergeProd('B');
     log(`Recuperados datos guardados: ${fn(RAW.I.length)} reg de consumo, ${fn(RAW.A.length+RAW.B.length)} de producción`);
-    pintaMemoria();
+    pintaMemoria();pintaSpc();
   }catch(e){log('⚠ No se han podido recuperar los datos guardados: '+e.message)}
 }
 async function olvidaTodo(){
-  if(!confirm('Se borrarán del navegador todos los datos cargados: consumo y producción. ¿Seguro?'))return;
+  if(!confirm('Se borrarán del navegador todos los datos cargados: consumo, producción e intercambio SPC. ¿Seguro?'))return;
   try{const d=await abreDB();
     await new Promise(ok=>{const tx=d.transaction(DB_STORE,'readwrite');tx.objectStore(DB_STORE).clear();tx.oncomplete=ok});
     d.close();
   }catch(e){}
-  IBR_FILES=[];PROD_FUENTES={A:[],B:[]};RAW={A:[],B:[],I:[]};
-  mergeIBR();mergeProd('A');mergeProd('B');pintaMemoria();log('Datos guardados borrados');
+  IBR_FILES=[];PROD_FUENTES={A:[],B:[]};SPC_FUENTES=[];RAW={A:[],B:[],I:[]};
+  mergeIBR();mergeProd('A');mergeProd('B');pintaMemoria();pintaSpc();log('Datos guardados borrados');
 }
 // ── Almacén compartido (solo consumo) ──
 // La producción no se sube: Solarman ya es su archivo y cualquiera la trae con
 // el botón. Subir también eso sería mantener dos verdades de lo mismo.
 let RESTAURANDO=false,subida=null;
 async function bajaDatos(){
+  if(KSTAR_ONLY)return;
   if(!API_ESTADO||!API_ESTADO.almacen)return;
   try{
     const d=await apiCall('/datos');
@@ -593,6 +876,7 @@ async function bajaDatos(){
   }catch(e){log('⚠ Almacén compartido: '+e.message)}
 }
 function subeDatos(){
+  if(KSTAR_ONLY)return;
   if(RESTAURANDO||!API_ESTADO||!API_ESTADO.almacen)return;
   // Se espera un momento para no escribir una vez por cada fichero de una tanda.
   clearTimeout(subida);
@@ -608,7 +892,7 @@ function subeDatos(){
 }
 
 function pintaMemoria(remoto){
-  const n=RAW.I.length+RAW.A.length+RAW.B.length;
+  const n=RAW.I.length+RAW.A.length+RAW.B.length+SPC_FUENTES.reduce((s,f)=>s+f.rows.length+f.daily.length,0);
   const comp=API_ESTADO&&API_ESTADO.almacen;
   let t=n?`💾 ${fn(n)} registros guardados`:'💾 Lo que cargues se guardará para no volver a subirlo';
   if(comp&&n)t+=' · 🌐 consumo accesible desde cualquier equipo';
@@ -617,7 +901,7 @@ function pintaMemoria(remoto){
   $('memo').innerHTML=t;
 }
 
-// ═══ DESCARGA AUTOMÁTICA (Datadis / Solarman vía Worker) ═══
+// ═══ DESCARGA AUTOMÁTICA (Datadis / Solarman / SPC vía Worker) ═══
 // El navegador no puede llamar a Datadis ni a Solarman: no mandan CORS y las
 // credenciales quedarían públicas en este HTML. Por eso se habla con un Worker
 // propio (carpeta worker/) que es quien guarda las credenciales.
@@ -626,7 +910,8 @@ function apiCfg(){try{return JSON.parse(localStorage.getItem(API_KEY))||{}}catch
 function apiSave(){
   const c={url:$('aUrl').value.trim().replace(/\/+$/,''),key:$('aKey').value};
   localStorage.setItem(API_KEY,JSON.stringify(c));
-  pintaCfg();estadoApi();log('Conexión guardada en este navegador');
+  API_ESTADO=null;SPC_PRUEBA=null;
+  pintaCfg();estadoApi().then(()=>cargaCacheSpc());log('Conexión guardada en este navegador');
 }
 function pintaCfg(){
   const c=apiCfg();
@@ -634,7 +919,7 @@ function pintaCfg(){
     <label>Worker:</label><input type="text" id="aUrl" placeholder="https://gorraiz-datos.tu-cuenta.workers.dev" value="${esc(c.url||'')}">
     <label>Clave:</label><input type="password" id="aKey" placeholder="clave de panel" value="${esc(c.key||'')}">
     <button class="btn btn2" onclick="apiSave()" style="padding:5px 12px;font-size:11px">Guardar</button>
-  </div><div class="hint">Se guardan solo en este navegador (localStorage), nunca en el repositorio. Las credenciales de Datadis y Solarman viven en el Worker, no aquí.</div>`;
+  </div><div class="hint">Esta conexión es únicamente para el Worker habitual de Solarman. KSTAR se configura en su sección independiente.</div>`;
 }
 // Cloudflare limita a 50 subpeticiones por invocación del Worker. Cada día de
 // producción son dos llamadas (una por inversor) y cada mes de consumo una, así
@@ -662,46 +947,59 @@ async function apiCall(ruta,body){
 }
 let API_ESTADO=null;
 async function estadoApi(){
-  const c=apiCfg();if(!c.url){$('hintAuto').textContent='sin configurar';return}
+  const c=apiCfg();if(!c.url){API_ESTADO=null;$('hintAuto').textContent=kstarCfg().url?'KSTAR independiente; Solarman pendiente':'sin configurar';pintaSpc();return}
   try{API_ESTADO=await apiCall('/estado');
-    $('hintAuto').innerHTML=`consumo ${API_ESTADO.datadis?'✓ Datadis':'✗'} · producción ${API_ESTADO.solarman?'✓ Solarman':'✗'}`;
-  }catch(e){$('hintAuto').innerHTML=`<span style="color:var(--red)">${esc(e.message)}</span>`}
+    $('hintAuto').textContent=`producción ${API_ESTADO.solarman?'Solarman conectado':'Solarman pendiente'} · intercambio ${kstarCfg().url?'KSTAR independiente':API_ESTADO.spc?'SPC configurado':'KSTAR pendiente'}`;
+  }catch(e){API_ESTADO=null;$('hintAuto').innerHTML=`<span style="color:var(--red)">${esc(e.message)}</span>`}
+  pintaSpc();
 }
 // Con los datos ya recordados, pedir de nuevo lo que se tiene es gastar
 // llamadas para nada: se propone arrancar el día siguiente al último cubierto.
 function sugiereRango(){
+  if(kstarCfg().url){
+    const ayer=spcSumaDias(spcHoy('Europe/Madrid'),-1);
+    const ultima=SPC_FUENTES.map(f=>f.date).filter(d=>d<=ayer).sort().pop();
+    let inicio=ultima?spcSumaDias(ultima,1):spcSumaDias(ayer,-6);
+    if(inicio>ayer)inicio=ayer;
+    $('aDesde').value=inicio;$('aHasta').value=ayer;
+    $('hueco').textContent='KSTAR: se propone completar hasta ayer ('+fdmy(ayer)+'). Máximo 14 días por consulta. La generación Solarman se descargará en el mismo rango.';
+    pintaSpc();return;
+  }
   const dias=[...new Set([].concat(RAW.A,RAW.B).map(r=>dk(r.ts)))].sort();
   const hoy=dk(new Date());
-  if(!dias.length){$('hueco').textContent='';return}
+  if(!dias.length){$('hueco').textContent='';pintaSpc();return}
   const ultimo=dias[dias.length-1];
   if(ultimo>=hoy){
     $('aDesde').value=hoy;
-    $('hueco').innerHTML=`Ya tienes producción hasta el <b>${fdmy(ultimo)}</b>: no falta nada por traer.`;
+    $('hueco').innerHTML=`Producción cargada hasta el <b>${fdmy(ultimo)}</b>. Puedes actualizar el día en curso o elegir otro rango. La cobertura de SPC se muestra por separado.`;
+    pintaSpc();
     return;
   }
   const siguiente=sumaDias(ultimo,1);
   $('aDesde').value=siguiente;$('aHasta').value=hoy;
   $('hueco').innerHTML=`Ya tienes producción hasta el <b>${fdmy(ultimo)}</b>, así que solo se pedirá `
-    +`desde el <b>${fdmy(siguiente)}</b>. Cambia las fechas si quieres rehacer un tramo.`;
+    +`desde el <b>${fdmy(siguiente)}</b>. Cambia las fechas para completar SPC o rehacer un tramo.`;
+  pintaSpc();
 }
 
 async function traerDatos(){
+  if(SPC_OCUPADO){$('stAuto').textContent='Espera a que termine la consulta de SPC.';return}
   const desde=$('aDesde').value,hasta=$('aHasta').value;
   if(!desde||!hasta){$('stAuto').innerHTML='<span class="err">Indica las fechas desde y hasta.</span>';return}
   if(desde>hasta){$('stAuto').innerHTML='<span class="err">La fecha inicial es posterior a la final.</span>';return}
   const b=$('btnAuto');b.disabled=true;const txt=b.textContent;b.textContent='⏳ Descargando…';
+  SPC_OCUPADO=true;pintaSpc();
   $('stAuto').textContent='Pidiendo datos al Worker; un histórico largo puede tardar un par de minutos.';
   if(!API_ESTADO)await estadoApi();
   const est=API_ESTADO||{};
-  // Las dos fuentes van por separado a propósito: que falle una no puede
-  // impedir traer la otra, que es lo que pasaba pidiendo el consumo primero.
+  // Cada fuente se consulta por separado: un fallo no bloquea las demás.
   const partes=[];let algo=false;
 
   // A i-DE no se le pide: desde el Worker responde 503 siempre, porque rechaza
   // el tráfico que no viene de un navegador doméstico. Pedirlo solo servía para
   // enseñar un error rojo en cada descarga. El código sigue ahí por si algún
   // día se ejecuta desde otra red.
-  if(est.datadis){
+  if(!KSTAR_ONLY&&est.datadis){
     try{
       // 20 meses por bloque: por debajo del tope con margen de sobra.
       const bl=bloques(desde,hasta,600),filas=[];let meta=null,fallos=[];
@@ -728,10 +1026,8 @@ async function traerDatos(){
       partes.push(`<span class="err">✗ Consumo: ${esc(e.message)}</span>`);
       log('⚠ Consumo: '+e.message);
     }
-  }else{
-    partes.push(est.ide
-      ? 'Consumo: se sigue subiendo con los .xlsx de i-DE. La descarga automática solo funciona con Datadis.'
-      : '<span class="warn">Consumo no configurado: sigue subiendo los .xlsx de i-DE.</span>');
+  }else if(!KSTAR_ONLY){
+    partes.push('Consumo antiguo sin configurar. Las fuentes i-DE/Datadis no se consultan.');
   }
 
   if(est.solarman){
@@ -763,9 +1059,43 @@ async function traerDatos(){
     partes.push('<span class="warn">Producción no configurada: sigue subiendo los .xlsx de los inversores.</span>');
   }
 
+  const separado=!!kstarCfg().url;
+  if(separado||est.spc){
+    SPC_PRUEBA=null;const fallos=[];let guardados=0,parciales=0;
+    try{
+      const hastaSpc=separado&&hasta>=spcHoy()?spcSumaDias(spcHoy(),-1):hasta;
+      const bl=desde<=hastaSpc?bloquesSpc(desde,hastaSpc,1):[];
+      if(separado&&bl.length>14)throw new Error('Para KSTAR selecciona un máximo de 14 días por descarga manual.');
+      if(separado&&kstarCfg().key.length<24)throw new Error('Falta KSTAR_TEST_KEY en esta sesión. Vuelve a guardarla.');
+      if(!bl.length)throw new Error('Todavía no hay días cerrados de KSTAR en ese rango.');
+      for(let i=0;i<bl.length;i++){
+        avance('Pidiendo intercambio SPC',i+1,bl.length);
+        try{
+          // Consulta de nuevo cada día pedido, incluido hoy aunque ya esté guardado.
+          const p=separado?await kstarCall(bl[i].desde,bl[i].hasta):await apiCall('/spc/intercambio',bl[i]);
+          if(!spcTieneDatos(p))throw new Error('sin datos para este día');
+          const n=incorporaSpc(p,bl[i]);
+          if(!n)throw new Error(p.meta&&p.meta.completo===false?'respuesta parcial; se conserva el día completo guardado':'sin datos válidos para este día');
+          guardados+=n;
+          if(p.meta&&(p.meta.completo===false||p.meta.sinHistorico))parciales++;
+        }catch(e){fallos.push(`${fdmy(bl[i].desde)}: ${e.message}`)}
+      }
+    }catch(e){fallos.push(e.message)}
+    const resumen=[];
+    if(guardados){algo=true;resumen.push(`✓ SPC: ${fn(guardados)} días cargados${parciales?` · ${fn(parciales)} con datos parciales`:''}`)}
+    if(fallos.length){
+      resumen.push(`<span class="err">SPC: ${fn(fallos.length)} consultas sin completar. Se conservan los datos anteriores de esos días. ${esc(fallos.slice(0,3).join(' · '))}${fallos.length>3?' · …':''}</span>`);
+      log(`⚠ SPC: ${fn(fallos.length)} consultas sin completar`);
+    }
+    $('spcAccion').innerHTML=resumen.join('<br>');partes.push(...resumen);
+    await estadoApi();
+  }else if(SPC_FUENTES.length){
+    partes.push('SPC: se conservan los datos guardados; la conexión no está configurada para actualizar.');
+  }
+
   if(!algo)partes.push('<span class="warn">No se ha cargado nada; los datos que ya tuvieras siguen intactos.</span>');
   $('stAuto').innerHTML=partes.join('<br>');chk();sugiereRango();
-  b.disabled=false;b.textContent=txt;
+  b.disabled=false;b.textContent=txt;SPC_OCUPADO=false;pintaSpc();
 }
 
 (function initAuto(){
@@ -773,8 +1103,12 @@ async function traerDatos(){
   $('aHasta').value=dk(hoy);$('aDesde').value=dk(ini);
   encajaGraficas();
   pintaCfg();
+  pintaKstarCfg();
+  iniciaPrecios();
+  ['aDesde','aHasta'].forEach(id=>$(id).addEventListener('change',pintaSpc));
   // El estado tiene que llegar antes de mirar el almacén compartido.
-  estadoApi().then(()=>cargaFuentes()).then(()=>bajaDatos()).then(()=>sugiereRango());
+  // Leer /spc/datos solo recupera caché; no inicia sesión en el portal SPC.
+  estadoApi().then(()=>cargaFuentes()).then(()=>bajaDatos()).then(()=>cargaCacheSpc()).then(()=>sugiereRango());
 })();
 
 // ── Processing ──
@@ -782,174 +1116,86 @@ function filt(arr,d,h){return arr.filter(r=>{if(d&&r.ts<d)return false;if(h&&r.t
 
 function procProd(A,B){
   const dm={};
-  A.forEach(r=>{const d=dk(r.ts);if(!dm[d])dm[d]={date:d,A:0,B:0};dm[d].A=Math.max(dm[d].A,r.dia)});
-  B.forEach(r=>{const d=dk(r.ts);if(!dm[d])dm[d]={date:d,A:0,B:0};dm[d].B=Math.max(dm[d].B,r.dia)});
-  const daily=Object.values(dm).map(d=>({...d,total:d.A+d.B})).sort((a,b)=>a.date.localeCompare(b.date));
-
-  // Hourly
+  const porDia=(arr,k)=>arr.forEach(r=>{const d=dk(r.ts);if(!dm[d])dm[d]={date:d,A:null,B:null,hasA:false,hasB:false};
+    if(Number.isFinite(r.dia)&&r.dia>=0){dm[d][k]=dm[d][k]===null?r.dia:Math.max(dm[d][k],r.dia);dm[d]['has'+k]=true}});
+  porDia(A,'A');porDia(B,'B');
+  const daily=Object.values(dm).map(d=>({...d,total:d.hasA&&d.hasB?d.A+d.B:null})).sort((a,b)=>a.date.localeCompare(b.date));
+  // Perfil de producción a partir de las muestras del inversor, independiente de SPC.
   const hm={};
-  const procH=(arr,k)=>{const s=[...arr].sort((a,b)=>a.ts-b.ts);const bh={};
-    s.forEach(r=>{const h=hk(r.ts);if(!hm[h])hm[h]={hour:h,h:r.ts.getHours(),date:dk(r.ts),A:0,B:0};
-      if(!bh[h])bh[h]=[];bh[h].push(r)});
-    for(const[h,recs]of Object.entries(bh)){
-      if(recs.length<2){if(hm[h])hm[h][k]=(recs[0].pot||0)/1000}
-      else{let d=recs[recs.length-1].acum-recs[0].acum;
-        if(d<=0)d=recs.reduce((s,r)=>s+r.pot,0)/recs.length/1000;
-        if(hm[h])hm[h][k]=Math.max(0,d)}}};
+  const procH=(arr,k)=>{const bh={};
+    [...arr].sort((a,b)=>a.ts-b.ts).forEach(r=>{const h=hk(r.ts);if(!hm[h])hm[h]={hour:h,h:r.ts.getHours(),date:dk(r.ts),A:null,B:null};
+      (bh[h]=bh[h]||[]).push(r)});
+    for(const [h,recs] of Object.entries(bh)){
+      const primero=recs[0],ultimo=recs[recs.length-1];
+      const delta=Number.isFinite(primero.acum)&&Number.isFinite(ultimo.acum)?ultimo.acum-primero.acum:null;
+      const pot=recs.map(r=>r.pot).filter(Number.isFinite);
+      hm[h][k]=recs.length>1&&delta>0?delta:(pot.length?pot.reduce((v,p)=>v+p,0)/pot.length/1000:null);
+    }};
   procH(A,'A');procH(B,'B');
-  const hourly=Object.values(hm).map(h=>({...h,total:h.A+h.B})).sort((a,b)=>a.hour.localeCompare(b.hour));
+  const hourly=Object.values(hm).map(h=>({...h,total:Number.isFinite(h.A)&&Number.isFinite(h.B)?h.A+h.B:null})).sort((a,b)=>a.hour.localeCompare(b.hour));
   return{daily,hourly};
 }
 
-function procCons(ibr,ph){
-  const pvH={};ph.forEach(h=>{pvH[h.hour]=h.total});
-  const hourly=ibr.map(r=>{const h=hk(r.ts),pv=pvH[h]||0;
-    return{ts:r.ts,date:dk(r.ts),h:r.ts.getHours(),red:r.consumo,gen:r.gen,pv,
-      total:r.consumo+pv,periodo:r.periodo,wd:r.ts.getDay()}});
-  const dm={};hourly.forEach(r=>{if(!dm[r.date])dm[r.date]={date:r.date,total:0,red:0,pv:0,wd:r.wd};
-    dm[r.date].total+=r.total;dm[r.date].red+=r.red;dm[r.date].pv+=r.pv});
-  const daily=Object.values(dm).sort((a,b)=>a.date.localeCompare(b.date));
-  return{hourly,daily};
+function procCons(ibr){
+  // KSTAR es la única fuente operativa de intercambio. Sin cobertura horaria
+  // validada, no se dibuja la antigua curva de i-DE/Datadis como si fuera SPC.
+  if(KSTAR_ONLY)return {hourly:[],daily:[]};
+  // i-DE/Datadis aporta importación horaria. No se le suma la FV ni se reparte
+  // el autoconsumo diario entre horas, porque no conocemos ese intercambio.
+  const hourly=ibr.map(r=>({ts:r.ts,date:dk(r.ts),h:r.ts.getHours(),red:Number.isFinite(r.consumo)?r.consumo:null,
+    gen:r.gen,periodo:r.periodo,wd:r.ts.getDay()}));
+  return{hourly,daily:[]};
+}
+function perfilHoras(rows,campo){
+  const a=Array.from({length:24},()=>[]);
+  rows.forEach(r=>{if(Number.isFinite(r[campo]))a[r.h].push(r[campo])});
+  return a.map(v=>v.length?v.reduce((s,x)=>s+x,0)/v.length:null);
+}
+function calcKPIs(prod,cons,rango={}){
+  const balance=GorraizEnergia.buildDailyBalance(prod.daily,getSpcDaily(),{today:spcHoy('Europe/Madrid'),...rango});
+  const energia=GorraizEnergia.valueBalance(balance,PRECIOS,{allowForwardEstimate:PRECIO_FUTURO});
+  const tot=energia.totals,pd=prod.daily,validos=pd.filter(d=>Number.isFinite(d.total));
+  const tP=sumaValores(validos.map(d=>d.total)),dPV=validos.length,avg=divide(tP,dPV);
+  const best=validos.reduce((m,d)=>!m||d.total>m.total?d:m,null)||{total:null,date:'—'};
+  const daily=energia.daily.map(d=>({date:d.date,total:d.complete?d.loadKWh:null,red:d.complete?d.importKWh:null,
+    pv:d.complete?d.selfConsumptionKWh:null,export:d.complete?d.exportKWh:null,complete:d.complete,reason:d.reason,
+    wd:new Date(d.date+'T12:00:00').getDay()}));
+  const ch=cons.hourly,semana=Array.from({length:7},()=>[]);
+  daily.filter(d=>d.complete).forEach(d=>semana[(d.wd+6)%7].push(d));
+  const weekly=semana.map(d=>({red:d.length?sumaValores(d.map(x=>x.red))/d.length:null,
+    pv:d.length?sumaValores(d.map(x=>x.pv))/d.length:null}));
+  const hpCons={LV:perfilHoras(ch.filter(r=>r.wd>=1&&r.wd<=5),'red'),S:perfilHoras(ch.filter(r=>r.wd===6),'red'),D:perfilHoras(ch.filter(r=>r.wd===0),'red')};
+  const picoD=daily.filter(d=>d.complete).reduce((m,d)=>!m||d.total>m.total?d:m,null)||{total:null,date:'—'};
+  return{tP,dPV,avg,best,yld:divide(tP,CFG.kwp),iA:sumaValores(pd.map(d=>d.A)),iB:sumaValores(pd.map(d=>d.B)),
+    tAE:tot.energySavingsEUR,tAF:tot.savingsWithIEEUR,tCash:tot.cashSavingsWithVATEUR,tGrid:tot.gridWithIEEUR,
+    tC:tot.loadKWh,tR:tot.importKWh,tPV:tot.selfConsumptionKWh,tExport:tot.exportKWh,pct:divide(tot.selfConsumptionKWh,tot.loadKWh),
+    avgH:perfilHoras(prod.hourly,'total'),weekly,hpCons,picoD,prod,cons:{...cons,daily},energia,balance,
+    from:rango.from||balance[0]?.date||'',to:rango.to||balance[balance.length-1]?.date||''};
 }
 
-function calcKPIs(prod,cons){
-  const pd=prod.daily,ch=cons.hourly;
-  const tP=pd.reduce((s,d)=>s+d.total,0),dPV=pd.filter(d=>d.total>0).length;
-  const avg=dPV?tP/dPV:0,best=pd.reduce((m,d)=>d.total>m.total?d:m,{total:0,date:'-'});
-  const yld=tP/CFG.kwp,iA=pd.reduce((s,d)=>s+d.A,0),iB=pd.reduce((s,d)=>s+d.B,0);
-  // Ahorro periodos
-  const ap={};['P1','P2','P3','P4','P5','P6'].forEach(p=>{ap[p]={kwh:0,pr:CFG.precios[p],ah:0}});
-  ch.forEach(r=>{const p=r.periodo||'P6';if(ap[p])ap[p].kwh+=r.pv});
-  let tAE=0;for(const p in ap){ap[p].ah=ap[p].kwh*ap[p].pr;tAE+=ap[p].ah}
-  const tAF=tAE*(1+CFG.IE)*(1+CFG.IVA);
-  // Consumo
-  const tC=ch.reduce((s,r)=>s+r.total,0),tR=ch.reduce((s,r)=>s+r.red,0),tPV=ch.reduce((s,r)=>s+r.pv,0);
-  const pct=tC?tPV/tC:0;
-  // Hourly profile PV
-  const hp=Array(24).fill(null).map(()=>({c:0,t:0}));
-  prod.hourly.forEach(h=>{hp[h.h].t+=h.total;hp[h.h].c++});
-  const avgH=hp.map(h=>h.c?h.t/h.c:0);
-  // Weekly consumption
-  const wk=Array(7).fill(null).map(()=>({c:0,red:0,pv:0}));
-  cons.daily.forEach(d=>{const w=(d.wd+6)%7;wk[w].red+=d.red;wk[w].pv+=d.pv;wk[w].c++}); // Mon=0
-  const weekly=wk.map(w=>({red:w.c?w.red/w.c:0,pv:w.c?w.pv/w.c:0}));
-  // Hourly profile consumption by day type
-  const hpC={LV:Array(24).fill(0),S:Array(24).fill(0),D:Array(24).fill(0),cLV:Array(24).fill(0),cS:Array(24).fill(0),cD:Array(24).fill(0)};
-  ch.forEach(r=>{const wd=r.wd,h=r.h;
-    if(wd>=1&&wd<=5){hpC.LV[h]+=r.total;hpC.cLV[h]++}
-    else if(wd===6){hpC.S[h]+=r.total;hpC.cS[h]++}
-    else{hpC.D[h]+=r.total;hpC.cD[h]++}});
-  const hpCons={LV:hpC.LV.map((v,i)=>hpC.cLV[i]?v/hpC.cLV[i]:0),S:hpC.S.map((v,i)=>hpC.cS[i]?v/hpC.cS[i]:0),D:hpC.D.map((v,i)=>hpC.cD[i]?v/hpC.cD[i]:0)};
-  // Pico diario consumo
-  const picoD=cons.daily.reduce((m,d)=>d.total>m.total?d:m,{total:0,date:'-'});
-  // Payback
-  const aAnual=dPV>=30?tAF/dPV*365:0;const pbY=aAnual?CFG.inv/aAnual:99;
-  const diasPV=dPV;
-  return{tP,dPV,avg,best,yld,iA,iB,ap,tAE,tAF,tC,tR,tPV,pct,avgH,weekly,hpCons,picoD,aAnual,pbY,diasPV,co2:tP*CFG.factor_e/1000,prod,cons};
+// ── Evolución: datos conocidos, sin proyección económica automática ──
+function calcEvol(prodD,energia){
+  const pm=new Map();
+  prodD.forEach(d=>{const mes=d.date.slice(0,7);if(!pm.has(mes))pm.set(mes,{mes,filas:[]});pm.get(mes).filas.push(d)});
+  const prodM=[...pm.values()].map(m=>({mes:m.mes,kwh:sumaValores(m.filas.map(d=>d.total)),dias:m.filas.filter(d=>Number.isFinite(d.total)).length})).sort((a,b)=>a.mes.localeCompare(b.mes));
+  let acumulado=null;
+  const ahorroM=energia.monthly.map(m=>{if(Number.isFinite(m.savingsWithIEEUR))acumulado=(acumulado===null?0:acumulado)+m.savingsWithIEEUR;
+    return{...m,mes:m.month,acum:Number.isFinite(m.savingsWithIEEUR)?acumulado:null}});
+  return{prodM,consM:energia.monthly,ahorroM,energia};
 }
 
-// ── Evolution (Page 4 data) ──
-function calcEvol(prodD,consH,consD){
-  const ev={};
-  // Prod mensual
-  if(prodD.length&&prodD.some(d=>d.total>0)){
-    const pm={};prodD.forEach(d=>{const m=d.date.slice(0,7);if(!pm[m])pm[m]={mes:m,kwh:0,A:0,B:0,dias:0,mn:+d.date.slice(5,7)};
-      pm[m].kwh+=d.total;pm[m].A+=d.A;pm[m].B+=d.B;pm[m].dias++});
-    let arr=Object.values(pm).sort((a,b)=>a.mes.localeCompare(b.mes));
-    arr.forEach(m=>{m.esp=CFG.prodAnual*(PERFIL_SOLAR[m.mn]||.083);m.pr=m.esp?m.kwh/m.esp*100:0;m.fc=false});
-    // PR medio (meses >=15 dias)
-    const buenos=arr.filter(m=>m.dias>=15);const prM=buenos.length?buenos.reduce((s,m)=>s+m.pr,0)/buenos.length/100:(arr.reduce((s,m)=>s+m.pr,0)/arr.length/100);
-    const prC=Math.max(.3,Math.min(1.5,prM));
-    // Forecast
-    const ult=arr[arr.length-1];let [uy,um]=[+ult.mes.slice(0,4),+ult.mes.slice(5,7)];
-    for(let i=1;arr.length<12;i++){um++;if(um>12){um=1;uy++}
-      const ms=uy+'-'+String(um).padStart(2,'0');
-      const esp=CFG.prodAnual*(PERFIL_SOLAR[um]||.083);
-      arr.push({mes:ms,kwh:esp*prC,A:esp*prC*.55,B:esp*prC*.45,dias:0,mn:um,esp,pr:prC*100,fc:true})}
-    ev.prodM=arr;ev.prM=prC;ev.hayProd=true;
-  }else{ev.hayProd=false;ev.prodM=[]}
-
-  // Cons mensual
-  if(consH.length){
-    const cm={};consH.forEach(r=>{const m=ym(r.ts);if(!cm[m])cm[m]={mes:m,total:0,red:0,pv:0,P:0,L:0,V:0,dias:new Set(),fc:false,mn:r.ts.getMonth()+1};
-      cm[m].total+=r.total;cm[m].red+=r.red;cm[m].pv+=r.pv;cm[m].dias.add(dk(r.ts));
-      const fr=r.periodo;if(fr==='P1')cm[m].P+=r.red;else if(fr==='P2'||fr==='P3')cm[m].L+=r.red;else cm[m].V+=r.red});
-    let ca=Object.values(cm).sort((a,b)=>a.mes.localeCompare(b.mes));
-    ca.forEach(m=>m.nDias=m.dias.size);
-    // HDD/CDD trend model (needs >=3 complete months)
-    const comp=ca.filter(m=>m.nDias>=20);
-    let trend=null;
-    if(comp.length>=3){
-      comp.forEach(m=>{const[h,c]=hddCdd(m.mn);m.hdd=h;m.cdd=c;m.kwhDia=m.total/m.nDias});
-      // Simple regression: kwhDia = a + b*HDD
-      const n=comp.length,sx=comp.reduce((s,m)=>s+m.hdd,0),sy=comp.reduce((s,m)=>s+m.kwhDia,0);
-      const sxy=comp.reduce((s,m)=>s+m.hdd*m.kwhDia,0),sxx=comp.reduce((s,m)=>s+m.hdd*m.hdd,0);
-      const b=(n*sxy-sx*sy)/(n*sxx-sx*sx||1),a=(sy-b*sx)/n;
-      trend={a,b};
-      ca.forEach(m=>{const[h]=hddCdd(m.mn);m.modelo=(a+b*h)*diasMes(m.mn)});
-      // Forecast consumo
-      const ult=ca[ca.length-1];let[uy2,um2]=[+ult.mes.slice(0,4),+ult.mes.slice(5,7)];
-      const ratP=comp.reduce((s,m)=>s+m.P,0),ratL=comp.reduce((s,m)=>s+m.L,0),ratV=comp.reduce((s,m)=>s+m.V,0);
-      const ratT=ratP+ratL+ratV||1;
-      for(let i=1;ca.length<18;i++){um2++;if(um2>12){um2=1;uy2++}
-        const ms=uy2+'-'+String(um2).padStart(2,'0');const[h]=hddCdd(um2);
-        const tot=Math.max(0,(a+b*h)*diasMes(um2));
-        ca.push({mes:ms,total:tot,red:tot*.95,pv:tot*.05,P:tot*ratP/ratT,L:tot*ratL/ratT,V:tot*ratV/ratT,nDias:diasMes(um2),fc:true,mn:um2,modelo:tot})}
-    }
-    ev.consM=ca;ev.trend=trend;ev.hayCons=true;
-  }else{ev.hayCons=false;ev.consM=[]}
-
-  // Ahorro mensual
-  if(consH.length){
-    const am={};consH.forEach(r=>{const m=ym(r.ts);if(!am[m])am[m]={mes:m,ah:0,ahT:0,fc:false};
-      const pr=CFG.precios[r.periodo]||.139;const pv=Math.min(r.pv,r.total);
-      am[m].ah+=pv*pr;am[m].ahT+=pv*pr*(1+CFG.IE)*(1+CFG.IVA)});
-    let aa=Object.values(am).sort((a,b)=>a.mes.localeCompare(b.mes));
-    // Forecast savings if we have prod forecast
-    if(ev.hayProd){const realM=new Set(aa.map(m=>m.mes));
-      ev.prodM.filter(m=>m.fc&&!realM.has(m.mes)).forEach(m=>{
-        const prM=Object.values(CFG.precios).reduce((s,p)=>s+p,0)/6;
-        const ahM=m.kwh*.85*prM;aa.push({mes:m.mes,ah:ahM,ahT:ahM*(1+CFG.IE)*(1+CFG.IVA),fc:true})})}
-    aa.sort((a,b)=>a.mes.localeCompare(b.mes));
-    let acum=0;aa.forEach(m=>{acum+=m.ahT;m.acum=acum});
-    ev.ahorroM=aa;ev.hayAhorro=true;
-  }else{ev.hayAhorro=false;ev.ahorroM=[]}
-  return ev;
-}
-
-// ── Analysis (Page 5 data) ──
-function calcAnalysis(prodH,consH){
-  const an={};
-  // Heatmap
-  if(prodH.length){
-    const hm={};prodH.forEach(r=>{const d=r.date,h=r.h;if(!hm[d])hm[d]={};hm[d][h]=(hm[d][h]||0)+r.total});
-    const dates=Object.keys(hm).sort();an.heatDates=dates;an.heatData=hm;an.hayHeat=dates.length>0;
-  }else an.hayHeat=false;
-  // Perfil tipo laborable
-  if(consH.length){
-    const lv=consH.filter(r=>r.wd>=1&&r.wd<=5);
-    if(lv.length){const p=Array(24).fill(null).map(()=>({cons:0,pv:0,red:0,c:0}));
-      lv.forEach(r=>{p[r.h].cons+=r.total;p[r.h].pv+=r.pv;p[r.h].red+=r.red;p[r.h].c++});
-      an.perfil=p.map(h=>({cons:h.c?h.cons/h.c:0,pv:h.c?h.pv/h.c:0,red:h.c?h.red/h.c:0,
-        auto:Math.min(h.c?h.cons/h.c:0,h.c?h.pv/h.c:0),curt:Math.max(0,(h.c?h.pv/h.c:0)-(h.c?h.cons/h.c:0))}));
-      an.hayPerfil=true;}
-    else an.hayPerfil=false;
-  }else an.hayPerfil=false;
-  // Curtailment mensual
-  if(consH.length){const cm={};consH.forEach(r=>{const m=ym(r.ts);if(!cm[m])cm[m]={mes:m,used:0,curt:0,pvT:0};
-    const used=Math.min(r.pv,r.total);cm[m].used+=used;cm[m].curt+=Math.max(0,r.pv-used);cm[m].pvT+=r.pv});
-    an.curtM=Object.values(cm).filter(m=>m.pvT>0).sort((a,b)=>a.mes.localeCompare(b.mes));
-    an.curtM.forEach(m=>m.pct=m.pvT?m.curt/m.pvT*100:0);an.hayCurt=an.curtM.length>0;
-  }else an.hayCurt=false;
-  // Payback
-  if(consH.length){const tAh=consH.reduce((s,r)=>{const pr=CFG.precios[r.periodo]||.139;return s+Math.min(r.pv,r.total)*pr*(1+CFG.IE)*(1+CFG.IVA)},0);
-    const dPV=new Set(consH.filter(r=>r.pv>CFG.umbral_pv).map(r=>dk(r.ts))).size;
-    const pct=CFG.inv?tAh/CFG.inv*100:0;const canP=dPV>=30;
-    const aA=canP?tAh/dPV*365:0;const yrs=aA?CFG.inv/aA:99;
-    an.pb={inv:CFG.inv,ahAcum:tAh,aAnual:aA,pct,anos:yrs,dias:dPV,canP,anoAmort:canP?Math.round(new Date().getFullYear()+yrs):0};
-    an.hayPB=true;}
-  else an.hayPB=false;
-  return an;
+// ── Análisis: perfiles observados y vertido medido ──
+function calcAnalysis(prodH,consH,energia){
+  const hm={};prodH.forEach(r=>{if(Number.isFinite(r.total)){if(!hm[r.date])hm[r.date]={};hm[r.date][r.h]=r.total}});
+  const heatDates=Object.keys(hm).sort();
+  const laborable=d=>{const w=new Date(d+'T12:00:00').getDay();return w>=1&&w<=5};
+  const pv=perfilHoras(prodH.filter(r=>laborable(r.date)),'total'),red=perfilHoras(consH.filter(r=>r.wd>=1&&r.wd<=5),'red');
+  const ahorro=energia.totals.savingsWithIEEUR;
+  return{heatDates,heatData:hm,hayHeat:heatDates.length>0,
+    perfil:pv.map((v,i)=>({pv:v,red:red[i]})),hayPerfil:pv.some(Number.isFinite)||red.some(Number.isFinite),
+    exchangeM:energia.monthly,energia,
+    pb:{inv:CFG.inv,ahAcum:ahorro,pct:escala(divide(ahorro,CFG.inv),100),dias:energia.coverage.pricedDays,canP:false},
+    hayPB:Number.isFinite(ahorro)};
 }
 
 // ── Meteo ──
@@ -976,28 +1222,29 @@ async function fetchMeteo(d1,d2){
 }
 
 // ═══ MAIN GENERATE ═══
+function calculaInforme(desde,hasta){
+  const d0=desde?new Date(desde+'T00:00:00'):null,d1=hasta?new Date(hasta+'T23:59:59'):null;
+  const prod=procProd(filt(RAW.A,d0,d1),filt(RAW.B,d0,d1));
+  const from=desde||prod.daily[0]?.date,to=hasta||prod.daily[prod.daily.length-1]?.date;
+  const kpis=calcKPIs(prod,procCons(filt(RAW.I,d0,d1)),{from,to});
+  // Páginas 4–5 conservan el histórico completo y muestran su propia cobertura.
+  const fechas=[...new Set([].concat(RAW.A,RAW.B,RAW.I).map(r=>dk(r.ts)))].sort();
+  const prodAll=procProd(RAW.A,RAW.B),consAll=procCons(RAW.I);
+  const historico=calcKPIs(prodAll,consAll,{from:fechas[0],to:fechas[fechas.length-1]});
+  return{...kpis,historico,evol:calcEvol(prodAll.daily,historico.energia),analysis:calcAnalysis(prodAll.hourly,consAll.hourly,historico.energia),meteo:METEO};
+}
 async function generate(){
   log('Procesando...');setStep(2);
-  const d0=$('dDesde').value?new Date($('dDesde').value+'T00:00:00'):null;
-  const d1=$('dHasta').value?new Date($('dHasta').value+'T23:59:59'):null;
-  if(d0&&d1&&d0>d1){log('⚠ Desde > Hasta');return}
-  const iA=filt(RAW.A,d0,d1),iB=filt(RAW.B,d0,d1),ibr=filt(RAW.I,d0,d1);
-  log(`Filtrado: InvA=${iA.length}, InvB=${iB.length}, IBR=${ibr.length}`);
-  if(!iA.length){log('⚠ Sin datos Inv A');return}
-  // Filtered (pages 1-3)
-  const prod=procProd(iA,iB),cons=procCons(ibr,prod.hourly);
-  const kpis=calcKPIs(prod,cons);
-  // Full history (pages 4-5)
-  const prodAll=procProd(RAW.A,RAW.B),consAll=procCons(RAW.I,prodAll.hourly);
-  const evol=calcEvol(prodAll.daily,consAll.hourly,consAll.daily);
-  const analysis=calcAnalysis(prodAll.hourly,consAll.hourly);
-  // Meteo
-  const mD1=prod.daily[0]?.date||'',mD2=prod.daily[prod.daily.length-1]?.date||'';
-  METEO=await fetchMeteo(mD1,mD2);
-  if(METEO)log(`Meteo fechas: ${METEO[0]?.date} → ${METEO[METEO.length-1]?.date} | Prod fechas: ${mD1} → ${mD2}`);
-  R={...kpis,evol,analysis,meteo:METEO};
-  log(`✓ Producción: ${fd(R.tP)} kWh | Ahorro: ${fn(R.tAF)} €`);
-  setStep(3);render();
+  const desde=$('dDesde').value,hasta=$('dHasta').value;
+  if(desde&&hasta&&desde>hasta){log('⚠ La fecha inicial es posterior a la final');setStep(1);return}
+  try{
+    if(typeof GorraizEnergia==='undefined')throw new Error('No se ha cargado el cálculo energético. Recarga la página.');
+    R=calculaInforme(desde,hasta);
+    if(!R.prod.daily.length){log('⚠ No hay datos de inversores en este rango');setStep(1);return}
+    METEO=await fetchMeteo(R.from,R.to);R.meteo=METEO;
+    log(`✓ Producción registrada: ${kwh(R.tP)} | Ahorro con IE, sin IVA: ${euros(R.tAF)}`);
+    setStep(3);render();
+  }catch(e){log('⚠ No se pudo generar el informe: '+esc(e.message));setStep(1)}
 }
 
 // ═══ RENDER ═══
@@ -1017,251 +1264,112 @@ function render(){
 }
 function destroyCharts(){for(const k in CHARTS){try{CHARTS[k].destroy()}catch(e){}}CHARTS={}}
 
+function cajasKpi(rows){return rows.map(([l,v,s])=>`<div class="kbox"><div class="kl">${esc(l)}</div><div class="kv">${esc(v)}</div><div class="ks">${esc(s)}</div></div>`).join('')}
+function kpisProduccion(r){return[
+  ['Producción registrada',kwh(r.tP),`${r.dPV} días con ambos inversores`],['Rendimiento',Number.isFinite(r.yld)?fd(r.yld)+' kWh/kWp':'—',`${CFG.kwp} kWp`],
+  ['Ahorro de energía',euros(r.tAE),'Base, sin impuestos'],['Ahorro con IE',euros(r.tAF),'Sin IVA'],
+  ['Efecto en caja con IVA',euros(r.tCash),'Separado del ahorro sin IVA'],['Días valorados',`${r.energia.coverage.pricedDays} / ${r.energia.coverage.expectedDays}`,'Balance completo y precio disponible']];}
+function kpisBalance(r){return[
+  ['Consumo del edificio',kwh(r.tC),'Importación + autoconsumo'],['Importación de red',kwh(r.tR),'SPC · días completos'],
+  ['Autoconsumo FV',kwh(r.tPV),'Producción − vertido'],['Vertido a red',kwh(r.tExport),'SPC · sin valoración económica'],
+  ['Cobertura FV',Number.isFinite(r.pct)?fd(r.pct*100)+' %':'—',`${r.energia.coverage.completeDays} días con balance`]];}
 function renderP1(){
-  const e=R.tP>=1000?fn(R.tP/1000,2)+' MWh':fd(R.tP)+' kWh';
-  const kpis=[['Energía producida',e,'Producción total'],['Media diaria',fd(R.avg)+' kWh/día',R.dPV+' días'],
-    ['Mejor día',fd(R.best.total)+' kWh',R.best.date],['Rendimiento',fd(R.yld)+' kWh/kWp',CFG.kwp+' kWp'],
-    ['Ahorro energía',fn(R.tAE)+' €','P1-P6'],['Ahorro factura',fn(R.tAF)+' €','IE+IVA incl.']];
-  $('k1').innerHTML=kpis.map(([l,v,s])=>`<div class="kbox"><div class="kl">${l}</div><div class="kv">${v}</div><div class="ks">${s}</div></div>`).join('');
-  // Daily chart + GHI
-  const pd=R.prod.daily,ds=[{label:'Producción (kWh)',data:pd.map(d=>d.total),borderColor:'#2a6b5a',backgroundColor:'rgba(42,107,90,.3)',
-    borderWidth:1.5,fill:true,tension:.3,pointRadius:pd.length>20?0:3,yAxisID:'y'}];
-  const sc={y:{beginAtZero:true,position:'left',title:{display:true,text:'kWh/día',color:'#9baa9f',font:{size:10}}}};
-  if(METEO){const gm={};METEO.forEach(m=>gm[m.date]=m.ghi);
-    const ghiData=pd.map(d=>gm[d.date]!=null?gm[d.date]:null);
-    const hasGhi=ghiData.some(v=>v!==null);
-    if(hasGhi){ds.push({label:'GHI (kWh/m²)',data:ghiData,type:'line',borderColor:'#d4a039',borderWidth:1.5,borderDash:[5,3],
-      fill:false,tension:.4,pointRadius:0,yAxisID:'y1',order:0});
-    sc.y1={beginAtZero:true,position:'right',title:{display:true,text:'GHI (kWh/m²)',color:'#d4a039',font:{size:10}},grid:{drawOnChartArea:false},ticks:{color:'#d4a039'}}}
-    else{log('⚠ Meteo descargado pero sin coincidencias de fecha con producción')}
-  }else{log('⚠ Sin datos meteo (METEO=null)')}
-  CHARTS.c1=new Chart($('c1daily'),{type:pd.length<=5?'bar':'line',data:{labels:pd.map(d=>d.date.slice(5)),datasets:ds},
-    options:{responsive:true,plugins:{legend:{display:ds.length>1}},scales:{...sc,x:{ticks:{maxRotation:45,autoSkip:true,maxTicksLimit:15}}}}});
-  // Meteo box
-  // Conclusion
-  const concl=`La planta produce con estabilidad. En este periodo se han generado ${R.tP>=1000?fn(R.tP/1000,2)+' MWh':fd(R.tP)+' kWh'} `+
-    `con un rendimiento de ${fd(R.yld)} kWh/kWp. El ahorro se calcula cruzando producción horaria y precios por periodo (P1–P6). `+
-    `Referencia de proyecto (memoria visada): ${fn(CFG.prodAnual)} kWh/año.`;
-  $('conclusionText').textContent=concl;
-  if(METEO){const ag=METEO.reduce((s,m)=>s+m.ghi,0)/METEO.length,as=METEO.reduce((s,m)=>s+m.sol,0)/METEO.length;
-    const at=(METEO.reduce((s,m)=>s+m.tMax,0)+METEO.reduce((s,m)=>s+m.tMin,0))/(METEO.length*2);
-    $('meteoBox').innerHTML=`<div class="metbox">🌤️ Datos meteorológicos (Open-Meteo): GHI medio: ${ag.toFixed(2)} kWh/m²/día | Sol: ${as.toFixed(1)} h/día | Temp media: ${at.toFixed(1)}°C</div>`}
+  $('k1').innerHTML=cajasKpi(kpisProduccion(R));
+  const pd=R.prod.daily,ds=[{label:'Producción registrada (kWh)',data:pd.map(d=>d.total),borderColor:'#2a6b5a',backgroundColor:'rgba(42,107,90,.3)',borderWidth:1.5,fill:true,tension:.3,pointRadius:pd.length>20?0:3,yAxisID:'y',spanGaps:false}];
+  const sc={y:{beginAtZero:true,position:'left',title:{display:true,text:'kWh/día'}}};
+  if(METEO){const gm={};METEO.forEach(m=>gm[m.date]=m.ghi);const ghi=pd.map(d=>Number.isFinite(gm[d.date])?gm[d.date]:null);
+    if(ghi.some(Number.isFinite)){ds.push({label:'GHI (kWh/m²)',data:ghi,type:'line',borderColor:'#d4a039',borderDash:[5,3],borderWidth:1.5,fill:false,pointRadius:0,yAxisID:'y1'});
+      sc.y1={beginAtZero:true,position:'right',title:{display:true,text:'GHI (kWh/m²)'},grid:{drawOnChartArea:false}}}}
+  CHARTS.c1=new Chart($('c1daily'),{type:pd.length<=5?'bar':'line',data:{labels:pd.map(d=>d.date.slice(5)),datasets:ds},options:{responsive:true,scales:{...sc,x:{ticks:{maxRotation:45,autoSkip:true,maxTicksLimit:15}}}}});
+  $('conclusionText').textContent=`Producción registrada: ${kwh(R.tP)}. Media de los días con datos de ambos inversores: ${fd(R.avg)} kWh/día. `+notaValoracion(R.energia);
+  $('meteoBox').innerHTML='';
+  if(METEO&&METEO.length){const ghi=sumaValores(METEO.map(m=>m.ghi))/METEO.length;
+    $('meteoBox').innerHTML=`<div class="metbox">Open-Meteo · GHI medio: ${fn(ghi,2)} kWh/m²/día. Referencia de proyecto: ${fn(CFG.prodAnual)} kWh/año.</div>`}
 }
-
 function renderP2(){
-  // Hourly profile
-  const pk=Math.max(...R.avgH);const cols=R.avgH.map(v=>v>pk*.5?'#d4a039':'#e8d49a');
-  // Smoothing (3-point moving average like scipy uniform_filter)
-  const smooth=R.avgH.map((v,i,a)=>{const s=Math.max(0,i-1),e=Math.min(a.length-1,i+1);return(a[s]+a[i]+a[e])/((e-s)+1)});
-  const peakH=R.avgH.indexOf(Math.max(...R.avgH));
-  CHARTS.c2h=new Chart($('c2hourly'),{type:'bar',data:{labels:Array.from({length:24},(_,i)=>i+'h'),
-    datasets:[{data:R.avgH,backgroundColor:cols,borderWidth:0,order:2},
-      {label:'Tendencia',data:smooth,type:'line',borderColor:'#1a237e',borderWidth:1.5,pointRadius:0,tension:.3,fill:false,order:1}]},
-    options:{responsive:true,plugins:{legend:{display:false},
-      annotation:undefined,
-      tooltip:{callbacks:{title:ctx=>{const i=ctx[0].dataIndex;return i===peakH?'← Hora pico: '+fd(R.avgH[peakH])+' kWh':i+'h'}}}},
-      scales:{y:{beginAtZero:true}}}});
-  // Donut
-  CHARTS.c2d=new Chart($('c2donut'),{type:'doughnut',data:{labels:['Inversor A','Inversor B'],
-    datasets:[{data:[R.iA,R.iB],backgroundColor:['#1a3c34','#d4a039'],borderWidth:2,borderColor:'#162420'}]},
-    options:{responsive:true,maintainAspectRatio:true,cutout:'50%',plugins:{legend:{position:'bottom'}}}});
-  // Scatter
-  const sd=R.prod.daily.filter(d=>d.A>0||d.B>0);
-  CHARTS.c2s=new Chart($('c2scatter'),{type:'scatter',data:{datasets:[{data:sd.map(d=>({x:d.A,y:d.B})),
-    backgroundColor:'rgba(212,160,57,.5)',borderColor:'#d4a039',pointRadius:4}]},
-    options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{title:{display:true,text:'Inv A (kWh)',font:{size:10}},beginAtZero:true},
-      y:{title:{display:true,text:'Inv B (kWh)',font:{size:10}},beginAtZero:true}}}});
-  // P1-P6 table
-  let h='<tr><th>Periodo</th><th>FV (kWh)</th><th>€/kWh</th><th>Ahorro (€)</th></tr>';
-  let tK=0,tA=0;for(const p of['P1','P2','P3','P4','P5','P6']){const a=R.ap[p];tK+=a.kwh;tA+=a.ah;
-    h+=`<tr><td>${p}</td><td>${fn(a.kwh)}</td><td>${a.pr.toFixed(3)}</td><td>${fn(a.ah)}</td></tr>`}
-  h+=`<tr class="tot"><td>TOTAL</td><td>${fn(tK)}</td><td></td><td>${fn(tA)} €</td></tr>`;
-  $('tblAhorro').innerHTML=h;
-  // Ficha
-  $('fichaUl').innerHTML=[`Potencia pico: ${CFG.kwp} kWp`,`Generadores: ${CFG.modulos}`,`Inversores: ${CFG.inversores}`,
-    `Cubierta: ${CFG.cubierta}`,CFG.mod,`Producción anual estimada: ${fn(CFG.prodAnual)} kWh/año`].map(l=>`<li>${l}</li>`).join('');
+  const hs=Array.from({length:24},(_,i)=>i+'h');
+  CHARTS.c2h=new Chart($('c2hourly'),{type:'bar',data:{labels:hs,datasets:[{label:'FV · perfil de muestras',data:R.avgH,backgroundColor:'#d4a039'}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}});
+  CHARTS.c2d=new Chart($('c2donut'),{type:'doughnut',data:{labels:['Inversor A','Inversor B'],datasets:[{data:[R.iA,R.iB],backgroundColor:['#2a6b5a','#d4a039'],borderWidth:2,borderColor:'#162420'}]},options:{responsive:true,cutout:'50%',plugins:{legend:{position:'bottom'}}}});
+  const pares=R.prod.daily.filter(d=>d.hasA&&d.hasB);
+  CHARTS.c2s=new Chart($('c2scatter'),{type:'scatter',data:{datasets:[{data:pares.map(d=>({x:d.A,y:d.B})),backgroundColor:'rgba(212,160,57,.5)',borderColor:'#d4a039',pointRadius:4}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{title:{display:true,text:'Inv A (kWh)'},beginAtZero:true},y:{title:{display:true,text:'Inv B (kWh)'},beginAtZero:true}}}});
+  const meses=R.energia.monthly;
+  let h='<tr><th>Mes</th><th>Días valorados</th><th>Autoconsumo valorado (kWh)</th><th>Media €/kWh</th><th>Base (€)</th><th>Con IE, sin IVA (€)</th><th>Caja con IVA (€)</th></tr>';
+  meses.forEach(m=>{h+=`<tr><td>${esc(m.month)}${m.partial?' *':''}</td><td>${m.pricedDays}/${m.expectedDays}</td><td>${fn(m.pricedSelfKWh,1)}</td><td>${fn(m.price,5)}</td><td>${fn(m.energySavingsEUR,2)}</td><td>${fn(m.savingsWithIEEUR,2)}</td><td>${fn(m.cashSavingsWithVATEUR,2)}</td></tr>`});
+  if(!meses.length)h+='<tr><td colspan="7">Sin días disponibles para valorar.</td></tr>';
+  h+=`<tr class="tot"><td>TOTAL CUBIERTO</td><td>${R.energia.coverage.pricedDays}/${R.energia.coverage.expectedDays}</td><td>${fn(R.energia.totals.pricedSelfKWh,1)}</td><td>${fn(R.energia.totals.price,5)}</td><td>${fn(R.tAE,2)}</td><td>${fn(R.tAF,2)}</td><td>${fn(R.tCash,2)}</td></tr>`;
+  $('tblAhorro').innerHTML=h;$('ahorroNota').textContent=notaValoracion(R.energia)+' * Mes con cobertura parcial.';
+  $('fichaUl').innerHTML=[`Potencia pico: ${CFG.kwp} kWp`,`Generadores: ${CFG.modulos}`,`Inversores: ${CFG.inversores}`,`Cubierta: ${CFG.cubierta}`,CFG.mod,`Producción anual de proyecto: ${fn(CFG.prodAnual)} kWh/año`].map(l=>`<li>${esc(l)}</li>`).join('');
 }
-
 function renderP3(){
-  const sk=v=>v>=1000?fn(v/1000,2)+' MWh':fn(v)+' kWh';
-  const kpis=[['Consumo total',sk(R.tC),'Red + FV'],['Comprado a red',sk(R.tR),'Balance contador'],['Aportado por FV',sk(R.tPV),'Producción inversores'],
-    ['% cubierto FV',fd(R.pct*100)+' %','Autoconsumo'],['Pico diario',fn(R.picoD.total)+' kWh',R.picoD.date]];
-  $('k3').innerHTML=kpis.map(([l,v,s])=>`<div class="kbox"><div class="kl">${l}</div><div class="kv">${v}</div><div class="ks">${s}</div></div>`).join('');
-  // Daily cons
+  $('k3').innerHTML=cajasKpi(kpisBalance(R));$('balanceCobertura').textContent=textoCobertura(R.energia);
+  let detalle=null;
+  try {
+    if(typeof GorraizSpcHorario!=='undefined')
+      detalle=GorraizSpcHorario.agruparDias(SPC_FUENTES,R.from,R.to);
+  }catch(e){log('⚠ Reparto horario KSTAR: '+e.message)}
+  R.spcPeriodos=detalle;
+  if(detalle&&detalle.diasCompatibles){
+    let html='<strong>Importación/exportación KSTAR por periodo (kWh provisionales, NO importes)</strong>';
+    html+='<table><tr><th>Periodo</th><th>Importación aproximada</th><th>Exportación aproximada</th></tr>';
+    for(const p of GorraizSpcHorario.PERIODS){
+      const x=detalle.periodos[p];
+      html+='<tr><td>'+p+'</td><td>'+fn(x.importKWh,2)+' kWh</td><td>'+fn(x.exportKWh,2)+' kWh</td></tr>';
+    }
+    html+='</table><div class="hint">'+detalle.diasCompatibles+' días compatibles de '+detalle.diasRevisados+
+      '; '+detalle.rechazados.length+' días excluidos por falta de cobertura. Distribución temporal aproximada, precios indexados no aplicados.</div>';
+    $('spcPeriodosKwh').innerHTML=html;
+  }else{
+    $('spcPeriodosKwh').textContent='Reparto P1–P6 pendiente: faltan intervalos KSTAR completos y validados. El balance energético diario sigue disponible.';
+  }
   const cd=R.cons.daily;
   CHARTS.c3d=new Chart($('c3daily'),{type:'line',data:{labels:cd.map(d=>d.date.slice(5)),datasets:[
-    {label:'Consumo total',data:cd.map(d=>d.total),borderColor:'#2a6b5a',borderWidth:1.2,fill:false,tension:.3,pointRadius:0},
-    {label:'Red',data:cd.map(d=>d.red),borderColor:'#e67e22',borderWidth:1,fill:false,tension:.3,pointRadius:0},
-    {label:'FV',data:cd.map(d=>d.pv),borderColor:'#27ae60',borderWidth:1,fill:false,tension:.3,pointRadius:0}]},
-    options:{responsive:true,scales:{y:{beginAtZero:true},x:{ticks:{maxRotation:45,autoSkip:true,maxTicksLimit:15}}},
-      plugins:{legend:{}}}});
-  // Weekly
-  const dias=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
-  CHARTS.c3w=new Chart($('c3week'),{type:'bar',data:{labels:dias,datasets:[
-    {label:'Red',data:R.weekly.map(w=>w.red),backgroundColor:'#2a6b5a',stack:'a'},
-    {label:'FV',data:R.weekly.map(w=>w.pv),backgroundColor:'#d4a039',stack:'a'}]},
-    options:{responsive:true,scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true}},plugins:{legend:{}}}});
-  // Hourly profile
+    {label:'Consumo',data:cd.map(d=>d.total),borderColor:'#2a6b5a'},
+    {label:'Importación',data:cd.map(d=>d.red),borderColor:'#e67e22'},
+    {label:'Autoconsumo',data:cd.map(d=>d.pv),borderColor:'#d4a039'},
+    {label:'Vertido',data:cd.map(d=>d.export),borderColor:'#5c95cf'}].map(d=>({...d,borderWidth:1.4,fill:false,tension:.2,pointRadius:2,spanGaps:false}))},options:{responsive:true,scales:{y:{beginAtZero:true},x:{ticks:{autoSkip:true,maxTicksLimit:15}}}}});
+  CHARTS.c3w=new Chart($('c3week'),{type:'bar',data:{labels:['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'],datasets:[
+    {label:'Importación',data:R.weekly.map(w=>w.red),backgroundColor:'#2a6b5a',stack:'a'},
+    {label:'Autoconsumo',data:R.weekly.map(w=>w.pv),backgroundColor:'#d4a039',stack:'a'}]},options:{responsive:true,scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true}}}});
   CHARTS.c3h=new Chart($('c3hourly'),{type:'line',data:{labels:Array.from({length:24},(_,i)=>i+'h'),datasets:[
-    {label:'L-V',data:R.hpCons.LV,borderColor:'#2a6b5a',borderWidth:1.2,tension:.3,pointRadius:2},
-    {label:'Sáb',data:R.hpCons.S,borderColor:'#d4a039',borderWidth:1,tension:.3,pointRadius:2},
-    {label:'Dom',data:R.hpCons.D,borderColor:'#3d8b70',borderWidth:1,tension:.3,pointRadius:2}]},
-    options:{responsive:true,scales:{y:{beginAtZero:true}},plugins:{legend:{}}}});
-  // Coverage donut
-  CHARTS.c3dn=new Chart($('c3donut'),{type:'doughnut',data:{labels:['FV','Red'],
-    datasets:[{data:[R.pct,1-R.pct],backgroundColor:['#d4a039','#2a6b5a'],borderWidth:2,borderColor:'#162420'}]},
-    options:{responsive:true,maintainAspectRatio:true,cutout:'50%',plugins:{legend:{position:'bottom'}}}});
+    {label:'L-V · red',data:R.hpCons.LV,borderColor:'#2a6b5a'}, {label:'Sáb · red',data:R.hpCons.S,borderColor:'#d4a039'}, {label:'Dom · red',data:R.hpCons.D,borderColor:'#5c95cf'}].map(d=>({...d,borderWidth:1.4,tension:.2,pointRadius:2,spanGaps:false}))},options:{responsive:true,scales:{y:{beginAtZero:true}}}});
+  CHARTS.c3dn=new Chart($('c3donut'),{type:'doughnut',data:{labels:['Autoconsumo','Importación'],datasets:[{data:[R.tPV,R.tR],backgroundColor:['#d4a039','#2a6b5a'],borderWidth:2,borderColor:'#162420'}]},options:{responsive:true,cutout:'50%',plugins:{legend:{position:'bottom'}}}});
 }
-
 function renderP4(){
-  const ev=R.evol;
-  log('P4: hayProd='+ev.hayProd+' hayCons='+ev.hayCons+' hayAhorro='+ev.hayAhorro+(ev.consM?' consM.len='+ev.consM.length:''));
-  // Prod mensual
-  if(ev.hayProd){const pm=ev.prodM;
-    CHARTS.c4p=new Chart($('c4prod'),{type:'bar',data:{labels:pm.map(m=>m.mes.slice(2)),datasets:[
-      {label:'Real',data:pm.map(m=>m.fc?0:m.kwh),backgroundColor:'#2a6b5a',stack:'a'},
-      {label:'Proyección',data:pm.map(m=>m.fc?m.kwh:0),backgroundColor:'rgba(42,107,90,.35)',stack:'a'},
-      {label:'Esperada (memoria)',data:pm.map(m=>m.esp),type:'line',borderColor:'#d4a039',borderWidth:2,pointRadius:3,fill:false,tension:0}]},
-    options:{responsive:true,scales:{y:{beginAtZero:true}},
-      plugins:{legend:{},
-        tooltip:{callbacks:{afterLabel:ctx=>{const m=pm[ctx.dataIndex];return m&&!m.fc?'PR: '+fn(m.pr,0)+'%':'Proyección'}}}}}}); // close Chart
-    // Projection info (pm in scope)
-    const totalAnual=pm.reduce((s,m)=>s+m.kwh,0);
-  const prMedio=ev.prM?fn(ev.prM*100,0)+'%':'—';
-  const c4info=document.createElement('div');c4info.style.cssText='font-size:10px;color:var(--accent);text-align:right;padding:4px 8px';
-  c4info.innerHTML='Proy. anual: <b>'+fn(totalAnual/1000,1)+' MWh</b> | PR medio: <b>'+prMedio+'</b>';
-  $('c4prod').parentElement.appendChild(c4info);
-  } // close if(ev.hayProd)
-  // Cons mensual
-  if(ev.hayCons){const cm=ev.consM;
-    const ds=[{label:'Valle',data:cm.map(m=>m.fc?0:m.V),backgroundColor:'#27ae60',stack:'a'},
-      {label:'Llano',data:cm.map(m=>m.fc?0:m.L),backgroundColor:'#d4a039',stack:'a'},
-      {label:'Punta',data:cm.map(m=>m.fc?0:m.P),backgroundColor:'#c0392b',stack:'a'},
-      {label:'Valle (proy)',data:cm.map(m=>m.fc?m.V:0),backgroundColor:'rgba(39,174,96,.35)',stack:'a'},
-      {label:'Llano (proy)',data:cm.map(m=>m.fc?m.L:0),backgroundColor:'rgba(212,160,57,.35)',stack:'a'},
-      {label:'Punta (proy)',data:cm.map(m=>m.fc?m.P:0),backgroundColor:'rgba(192,57,43,.35)',stack:'a'}];
-    if(ev.trend){ds.push({label:'Modelo HDD',data:cm.map(m=>m.modelo||null),type:'line',borderColor:'#e8e6e0',borderWidth:1.5,borderDash:[4,3],pointRadius:0,fill:false})}
-    CHARTS.c4c=new Chart($('c4cons'),{type:'bar',data:{labels:cm.map(m=>m.mes.slice(2)),datasets:ds},
-      options:{responsive:true,scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true}},plugins:{legend:{}}}})}
-  // Ahorro acum + projected line
-  if(ev.hayAhorro){const am=ev.ahorroM;
-    // Split acumulado into real and projected segments
-    const acumReal=am.map(m=>m.fc?null:m.acum);
-    const acumProj=am.map(m=>m.acum); // full line for projected
-    const lastReal=am.filter(m=>!m.fc);const lastAcum=lastReal.length?lastReal[lastReal.length-1].acum:0;
-    CHARTS.c4a=new Chart($('c4ahorro'),{type:'line',data:{labels:am.map(m=>m.mes.slice(2)),datasets:[
-      {label:'Ahorro mensual',data:am.map(m=>m.ahT),type:'bar',backgroundColor:am.map(m=>m.fc?'rgba(42,107,90,.3)':'#2a6b5a')},
-      {label:'Acumulado (real)',data:acumReal,borderColor:'#27ae60',borderWidth:2.5,fill:false,tension:.3,pointRadius:3,spanGaps:false},
-      {label:'Ahorro proyectado',data:acumProj,borderColor:'#27ae60',borderWidth:1.5,borderDash:[6,3],fill:false,tension:.3,pointRadius:0}]},
-    options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'€ (IE+IVA)'}}},
-      plugins:{legend:{}}}})}
-
-  // Coste mensual con FV vs sin FV
-  if(ev.hayAhorro&&ev.hayCons){
-    const cm=ev.consM.filter(m=>!m.fc);
-    const am=ev.ahorroM.filter(m=>!m.fc);
-    // Calculate coste sin FV and con FV per month
-    const labels=[],sinFV=[],conFV=[],deltas=[];
-    cm.forEach(m=>{
-      const ah=am.find(a=>a.mes===m.mes);
-      if(!ah)return;
-      const prM=Object.values(CFG.precios).reduce((s,p)=>s+p,0)/6;
-      const costeSin=m.total*prM*(1+CFG.IE)*(1+CFG.IVA);
-      const costeCon=(m.total-m.pv)*prM*(1+CFG.IE)*(1+CFG.IVA);
-      labels.push(m.mes.slice(2));
-      sinFV.push(costeSin);conFV.push(costeCon);
-      deltas.push(Math.round(costeCon-costeSin));
-    });
-    const totalAh=sinFV.reduce((s,v,i)=>s+(v-conFV[i]),0);
-    const totalSin=sinFV.reduce((s,v)=>s+v,0);
-    CHARTS.c4cost=new Chart($('c4coste'),{type:'bar',data:{labels,datasets:[
-      {label:'Sin FV',data:sinFV,backgroundColor:'rgba(231,76,60,.6)',borderColor:'#e74c3c',borderWidth:1},
-      {label:'Con FV (real)',data:conFV,backgroundColor:'rgba(39,174,96,.6)',borderColor:'#27ae60',borderWidth:1}]},
-    options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'€'}}},
-      plugins:{legend:{},
-        tooltip:{callbacks:{afterBody:ctx=>{const i=ctx[0].dataIndex;return'Ahorro: '+deltas[i]+'€'}}}}}});
-  }
+  const ev=R.evol,pm=ev.prodM,cm=ev.consM,am=ev.ahorroM;
+  $('evolCobertura').textContent=`Histórico: ${R.historico.from||'—'} → ${R.historico.to||'—'}. `+notaValoracion(ev.energia);
+  CHARTS.c4p=new Chart($('c4prod'),{type:'bar',data:{labels:pm.map(m=>m.mes),datasets:[{label:'Producción registrada',data:pm.map(m=>m.kwh),backgroundColor:'#2a6b5a'}]},options:{responsive:true,scales:{y:{beginAtZero:true}},plugins:{tooltip:{callbacks:{afterLabel:c=>`${pm[c.dataIndex].dias} días con ambos inversores`}}}}});
+  CHARTS.c4c=new Chart($('c4cons'),{type:'bar',data:{labels:cm.map(m=>m.month),datasets:[
+    {label:'Importación',data:cm.map(m=>m.importKWh),backgroundColor:'#2a6b5a',stack:'cons'},
+    {label:'Autoconsumo',data:cm.map(m=>m.selfConsumptionKWh),backgroundColor:'#d4a039',stack:'cons'},
+    {label:'Vertido',data:cm.map(m=>m.exportKWh),backgroundColor:'#5c95cf',stack:'export'}]},options:{responsive:true,scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true}},plugins:{tooltip:{callbacks:{afterLabel:c=>`${cm[c.dataIndex].completeDays}/${cm[c.dataIndex].expectedDays} días con balance`}}}}});
+  CHARTS.c4a=new Chart($('c4ahorro'),{type:'bar',data:{labels:am.map(m=>m.month),datasets:[
+    {label:'Ahorro mensual · días valorados',data:am.map(m=>m.savingsWithIEEUR),backgroundColor:'#2a6b5a'},
+    {label:'Acumulado · días valorados',data:am.map(m=>m.acum),type:'line',borderColor:'#d4a039',borderWidth:2,fill:false,spanGaps:false,pointRadius:2}]},options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'€ · con IE, sin IVA'}}},plugins:{tooltip:{callbacks:{afterLabel:c=>`${am[c.dataIndex].pricedDays}/${am[c.dataIndex].expectedDays} días valorados`}}}}});
+  CHARTS.c4cost=new Chart($('c4coste'),{type:'bar',data:{labels:cm.map(m=>m.month),datasets:[
+    {label:'Con autoconsumo · estimación',data:cm.map(m=>m.gridWithIEEUR),backgroundColor:'#2a6b5a'},
+    {label:'Sin autoconsumo · estimación',data:cm.map(m=>Number.isFinite(m.gridWithIEEUR)&&Number.isFinite(m.savingsWithIEEUR)?m.gridWithIEEUR+m.savingsWithIEEUR:null),backgroundColor:'#e67e22'}]},options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'€ · mismos días valorados'}}}}});
 }
-
 function renderP5(){
   const an=R.analysis;
-  log('P5: heat='+an.hayHeat+(an.heatDates?' dates='+an.heatDates.length:'')+' pb='+an.hayPB+' perfil='+an.hayPerfil+' curt='+an.hayCurt);
-  // Heatmap (custom canvas)
-  if(an.hayHeat){const cv=$('c5heat'),ctx=cv.getContext('2d');
-    const dates=an.heatDates,nD=dates.length,nH=24;
-    const pW=cv.parentElement.clientWidth;const W=cv.width=Math.max(pW-28,400),H=cv.height=250;
-    const ml=40,mt=10,mr=50,mb=30;const cw=(W-ml-mr)/nD,ch=(H-mt-mb)/18; // hours 4-22
-    // Find max
-    let mx=0;dates.forEach(d=>{for(let h=4;h<22;h++)mx=Math.max(mx,(an.heatData[d]||{})[h]||0)});
-    // Color scale
-    const cScale=v=>{if(mx<=0)return'#1a1a2e';const t=Math.min(v/mx,1);
-      // Solar: dark→blue→red→orange→yellow
-      let r,g,b;
-      if(t<0.01){r=20;g=20;b=40;}
-      else if(t<0.25){const s=t/0.25;r=20+s*60;g=20+s*10;b=40+s*60;}
-      else if(t<0.5){const s=(t-0.25)/0.25;r=80+s*153;g=30;b=100-s*100;}
-      else if(t<0.75){const s=(t-0.5)/0.25;r=233;g=30+s*140;b=s*30;}
-      else{const s=(t-0.75)/0.25;r=233+s*22;g=170+s*85;b=30+s*80;}
-      return`rgb(${Math.round(Math.min(255,r))},${Math.round(Math.min(255,g))},${Math.round(Math.min(255,b))})`};
-    ctx.fillStyle='#162420';ctx.fillRect(0,0,W,H);
-    dates.forEach((d,i)=>{for(let h=4;h<22;h++){const v=(an.heatData[d]||{})[h]||0;
-      ctx.fillStyle=cScale(v);ctx.fillRect(ml+i*cw,mt+(h-4)*ch,cw+.5,ch+.5)}});
-    // Y axis
-    ctx.fillStyle='#9baa9f';ctx.font='9px DM Sans';
-    for(let h=4;h<=22;h+=2)ctx.fillText(h+'h',5,mt+(h-4)*ch+ch/2+3);
-    // X axis
-    dates.forEach((d,i)=>{if(i%Math.ceil(nD/8)===0){ctx.save();ctx.translate(ml+i*cw+cw/2,H-5);
-      ctx.fillText(d.slice(5),0,0);ctx.restore()}});
-    // Legend
-    for(let i=0;i<20;i++){ctx.fillStyle=cScale(mx*i/20);ctx.fillRect(W-40,mt+i*9,20,10)}
-    ctx.fillStyle='#9baa9f';ctx.fillText('0',W-16,mt+8);ctx.fillText(fd(mx),W-16,mt+180);
-  }
-  // Payback
-  if(an.hayPB){const pb=an.pb;const fc=pb.pct>50?'#27ae60':pb.pct>25?'#d4a039':'#c0392b';
-    const fillH=Math.min(100,pb.pct);
-    let h=`<div style="display:flex;gap:16px;padding:10px;align-items:stretch">
-      <div style="width:50px;position:relative;background:#f0f0f0;border:1.5px solid #ccc;border-radius:4px;min-height:180px">
-        <div style="position:absolute;bottom:0;left:0;right:0;height:${fillH}%;background:${fc};opacity:.85;border-radius:0 0 3px 3px"></div>
-        ${[25,50,75,100].map(p=>`<div style="position:absolute;bottom:${p}%;right:-22px;font-size:7px;color:#666">${p}%</div>
-          <div style="position:absolute;bottom:${p}%;left:100%;width:6px;height:1px;background:#999"></div>`).join('')}
-      </div>
-      <div style="flex:1">
-        <div style="font-size:32px;font-weight:800;color:${fc};font-family:'JetBrains Mono'">${fd(pb.pct)}%</div>
-        <div style="font-size:11px;color:var(--dim);margin-bottom:10px">recuperado</div>
-        <div style="font-size:10px;color:var(--dim);line-height:1.8">
-          <div>Inversión: <b>${fn(pb.inv)} €</b></div>
-          <div>Ahorro en ${pb.dias} días: <b>${fn(pb.ahAcum)} €</b></div>`;
-    if(pb.canP)h+=`<div>Ahorro anual proy.: <b>${fn(pb.aAnual)} €/año</b></div>
-          <div>Payback estimado: <b>${fd(pb.anos)} años</b></div>
-          <div>Amortización: <b>~${pb.anoAmort}</b></div>`;
-    else h+='<div>Insuficientes datos para proyectar</div>';
-    h+='</div></div></div>';$('paybackBox').innerHTML=h;
-  }
-  // Perfil tipo
-  if(an.hayPerfil){const pf=an.perfil;const hrs=Array.from({length:24},(_,i)=>i+'h');
-    CHARTS.c5p=new Chart($('c5perfil'),{type:'line',data:{labels:hrs,datasets:[
-      {label:'Consumo edificio',data:pf.map(p=>p.cons),borderColor:'#2a6b5a',backgroundColor:'rgba(42,107,90,.1)',borderWidth:2,fill:true,tension:.3,pointRadius:0},
-      {label:'Producción FV',data:pf.map(p=>p.pv),borderColor:'#d4a039',backgroundColor:'rgba(212,160,57,.1)',borderWidth:2,fill:true,tension:.3,pointRadius:0},
-      {label:'Autoconsumo',data:pf.map(p=>p.auto),backgroundColor:'rgba(39,174,96,.35)',borderColor:'#27ae60',borderWidth:1,fill:true,tension:.3,pointRadius:0},
-      {label:'Energía perdida (vertido 0)',data:pf.map(p=>p.curt>0.01?p.pv:null),backgroundColor:'rgba(231,76,60,.3)',borderColor:'#e74c3c',borderWidth:1,fill:'-1',tension:.3,pointRadius:0}]},
-    options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'kWh/h (media)',font:{size:10}}}},
-      plugins:{legend:{}}}})}
-  // Curtailment
-  if(an.hayCurt){const cm=an.curtM;
-    const tCurt=cm.reduce((s,m)=>s+m.curt,0),tUsed=cm.reduce((s,m)=>s+m.used,0);
-    CHARTS.c5c=new Chart($('c5curt'),{type:'bar',data:{labels:cm.map(m=>m.mes.slice(2)),datasets:[
-      {label:'Autoconsumo',data:cm.map(m=>m.used/1000),backgroundColor:'#27ae60'},
-      {label:'Energía perdida',data:cm.map(m=>m.curt/1000),backgroundColor:'rgba(192,57,43,.7)'}]},
-    options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'MWh',font:{size:10}}}},
-      plugins:{legend:{},
-        tooltip:{callbacks:{afterLabel:ctx=>{if(ctx.datasetIndex===1){const m=cm[ctx.dataIndex];return m.pct>0?fn(m.pct,1)+'% perdido':''}return''}}}}}});
-    // Summary
-    const tLost=cm.reduce((s,m)=>s+m.curt,0),tPvAll=cm.reduce((s,m)=>s+m.pvT,0);
-    if(tLost>0&&tPvAll>0){const prM=Object.values(CFG.precios).reduce((s,p)=>s+p,0)/6;
-      const eurLost=tLost*prM*(1+CFG.IE)*(1+CFG.IVA);
-      const inf=document.createElement('div');inf.style.cssText='font-size:10px;color:var(--red);text-align:right;padding:4px 8px';
-      inf.innerHTML='Total perdido: <b>'+fn(tLost/1000,1)+' MWh ('+fn(tLost/tPvAll*100,1)+'%)</b> ≈ '+fn(eurLost)+' €/año no aprovechados';
-      $('c5curt').parentElement.appendChild(inf)}}
+  const cv=$('c5heat'),ctx=cv.getContext('2d'),W=cv.width=Math.max(cv.parentElement.clientWidth-28,400),H=cv.height=250;
+  ctx.fillStyle='#162420';ctx.fillRect(0,0,W,H);
+  if(an.hayHeat){
+    const dates=an.heatDates,ml=38,mt=12,cw=(W-92)/dates.length,ch=(H-45)/18;
+    const valores=dates.flatMap(d=>Object.values(an.heatData[d]).filter(Number.isFinite)),mx=Math.max(0,...valores);
+    dates.forEach((d,i)=>{for(let h=4;h<22;h++){const v=an.heatData[d][h];ctx.fillStyle=Number.isFinite(v)?`hsl(${42+90*(1-(mx?v/mx:0))} 55% ${18+45*(mx?v/mx:0)}%)`:'#37413d';ctx.fillRect(ml+i*cw,mt+(h-4)*ch,cw+.3,ch+.3)}});
+    ctx.fillStyle='#9baa9f';ctx.font='9px DM Sans';for(let h=4;h<22;h+=2)ctx.fillText(h+'h',5,mt+(h-4)*ch+8);
+    dates.forEach((d,i)=>{if(i%Math.ceil(dates.length/8)===0)ctx.fillText(d.slice(5),ml+i*cw,H-10)});
+    ctx.fillText('Gris: sin muestra',W-110,10);
+  }else{ctx.fillStyle='#9baa9f';ctx.font='12px DM Sans';ctx.fillText('Sin datos de producción horaria',20,35)}
+  const pb=an.pb;
+  $('paybackBox').innerHTML=`<div style="padding:10px;font-size:11px;line-height:1.8"><b>Ahorro valorado con IE, sin IVA</b><div style="font-size:24px;color:var(--accent)">${euros(pb.ahAcum)}</div><div>${pb.dias} días valorados del histórico.</div><div>Inversión de referencia: ${euros(pb.inv)}</div><div>Relación ahorro / inversión: ${Number.isFinite(pb.pct)?fd(pb.pct)+' %':'—'}</div><div class="hint">${esc(textoCobertura(an.energia))} Sin proyección de plazo de retorno ni ingresos por excedentes.</div></div>`;
+  CHARTS.c5p=new Chart($('c5perfil'),{type:'line',data:{labels:Array.from({length:24},(_,i)=>i+'h'),datasets:[
+    {label:'Importación horaria KSTAR pendiente de verificar',data:an.perfil.map(p=>p.red),borderColor:'#2a6b5a'},
+    {label:'Producción FV · inversores',data:an.perfil.map(p=>p.pv),borderColor:'#d4a039'}].map(d=>({...d,borderWidth:1.5,fill:false,pointRadius:0,tension:.2,spanGaps:false}))},options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'Perfil horario medio'}}}}});
+  const cm=an.exchangeM;
+  CHARTS.c5c=new Chart($('c5curt'),{type:'bar',data:{labels:cm.map(m=>m.month),datasets:[
+    {label:'Autoconsumo',data:cm.map(m=>escala(m.selfConsumptionKWh,.001)),backgroundColor:'#d4a039'},
+    {label:'Vertido medido',data:cm.map(m=>escala(m.exportKWh,.001)),backgroundColor:'#5c95cf'}]},options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'MWh · días con balance completo'}}}}});
 }
 
 // ═══ TAB SWITCHING ═══
@@ -1271,205 +1379,136 @@ document.querySelectorAll('.ptab').forEach(b=>{b.onclick=()=>{
   b.classList.add('on');$(b.dataset.p).classList.add('on');
 }});
 
-// ═══ PDF ═══
-async function genPDF(){
-  setStep(4);log('Generando PDF de 5 páginas...');
-  const{jsPDF}=window.jspdf;const doc=new jsPDF('l','mm','a4');
-  const W=297,H=210,M=15;
-  // Ojo: la fuente estándar de jsPDF no incluye la flecha "→" y la imprimía
-  // como basura ("!'"). El guion largo sí está en su codificación.
-  const per=R.prod.daily[0]?.date+' – '+R.prod.daily[R.prod.daily.length-1]?.date;
-
-  function hdr(t,s){doc.setFillColor(26,60,52);doc.roundedRect(M,10,W-2*M,18,3,3,'F');
+// ═══ PDF: MISMO MODELO Y COBERTURA QUE LAS VISTAS ═══
+function pdfTexto(doc,text,x,y,w,size=7){
+  doc.setFontSize(size);doc.setFont(undefined,'normal');doc.setTextColor(65);
+  const limpio=String(text).replace(/→/g,'a');
+  const lines=doc.splitTextToSize(limpio,w);doc.text(lines,x,y);return y+lines.length*size*.38;
+}
+function creaPdf(){
+  const {jsPDF}=window.jspdf,doc=new jsPDF('l','mm','a4'),W=297,H=210,M=15;
+  let primera=true;
+  function pagina(t,s){if(!primera)doc.addPage('l');primera=false;
+    doc.setFillColor(26,60,52);doc.roundedRect(M,10,W-2*M,18,3,3,'F');
     try{doc.addImage(LOGO_B64,'JPEG',M+2,11.5,15,15)}catch(e){}
     doc.setTextColor(255);doc.setFontSize(12);doc.setFont(undefined,'bold');doc.text(t,M+20,20);
-    doc.setFontSize(8);doc.setFont(undefined,'normal');doc.text(s,M+20,25);doc.setTextColor(0)}
-  function ftr(p){doc.setFontSize(6);doc.setTextColor(150);
-    doc.text('Amixalan Business Group — Fuentes: inversores + contador horario + factura Goiener. Modalidad: SIN excedentes.',M,H-8);
-    doc.text('Pág '+p,W-M-8,H-8);doc.setTextColor(0)}
-  // El PDF coloca cada gráfica en un hueco de tamaño fijo. Volcar ahí el lienzo
-  // tal cual lo deforma: el donut es cuadrado y salía ovalado, y las de arriba
-  // pasaban de una proporción de 3,2 a 6,2, con los textos aplastados. Aquí se
-  // redibuja cada una con la proporción de su hueco antes de capturarla.
-  async function addChart(id,x,y,w,h){
-    try{
-      const cv=$(id);
-      if(!cv||cv.tagName!=='CANVAS'||cv.width<=10){log('⚠ PDF '+id+': sin lienzo');return}
-      const ch=(window.Chart&&Chart.getChart)?Chart.getChart(cv):null;
-      const tipo=ch&&ch.config&&ch.config.type;
-      if(tipo==='doughnut'||tipo==='pie'){
-        // Deben seguir siendo redondos: se centra un cuadrado en el hueco.
-        const lado=Math.min(w,h);x+=(w-lado)/2;y+=(h-lado)/2;w=h=lado;
-      }
-      const caja=cv.parentElement&&cv.parentElement.classList.contains('cw')?cv.parentElement:null;
-      let previo=null;
-      if(ch&&caja){
-        previo={ar:caja.style.aspectRatio,mx:caja.style.maxHeight,mn:caja.style.minHeight};
-        caja.style.aspectRatio=(w/h).toFixed(3);
-        caja.style.maxHeight='none';caja.style.minHeight='0';
-        ch.resize();
-        await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-      }
-      doc.addImage(cv.toDataURL('image/png'),'PNG',x,y,w,h);
-      if(previo){
-        caja.style.aspectRatio=previo.ar;caja.style.maxHeight=previo.mx;caja.style.minHeight=previo.mn;
-        ch.resize();
-      }
-    }catch(e){log('⚠ PDF '+id+': '+e.message)}
+    doc.setFontSize(7);doc.setFont(undefined,'normal');doc.text(s,M+20,25);doc.setTextColor(0);
   }
-
-  // Show all tabs on-screen for PDF capture
-  document.querySelectorAll('.pcon').forEach(c=>c.classList.add('on'));
-  document.body.offsetHeight;
-  await new Promise(r=>setTimeout(r,300));
-
-  // PAGE 1 — Producción FV
-  hdr('Producción fotovoltaica — Edificio Gorraiz','Periodo: '+per+' · '+CFG.mod);
-  let y=32;
-  // KPIs row (6 boxes)
-  const e=R.tP>=1000?fn(R.tP/1000,2)+' MWh':fd(R.tP)+' kWh';
-  const k1=[['Energía producida',e],['Media diaria',fd(R.avg)+' kWh/día'],['Mejor día',fd(R.best.total)+' kWh'],
-    ['Rendimiento específico',fd(R.yld)+' kWh/kWp'],['Ahorro (término energía)',fn(R.tAE)+' €'],['Ahorro (total factura)',fn(R.tAF)+' €']];
-  const kw=(W-2*M)/6;
-  k1.forEach(([l,v],i)=>{const x=M+i*kw;
-    doc.setDrawColor(180);doc.setFillColor(255);doc.roundedRect(x,y,kw-2,16,1,1,'FD');
-    doc.setFontSize(5.5);doc.setFont(undefined,'normal');doc.setTextColor(100);doc.text(l,x+kw/2-1,y+4,{align:'center'});
-    doc.setFontSize(11);doc.setFont(undefined,'bold');doc.setTextColor(0);doc.text(v,x+kw/2-1,y+11,{align:'center'});
+  function cerrar(){const n=doc.getNumberOfPages();for(let i=1;i<=n;i++){doc.setPage(i);doc.setFontSize(6);doc.setTextColor(130);
+    doc.text('Gorraiz · Solarman y KSTAR SPC · Importes estimados con precios medios de factura',M,H-8);
+    doc.text(`${i} / ${n}`,W-M,H-8,{align:'right'})}}
+  return{doc,W,H,M,pagina,cerrar};
+}
+async function pdfChart(doc,id,x,y,w,h){
+  const cv=$(id);if(!cv||cv.tagName!=='CANVAS'||cv.width<=10)return;
+  const ch=Chart.getChart?Chart.getChart(cv):null,caja=cv.parentElement&&cv.parentElement.classList.contains('cw')?cv.parentElement:null;
+  let previo=null;
+  try{
+    const tipo=ch&&ch.config.type;
+    if(tipo==='doughnut'||tipo==='pie'){const lado=Math.min(w,h);x+=(w-lado)/2;y+=(h-lado)/2;w=h=lado}
+    if(ch&&caja){previo={ar:caja.style.aspectRatio,mx:caja.style.maxHeight,mn:caja.style.minHeight};
+      caja.style.aspectRatio=(w/h).toFixed(3);caja.style.maxHeight='none';caja.style.minHeight='0';ch.resize();ch.stop();ch.update('none');
+      await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+    }else if(!ch){const factor=Math.min(w/cv.width,h/cv.height),nw=cv.width*factor,nh=cv.height*factor;x+=(w-nw)/2;y+=(h-nh)/2;w=nw;h=nh}
+    if(ch){ch.stop();ch.update('none')}
+    doc.addImage(cv.toDataURL('image/png'),'PNG',x,y,w,h);
+  }finally{if(previo){caja.style.aspectRatio=previo.ar;caja.style.maxHeight=previo.mx;caja.style.minHeight=previo.mn;ch.resize()}}
+}
+function pdfKpis(doc,rows,x,y,w){
+  const ancho=w/rows.length;
+  rows.forEach(([l,v,s],i)=>{const xx=x+i*ancho;doc.setDrawColor(185);doc.setFillColor(255);doc.roundedRect(xx,y,ancho-2,19,1,1,'FD');
+    doc.setTextColor(90);doc.setFontSize(5.8);doc.setFont(undefined,'normal');doc.text(l,xx+ancho/2-1,y+4,{align:'center'});
+    doc.setTextColor(0);doc.setFontSize(10);doc.setFont(undefined,'bold');doc.text(v,xx+ancho/2-1,y+11,{align:'center'});
+    doc.setFont(undefined,'normal');doc.setFontSize(4.8);doc.setTextColor(110);doc.text(s,xx+ancho/2-1,y+16,{align:'center'});
   });
-  doc.setTextColor(0);y+=20;
-  // Main chart: producción diaria + GHI (full width, tall)
-  await addChart('c1daily',M,y,W-2*M,122);y+=125;
-  // Meteo summary
-  if(METEO&&METEO.length){const ag=METEO.reduce((s,m)=>s+m.ghi,0)/METEO.length;
-    const as2=METEO.reduce((s,m)=>s+m.sol,0)/METEO.length;
-    const atM=METEO.reduce((s,m)=>s+m.tMax,0)/METEO.length,atm=METEO.reduce((s,m)=>s+m.tMin,0)/METEO.length;
-    doc.setFillColor(238,246,255);doc.roundedRect(M,y,W-2*M,8,1,1,'F');
-    doc.setFontSize(7);doc.setFont(undefined,'normal');doc.setTextColor(26,60,52);
-    doc.text('Datos meteo (Open-Meteo): GHI medio: '+ag.toFixed(2)+' kWh/m²/día | Sol: '+as2.toFixed(1)+' h/día | Temp: '+atm.toFixed(1)+'°C — '+atM.toFixed(1)+'°C',M+4,y+5);
-    y+=10;}
-  // Conclusion
-  doc.setFillColor(248,249,250);doc.roundedRect(M,y,W-2*M,18,1,1,'F');
-  doc.setFontSize(8);doc.setFont(undefined,'bold');doc.setTextColor(0);doc.text('Conclusión',M+4,y+5);
-  doc.setFontSize(7);doc.setFont(undefined,'normal');doc.setTextColor(60);
-  const eS=R.tP>=1000?fn(R.tP/1000,2)+' MWh':fd(R.tP)+' kWh';
-  doc.text('La planta produce con estabilidad. Producción: '+eS+', rendimiento: '+fd(R.yld)+' kWh/kWp. Referencia (memoria): '+fn(CFG.prodAnual)+' kWh/año.',M+4,y+12,{maxWidth:W-2*M-8});
-  ftr(1);
+}
+function pdfTitulo(doc,t,x,y){doc.setTextColor(35);doc.setFontSize(8);doc.setFont(undefined,'bold');doc.text(t,x,y)}
+async function genPDF(){
+  if(!R)return;setStep(4);log('Generando PDF...');
+  const {doc,W,M,pagina,cerrar}=creaPdf(),ancho=W-2*M,mitad=ancho/2-3,per=`${R.from} a ${R.to}`;
+  document.querySelectorAll('#pResults > .pcon').forEach(c=>c.classList.add('on'));document.body.offsetHeight;
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  try{
+    pagina('Producción fotovoltaica — Edificio Gorraiz','Periodo elegido: '+per);
+    pdfKpis(doc,kpisProduccion(R),M,32,ancho);pdfTexto(doc,notaValoracion(R.energia),M,57,ancho,6.5);
+    await pdfChart(doc,'c1daily',M,77,ancho,96);
+    pdfTexto(doc,`Producción registrada: ${kwh(R.tP)}. Media de días con ambos inversores: ${fd(R.avg)} kWh/día. Mejor día registrado: ${R.best.date} (${kwh(R.best.total)}). Referencia de proyecto: ${fn(CFG.prodAnual)} kWh/año.`,M,180,ancho,7);
 
-  // PAGE 2 — Detalle inversores y ahorro
-  doc.addPage('l');hdr('Detalle de instalación, inversores y ahorro','Periodo: '+per+' · Modalidad: '+CFG.mod);y=32;
-  // Perfil horario (full width, top ~28% of page)
-  await addChart('c2hourly',M,y,W-2*M,57);y+=60;
-  // Donut (left, ~35% width to keep it small) + Scatter (right, ~60%)
-  const donutW=90,scatW=W-2*M-donutW-6;
-  await addChart('c2donut',M,y,donutW,58);await addChart('c2scatter',M+donutW+6,y,scatW,58);y+=61;
-  // Table ahorro periodos (right side) + ficha instalación (left side)
-  const tblX=M,tblW=(W-2*M)*0.50;
-  doc.setFontSize(9);doc.setFont(undefined,'bold');doc.setTextColor(0);doc.text('Ahorro por periodos',tblX,y);y+=4;
-  doc.setFontSize(6.5);doc.setFillColor(26,60,52);doc.setTextColor(255);
-  const cw4=tblW/4;const cols=[tblX,tblX+cw4,tblX+cw4*2,tblX+cw4*3];
-  doc.rect(tblX,y,tblW,5,'F');doc.text('Periodo',cols[0]+2,y+3.5);doc.text('FV (kWh)',cols[1],y+3.5);doc.text('€/kWh',cols[2],y+3.5);doc.text('Ahorro (€)',cols[3],y+3.5);
-  doc.setTextColor(0);doc.setFont(undefined,'normal');y+=5.5;
-  let tKwh=0,tAh=0;
-  for(const p of['P1','P2','P3','P4','P5','P6']){const a=R.ap[p];tKwh+=a.kwh;tAh+=a.ah;
-    if(['P1','P3','P5'].includes(p)){doc.setFillColor(248,249,250);doc.rect(tblX,y-0.5,tblW,4.5,'F')}
-    doc.text(p,cols[0]+2,y+3);doc.text(fn(a.kwh),cols[1],y+3);doc.text(a.pr.toFixed(3),cols[2],y+3);doc.text(fn(a.ah),cols[3],y+3);y+=4.5;}
-  doc.setFont(undefined,'bold');doc.setFillColor(26,60,52);doc.rect(tblX,y-0.5,tblW,5,'F');doc.setTextColor(255);
-  doc.text('TOTAL',cols[0]+2,y+3);doc.text(fn(tKwh),cols[1],y+3);doc.text('',cols[2],y+3);doc.text(fn(tAh)+' €',cols[3],y+3);
-  doc.setTextColor(0);
-  // Ficha instalación (right)
-  const fX=M+tblW+10,fW=W-M-fX;
-  doc.setFontSize(8);doc.setFont(undefined,'bold');doc.text('Ficha de la instalación',fX,y-28);
-  doc.setFontSize(6.5);doc.setFont(undefined,'normal');doc.setTextColor(60);
-  const fichaLines=['Potencia pico: '+CFG.kwp+' kWp','Generadores: '+CFG.modulos,'Inversores: '+CFG.inversores,
-    'Cubierta: '+CFG.cubierta,'Modalidad: Autoconsumo SIN excedentes','Prod. anual estimada: '+fn(CFG.prodAnual)+' kWh/año'];
-  fichaLines.forEach((l,i)=>{doc.text('• '+l,fX+2,y-22+i*5)});
-  doc.setTextColor(0);
-  ftr(2);
+    pagina('Instalación e inversores','Periodo elegido: '+per);
+    pdfTitulo(doc,'Perfil horario de producción · muestras de inversores',M,36);await pdfChart(doc,'c2hourly',M,40,ancho,48);
+    pdfTitulo(doc,'Reparto por inversor',M,95);pdfTitulo(doc,'Equilibrio diario entre inversores',M+88,95);
+    await pdfChart(doc,'c2donut',M,99,82,61);await pdfChart(doc,'c2scatter',M+88,99,ancho-88,61);
+    pdfTexto(doc,`${CFG.kwp} kWp · ${CFG.modulos} · ${CFG.inversores} · cubierta ${CFG.cubierta}. ${CFG.mod}. La tabla mensual de valoración se incluye completa en el anexo.`,M,170,ancho,8);
+    pdfTexto(doc,'El perfil horario de producción se obtiene de muestras de los inversores. No representa el autoconsumo horario; el balance con SPC se calcula por día.',M,184,ancho,7);
 
-  // PAGE 3 — Consumo eléctrico
-  doc.addPage('l');hdr('Informe de consumo eléctrico — Edificio Gorraiz','Periodo: '+per+' · Consumo total = Red + FV (sin excedentes)');y=32;
-  // KPIs (5 boxes)
-  const sk=v=>v>=1000?fn(v/1000,2)+' MWh':fn(v)+' kWh';
-  const k3=[['Consumo total',sk(R.tC),'Red + FV'],['Comprado a red',sk(R.tR),'Balance contador'],['Aportado por FV',sk(R.tPV),'Producción inversores'],
-    ['% cubierto por FV',fd(R.pct*100)+' %','Autoconsumo'],['Pico diario',fn(R.picoD.total)+' kWh',R.picoD.date]];
-  const kw3=(W-2*M)/5;
-  k3.forEach(([l,v,s],i)=>{const x=M+i*kw3;
-    doc.setDrawColor(180);doc.setFillColor(255);doc.roundedRect(x,y,kw3-2,16,1,1,'FD');
-    doc.setFontSize(5.5);doc.setFont(undefined,'normal');doc.setTextColor(100);doc.text(l,x+kw3/2-1,y+4,{align:'center'});
-    doc.setFontSize(10);doc.setFont(undefined,'bold');doc.setTextColor(0);doc.text(v,x+kw3/2-1,y+10,{align:'center'});
-    doc.setFontSize(5);doc.setFont(undefined,'normal');doc.setTextColor(150);doc.text(s,x+kw3/2-1,y+14,{align:'center'});
-  });
-  doc.setTextColor(0);y+=20;
-  // Daily consumption chart (full width)
-  await addChart('c3daily',M,y,W-2*M,55);y+=58;
-  // Bottom: weekly (35%) + hourly (35%) + donut (30% - smaller to avoid giant circle)
-  const tw3a=(W-2*M)*0.35-2,tw3b=(W-2*M)*0.35-2,tw3c=(W-2*M)*0.30-2;
-  await addChart('c3week',M,y,tw3a,48);await addChart('c3hourly',M+tw3a+4,y,tw3b,48);await addChart('c3donut',M+tw3a+tw3b+8,y,tw3c,48);
-  // Note
-  doc.setFontSize(5.5);doc.setTextColor(120);
-  doc.text('Nota: el consumo total del edificio se reconstruye sumando la producción FV medida a la energía comprada a red (instalación SIN excedentes).',M,H-14);
-  ftr(3);
+    pagina('Balance energético diario','Periodo elegido: '+per);
+    pdfKpis(doc,kpisBalance(R),M,32,ancho);pdfTexto(doc,textoCobertura(R.energia),M,57,ancho,7);
+    await pdfChart(doc,'c3daily',M,71,ancho,57);
+    const w1=ancho*.35-2,w2=ancho*.35-2,w3=ancho*.30-4;
+    pdfTitulo(doc,'Media por día de semana',M,135);pdfTitulo(doc,'KSTAR horario · pendiente de validar',M+w1+4,135);pdfTitulo(doc,'Cobertura FV',M+w1+w2+8,135);
+    await pdfChart(doc,'c3week',M,139,w1,47);await pdfChart(doc,'c3hourly',M+w1+4,139,w2,47);await pdfChart(doc,'c3donut',M+w1+w2+8,139,w3,47);
+    pdfTexto(doc,'Autoconsumo = FV - vertido. Consumo = importación + autoconsumo. Los acumulados de ambos inversores deben cubrir el cierre del día. No se inventa consumo horario donde faltan intervalos SPC.',M,193,ancho,6);
 
-  // PAGE 4 — Acumulados (2×2 grid like notebook)
-  doc.addPage('l');hdr('Acumulados desde puesta en marcha — Edificio Gorraiz','Barras rayadas = proyección basada en datos reales');y=32;
-  const hw4=(W-2*M)/2-3;const hh4=79;
-  // Top: prod (left) + cons (right)
-  await addChart('c4prod',M,y,hw4,hh4);await addChart('c4cons',M+hw4+6,y,hw4,hh4);y+=hh4+4;
-  // Bottom: ahorro (left) + coste (right)
-  await addChart('c4ahorro',M,y,hw4,hh4);await addChart('c4coste',M+hw4+6,y,hw4,hh4);
-  ftr(4);
+    // Una página separada evita confundir el reparto provisional de los
+    // acumulados con el ahorro económico de la factura indexada.
+    if(R.spcPeriodos&&R.spcPeriodos.diasCompatibles>0){
+      const reparto=R.spcPeriodos;
+      pagina('KSTAR SPC - Reparto energético P1-P6 (provisional)','Periodo elegido: '+per);
+      pdfTexto(doc,'Distribución aproximada de kWh por periodo CNMC obtenida de intervalos acumulados KSTAR. No son precios ni importes de facturación.',M,37,ancho,8);
+      doc.setFillColor(26,60,52);doc.rect(M,48,ancho,9,'F');
+      doc.setTextColor(255);doc.setFontSize(9);doc.setFont(undefined,'bold');
+      doc.text('Periodo',M+5,54);doc.text('Importación (kWh)',M+70,54);doc.text('Exportación (kWh)',M+165,54);
+      let ypos=66;
+      for(const p of ['P1','P2','P3','P4','P5','P6']){
+        const d=reparto.periodos[p];doc.setFontSize(9);doc.setTextColor(30);doc.setFont(undefined,'normal');
+        doc.text(p,M+5,ypos);doc.text(fn(d.importKWh,2),M+70,ypos);
+        doc.text(fn(d.exportKWh,2),M+165,ypos);
+        ypos+=12;
+      }
+      pdfTexto(doc,'Días compatibles: '+reparto.diasCompatibles+' de '+reparto.diasRevisados+'. Días descartados: '+reparto.rechazados.length+
+        '. La asignación de intervalos entre horas es proporcional al tiempo; la zona horaria del portal no está certificada. No se aplican precios indexados ni compensación de excedentes.',M,153,ancho,8);
+    }
 
-  // PAGE 5 — Análisis avanzado
-  doc.addPage('l');hdr('Análisis avanzado y tendencias — Edificio Gorraiz','Mapa solar, perfil tipo, vertido cero, payback');y=32;
-  // Heatmap (left, wider) + Payback (right)
-  // El mapa de calor se dibuja a mano y no se redibuja para el PDF, así que su
-  // hueco debe respetar la proporción del lienzo (3,2) o sale estirado.
-  const heatW=(W-2*M)*0.60,heatH=Math.round(heatW/3.2);
-  try{const hcv=$('c5heat');if(hcv&&hcv.width>10){doc.addImage(hcv.toDataURL('image/png'),'PNG',M,y,heatW,heatH)}}catch(e){}
-  // Payback gauge (right column)
-  if(R.analysis.hayPB){const pb=R.analysis.pb;const px=M+heatW+6;const bw=W-M-px;
-    doc.setFillColor(255);doc.setDrawColor(180);doc.roundedRect(px,y,bw,heatH,2,2,'FD');
-    doc.setFontSize(10);doc.setFont(undefined,'bold');doc.setTextColor(0);doc.text('Retorno de la inversión',px+bw/2,y+7,{align:'center'});
-    // Thermometer
-    const tx=px+8,tw2=12,th=heatH-20,ty_b=y+13;
-    doc.setFillColor(240,240,240);doc.rect(tx,ty_b,tw2,th,'F');doc.setDrawColor(200);doc.rect(tx,ty_b,tw2,th,'S');
-    const fc=pb.pct>50?[39,174,96]:pb.pct>25?[212,160,57]:[192,57,43];
-    const fh2=th*Math.min(pb.pct/100,1);
-    doc.setFillColor(...fc);doc.rect(tx,ty_b+th-fh2,tw2,fh2,'F');
-    [25,50,75,100].forEach(p=>{const yp=ty_b+th*(1-p/100);doc.setDrawColor(180);doc.line(tx+tw2,yp,tx+tw2+3,yp);
-      doc.setFontSize(5);doc.setTextColor(150);doc.text(p+'%',tx+tw2+4,yp+1.5)});
-    const txR=px+28;doc.setTextColor(fc[0],fc[1],fc[2]);doc.setFontSize(24);doc.setFont(undefined,'bold');
-    doc.text(fd(pb.pct)+'%',txR,y+30);
-    doc.setFontSize(8);doc.setFont(undefined,'normal');doc.setTextColor(100);doc.text('recuperado',txR,y+36);
-    doc.setFontSize(7);doc.setTextColor(60);
-    const info=['Inversión: '+fn(pb.inv)+' €','Ahorro en '+pb.dias+' días: '+fn(pb.ahAcum)+' €'];
-    if(pb.canP){info.push('Ahorro anual proy.: '+fn(pb.aAnual)+' €/año','Payback estimado: '+fd(pb.anos)+' años','Amortización: ~'+pb.anoAmort)}
-    info.forEach((l,i)=>doc.text(l,txR,y+43+i*5));
-  }
-  y+=heatH+3;
-  // Perfil tipo (left) + Curtailment (right) — bottom half
-  const hw5=(W-2*M)/2-3;
-  const hh5=Math.min(88,H-16-y);
-  await addChart('c5perfil',M,y,hw5,hh5);await addChart('c5curt',M+hw5+6,y,hw5,hh5);
-  ftr(5);
+    pagina('Histórico acumulado','Todos los datos cargados: '+R.historico.from+' a '+R.historico.to);
+    pdfTexto(doc,notaValoracion(R.historico.energia),M,34,ancho,6);
+    pdfTitulo(doc,'Producción mensual registrada (kWh)',M,50);pdfTitulo(doc,'Balance mensual · días completos (kWh)',M+mitad+6,50);
+    await pdfChart(doc,'c4prod',M,54,mitad,61);await pdfChart(doc,'c4cons',M+mitad+6,54,mitad,61);
+    pdfTitulo(doc,'Ahorro mensual y acumulado · con IE, sin IVA',M,124);pdfTitulo(doc,'Energía de red valorada · con IE, sin IVA',M+mitad+6,124);
+    await pdfChart(doc,'c4ahorro',M,128,mitad,61);await pdfChart(doc,'c4coste',M+mitad+6,128,mitad,61);
 
-  const d1=R.prod.daily[0]?.date.replace(/-/g,'')||'',d2=R.prod.daily[R.prod.daily.length-1]?.date.replace(/-/g,'')||'';
-  doc.save(`Informe_FV_Gorraiz_${d1}_${d2}.pdf`);
-  // Restore tabs
-  document.querySelectorAll('.pcon').forEach(c=>c.classList.remove('on'));
-  $('p1').classList.add('on');
-  document.querySelectorAll('.ptab').forEach(t=>t.classList.remove('on'));
-  document.querySelector('[data-p=p1]').classList.add('on');
-  log('✓ PDF descargado');
+    pagina('Análisis del histórico','Producción, importación, autoconsumo y vertido medido');
+    pdfTexto(doc,textoCobertura(R.historico.energia),M,34,ancho,6.5);
+    pdfTitulo(doc,'Mapa horario de producción FV',M,47);await pdfChart(doc,'c5heat',M,51,155,65);
+    const pb=R.analysis.pb,px=M+164;
+    pdfTitulo(doc,'Ahorro valorado del histórico',px,49);
+    pdfTexto(doc,`Con IE, sin IVA: ${euros(pb.ahAcum)}\nDías valorados: ${pb.dias}\nInversión de referencia: ${euros(pb.inv)}\nRelación ahorro / inversión: ${Number.isFinite(pb.pct)?fd(pb.pct)+' %':'—'}\nSin proyección de plazo de retorno. Excedentes sin valorar.`,px,57,ancho-164,7.5);
+    pdfTitulo(doc,'Producción FV · importación horaria por validar',M,126);pdfTitulo(doc,'Autoconsumo y vertido medido (MWh)',M+mitad+6,126);
+    await pdfChart(doc,'c5perfil',M,130,mitad,59);await pdfChart(doc,'c5curt',M+mitad+6,130,mitad,59);
+
+    const meses=R.energia.monthly,porPagina=19;
+    for(let inicio=0;inicio<meses.length;inicio+=porPagina){
+      pagina('Anexo · Valoración mensual del autoconsumo','Periodo elegido: '+per+' · '+(PRECIOS?PRECIOS.label||'Precios mensuales cargados':'Sin precios cargados'));
+      pdfTexto(doc,notaValoracion(R.energia),M,35,ancho,6.5);
+      const xs=[M,M+27,M+49,M+94,M+126,M+166,M+215],headers=['Mes','Días','Auto. valorado (kWh)','Media €/kWh','Base (€)','Con IE, sin IVA (€)','Caja con IVA (€)'];
+      let y=53;doc.setFillColor(26,60,52);doc.rect(M,y,ancho,7,'F');doc.setTextColor(255);doc.setFontSize(6.5);headers.forEach((h,i)=>doc.text(h,xs[i]+2,y+4.5));y+=8;
+      meses.slice(inicio,inicio+porPagina).forEach((m,i)=>{if(i%2===0){doc.setFillColor(244,248,246);doc.rect(M,y-1,ancho,6,'F')}
+        doc.setTextColor(30);doc.setFontSize(7);const vals=[m.month+(m.partial?' *':''),`${m.pricedDays}/${m.expectedDays}`,fn(m.pricedSelfKWh,1),fn(m.price,5),fn(m.energySavingsEUR,2),fn(m.savingsWithIEEUR,2),fn(m.cashSavingsWithVATEUR,2)];vals.forEach((v,j)=>doc.text(v,xs[j]+2,y+3));y+=6});
+      if(inicio+porPagina>=meses.length){doc.setFont(undefined,'bold');doc.setTextColor(26,60,52);
+        const vals=['TOTAL CUBIERTO',`${R.energia.coverage.pricedDays}/${R.energia.coverage.expectedDays}`,fn(R.energia.totals.pricedSelfKWh,1),fn(R.energia.totals.price,5),fn(R.tAE,2),fn(R.tAF,2),fn(R.tCash,2)];
+        vals.forEach((v,j)=>doc.text(v,xs[j]+2,y+4));}
+      pdfTexto(doc,'* Cobertura parcial. Los importes incluyen solo días con balance completo y precio. — indica dato no disponible. No incluyen potencia contratada, alquileres, otros fijos ni compensación de excedentes.',M,190,ancho,6);
+    }
+    cerrar();doc.save(`Informe_FV_Gorraiz_${R.from.replace(/-/g,'')}_${R.to.replace(/-/g,'')}.pdf`);log('✓ PDF descargado');
+  }catch(e){log('⚠ PDF: '+esc(e.message))}
+  finally{document.querySelectorAll('#pResults > .pcon').forEach(c=>c.classList.remove('on'));$('p1').classList.add('on');setStep(3)}
 }
 
 // ═══ UI ═══
 function setStep(n){for(let i=1;i<=4;i++){const e=$('s'+i);e.classList.remove('on','ok');if(i<n)e.classList.add('ok');if(i===n)e.classList.add('on')}}
-function reset(){RAW={A:[],B:[],I:[]};IBR_FILES=[];PROD_FUENTES={A:[],B:[]};R=null;METEO=null;destroyCharts();
-  $('pResults').style.display='none';$('pUpload').style.display='block';$('log').innerHTML='';
-  ['A','B','I'].forEach(k=>{$('st'+k).textContent='';$('z'+k).classList.remove('loaded')});
-  $('flI').innerHTML='';$('fA').value='';$('fB').value='';$('fI').value='';$('stAuto').innerHTML='';
-  $('btnGo').disabled=true;setStep(1)}
+function reset(){R=null;METEO=null;destroyCharts();
+  for(const k in COMP_CHARTS){try{COMP_CHARTS[k].destroy()}catch(e){}}COMP_CHARTS={};COMP={};
+  $('compResults').style.display='none';$('pResults').style.display='none';$('pUpload').style.display='block';
+  chk();pintaSpc();pintaPrecios();setStep(1)}
 // D&D
 document.querySelectorAll('.uz').forEach(z=>{
   z.ondragover=e=>{e.preventDefault();z.classList.add('drag')};z.ondragleave=()=>z.classList.remove('drag');
@@ -1486,249 +1525,119 @@ document.querySelectorAll('#compTabs .ptab').forEach(b=>{b.onclick=()=>{
 }});
 
 let COMP_CHARTS={},COMP={};
-
-// ═══ COMPARATIVE: calc KPIs for a period ═══
-function calcCompPeriod(iA,iB,ibr){
-  const prod=procProd(iA,iB),cons=procCons(ibr,prod.hourly);
-  const kpis=calcKPIs(prod,cons);
-  // Hourly profiles
-  const perfilPV=Array(24).fill(0),perfilCons=Array(24).fill(0),cntPV=Array(24).fill(0),cntCons=Array(24).fill(0);
-  cons.hourly.forEach(r=>{perfilCons[r.h]+=r.total;cntCons[r.h]++;perfilPV[r.h]+=r.pv;cntPV[r.h]++});
-  const pPV=perfilPV.map((v,i)=>cntPV[i]?v/cntPV[i]:0);
-  const pCons=perfilCons.map((v,i)=>cntCons[i]?v/cntCons[i]:0);
-  // Franja
-  const franja={Punta:0,Llano:0,Valle:0};
-  cons.hourly.forEach(r=>{const p=r.periodo;
-    if(p==='P1')franja.Punta+=r.red;
-    else if(p==='P2'||p==='P3')franja.Llano+=r.red;
-    else franja.Valle+=r.red});
-  return{...kpis,perfilPV:pPV,perfilCons:pCons,franja};
+const FRANJAS=['P1','P2','P3','P4','P5','P6','Sin periodo'];
+function calcCompPeriod(iA,iB,ibr,from,to){
+  const prod=procProd(iA,iB),cons=procCons(ibr),kpis=calcKPIs(prod,cons,{from,to});
+  const franja={};FRANJAS.forEach(p=>{franja[p]=sumaValores(cons.hourly.filter(r=>(FRANJAS.includes(r.periodo)?r.periodo:'Sin periodo')===p).map(r=>r.red))});
+  return{...kpis,perfilPV:kpis.avgH,perfilCons:perfilHoras(cons.hourly,'red'),franja};
 }
-
 function deltaStr(a,b,inv){
-  if(!a)return['—','#999'];
-  const d=b-a,pct=d/a*100;
-  const good=inv?(d<0):(d>0);
-  const col=good?'#27ae60':(!good&&d!==0)?'#e74c3c':'#999';
-  const arrow=d>0?'▲':d<0?'▼':'=';
-  const sign=d>0?'+':'';
-  return[arrow+' '+sign+pct.toFixed(1)+'%',col];
+  if(!Number.isFinite(a)||!Number.isFinite(b))return['—','#999'];
+  if(a===0)return[b===0?'=':'—','#999'];
+  const d=b-a,pct=d/a*100,good=inv?d<0:d>0,col=d===0?'#999':good?'#27ae60':'#e74c3c';
+  return[(d>0?'+':'')+pct.toFixed(1)+' %',col];
 }
-
-// ═══ GENERATE COMPARATIVE ═══
+function filasComp(da,db){return[
+  ['Días con balance completo',da.energia.coverage.completeDays,db.energia.coverage.completeDays,false],
+  ['Días valorados',da.energia.coverage.pricedDays,db.energia.coverage.pricedDays,false],
+  ['Producción registrada (kWh)',da.tP,db.tP,false],['Media producción (kWh/día)',da.avg,db.avg,false],
+  ['Consumo con balance (kWh)',da.tC,db.tC,true],['Importación con balance (kWh)',da.tR,db.tR,true],
+  ['Autoconsumo FV (kWh)',da.tPV,db.tPV,false],['Vertido medido (kWh)',da.tExport,db.tExport,false],
+  ['Cobertura FV (%)',escala(da.pct,100),escala(db.pct,100),false],
+  ['Ahorro base de energía (€)',da.tAE,db.tAE,false],['Ahorro con IE, sin IVA (€)',da.tAF,db.tAF,false],
+  ['Efecto en caja con IVA (€)',da.tCash,db.tCash,false],['Energía de red con IE (€)',da.tGrid,db.tGrid,true]];}
 function genComp(){
   const dA0=$('cDesdeA').value,dA1=$('cHastaA').value,dB0=$('cDesdeB').value,dB1=$('cHastaB').value;
-  if(!dA0||!dA1||!dB0||!dB1){log('⚠ Define las 4 fechas de la comparativa');return}
-  const a0=new Date(dA0+'T00:00:00'),a1=new Date(dA1+'T23:59:59');
-  const b0=new Date(dB0+'T00:00:00'),b1=new Date(dB1+'T23:59:59');
-  if(a0>a1||b0>b1){log('⚠ Fechas inválidas');return}
-  log('Comparativa: procesando periodos...');
-  const iA_a=filt(RAW.A,a0,a1),iB_a=filt(RAW.B,a0,a1),ibr_a=filt(RAW.I,a0,a1);
-  const iA_b=filt(RAW.A,b0,b1),iB_b=filt(RAW.B,b0,b1),ibr_b=filt(RAW.I,b0,b1);
-  const labA=dA0.split('-').reverse().join('/')+' – '+dA1.split('-').reverse().join('/');
-  const labB=dB0.split('-').reverse().join('/')+' – '+dB1.split('-').reverse().join('/');
-  const da=calcCompPeriod(iA_a,iB_a,ibr_a);
-  const db=calcCompPeriod(iA_b,iB_b,ibr_b);
-  COMP={da,db,labA,labB};
-  log(`✓ A: ${fd(da.tP)} kWh, B: ${fd(db.tP)} kWh`);
-  renderComp();
+  if(!dA0||!dA1||!dB0||!dB1){log('⚠ Define las cuatro fechas de la comparativa');return}
+  if(dA0>dA1||dB0>dB1){log('⚠ Revisa las fechas de la comparativa');return}
+  try{
+    const a0=new Date(dA0+'T00:00:00'),a1=new Date(dA1+'T23:59:59'),b0=new Date(dB0+'T00:00:00'),b1=new Date(dB1+'T23:59:59');
+    const da=calcCompPeriod(filt(RAW.A,a0,a1),filt(RAW.B,a0,a1),filt(RAW.I,a0,a1),dA0,dA1);
+    const db=calcCompPeriod(filt(RAW.A,b0,b1),filt(RAW.B,b0,b1),filt(RAW.I,b0,b1),dB0,dB1);
+    COMP={da,db,labA:`${fdmy(dA0)} – ${fdmy(dA1)}`,labB:`${fdmy(dB0)} – ${fdmy(dB1)}`};renderComp();
+    log('✓ Comparativa calculada con la cobertura de cada periodo');
+  }catch(e){log('⚠ Comparativa: '+esc(e.message))}
 }
-
 function renderComp(){
   for(const k in COMP_CHARTS){try{COMP_CHARTS[k].destroy()}catch(e){}}COMP_CHARTS={};
-  $('compResults').style.display='block';
-  // Show all comp tabs for rendering
-  document.querySelectorAll('#compResults .pcon').forEach(c=>c.classList.add('on'));
+  $('compResults').style.display='block';document.querySelectorAll('#compResults .pcon').forEach(c=>c.classList.add('on'));
   renderCP1();renderCP2();renderCP3();
-  setTimeout(()=>{
-    document.querySelectorAll('#compResults .pcon').forEach(c=>c.classList.remove('on'));
-    document.querySelectorAll('#compResults .pcon').forEach(c=>c.classList.remove('on'));
-    $('cp1').classList.add('on');
-    document.querySelectorAll('#compTabs .ptab').forEach(t=>t.classList.remove('on'));
-    document.querySelector('[data-cp=cp1]').classList.add('on');
-  },300);
+  document.querySelectorAll('#compResults .pcon').forEach(c=>c.classList.remove('on'));$('cp1').classList.add('on');
+  document.querySelectorAll('#compTabs .ptab').forEach(t=>t.classList.remove('on'));document.querySelector('[data-cp=cp1]').classList.add('on');
 }
-
-// ═══ C-PAGE 1: KPI TABLE + FRANJA ═══
 function renderCP1(){
-  const{da,db,labA,labB}=COMP;
-  const consMedA=da.dPV?da.tC/da.dPV:0,consMedB=db.dPV?db.tC/db.dPV:0;
-  const rows=[
-    ['Días de datos',da.dPV,db.dPV,false],
-    ['Producción FV (kWh)',da.tP,db.tP,false],
-    ['Prod. media diaria (kWh)',da.avg,db.avg,false],
-    ['Yield (kWh/kWp)',da.yld,db.yld,false],
-    ['Consumo total (kWh)',da.tC,db.tC,true],
-    ['Consumo medio diario (kWh)',consMedA,consMedB,true],
-    ['Autoconsumo FV (kWh)',da.tPV,db.tPV,false],
-    ['Cobertura FV (%)',da.pct*100,db.pct*100,false],
-    ['Ahorro energía (€)',da.tAE,db.tAE,false],
-    ['Ahorro total IE+IVA (€)',da.tAF,db.tAF,false],
-  ];
-  let h=`<tr><th>Indicador</th><th style="text-align:center">${labA}</th><th style="text-align:center">${labB}</th><th style="text-align:center">Variación</th></tr>`;
-  rows.forEach(([lbl,va,vb,inv])=>{
-    const[dt,dc]=deltaStr(va,vb,inv);
-    const fmtV=v=>typeof v==='number'?(v>=100?fn(v):fd(v)):'—';
-    h+=`<tr><td>${lbl}</td><td style="text-align:center;font-weight:600">${fmtV(va)}</td><td style="text-align:center;font-weight:600">${fmtV(vb)}</td><td style="text-align:center;font-weight:700;color:${dc}">${dt}</td></tr>`;
-  });
-  $('tblComp').innerHTML=h;
-  // Franja bars
-  const franjas=['Punta','Llano','Valle'],cols=['#e74c3c','#e67e22','#27ae60'];
-  COMP_CHARTS.ccF=new Chart($('ccFranja'),{type:'bar',data:{labels:franjas,datasets:[
-    {label:labA,data:franjas.map(f=>da.franja[f]/1000),backgroundColor:cols.map(c=>c+'cc'),borderColor:cols,borderWidth:1},
-    {label:labB,data:franjas.map(f=>db.franja[f]/1000),backgroundColor:cols.map(c=>c+'55'),borderColor:cols,borderWidth:1,
-      borderDash:[5,3]}]},
-  options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'MWh',font:{size:10}}}},
-    plugins:{legend:{}}}});
+  const {da,db,labA,labB}=COMP;
+  $('compCobertura').textContent=`A: ${textoCobertura(da.energia)} B: ${textoCobertura(db.energia)} Las variaciones comparan los datos disponibles; no aíslan el efecto de cambiar el antivertido.`;
+  let h=`<tr><th>Indicador</th><th>${esc(labA)}</th><th>${esc(labB)}</th><th>Variación</th></tr>`;
+  filasComp(da,db).forEach(([l,a,b,inv])=>{const [delta,color]=deltaStr(a,b,inv);h+=`<tr><td>${esc(l)}</td><td>${fn(a,1)}</td><td>${fn(b,1)}</td><td style="color:${color}">${delta}</td></tr>`});$('tblComp').innerHTML=h;
+  COMP_CHARTS.ccF=new Chart($('ccFranja'),{type:'bar',data:{labels:FRANJAS,datasets:[
+    {label:labA,data:FRANJAS.map(p=>escala(da.franja[p],.001)),backgroundColor:'#2a6b5a'},
+    {label:labB,data:FRANJAS.map(p=>escala(db.franja[p],.001)),backgroundColor:'#d4a039'}]},options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'MWh importados · i-DE/Datadis'}}}}});
 }
-
-// ═══ C-PAGE 2: PRODUCTION + PROFILES ═══
+function igualaEscalas(a,b,datos){
+  const v=datos.filter(Number.isFinite);if(!v.length)return;const max=Math.max(...v);if(max<=0)return;
+  const limite=Number((max*1.1).toPrecision(12));
+  a.options.scales.y.max=limite;b.options.scales.y.max=limite;a.update();b.update();
+}
 function renderCP2(){
-  const{da,db,labA,labB}=COMP;
-  $('cp2titleA').textContent='Producción diaria — '+labA;
-  $('cp2titleB').textContent='Producción diaria — '+labB;
-  // Prod A
-  const pdA=da.prod.daily;
-  COMP_CHARTS.ccPA=new Chart($('ccProdA'),{type:'bar',data:{labels:pdA.map((_,i)=>i+1),
-    datasets:[{data:pdA.map(d=>d.total),backgroundColor:'#2a6b5a',borderWidth:0}]},
-    options:{responsive:true,plugins:{legend:{display:false},
-      title:{display:true,text:'Total: '+fn(da.tP)+' kWh | Media: '+fd(da.avg)+' kWh/día',font:{size:9},color:'#9baa9f'}},
-      scales:{y:{beginAtZero:true}}}});
-  // Prod B
-  const pdB=db.prod.daily;
-  COMP_CHARTS.ccPB=new Chart($('ccProdB'),{type:'bar',data:{labels:pdB.map((_,i)=>i+1),
-    datasets:[{data:pdB.map(d=>d.total),backgroundColor:'#d4a039',borderWidth:0}]},
-    options:{responsive:true,plugins:{legend:{display:false},
-      title:{display:true,text:'Total: '+fn(db.tP)+' kWh | Media: '+fd(db.avg)+' kWh/día',font:{size:9},color:'#9baa9f'}},
-      scales:{y:{beginAtZero:true}}}});
-  // Sync Y scales
-  const maxY=Math.max(Math.max(...pdA.map(d=>d.total)),Math.max(...pdB.map(d=>d.total)))*1.1;
-  COMP_CHARTS.ccPA.options.scales.y.max=maxY;COMP_CHARTS.ccPA.update();
-  COMP_CHARTS.ccPB.options.scales.y.max=maxY;COMP_CHARTS.ccPB.update();
-  // Perfil PV overlay
-  const hrs=Array.from({length:24},(_,i)=>i+'h');
-  COMP_CHARTS.ccPPV=new Chart($('ccPerfilPV'),{type:'line',data:{labels:hrs,datasets:[
-    {label:labA,data:da.perfilPV,borderColor:'#2a6b5a',backgroundColor:'rgba(42,107,90,.15)',borderWidth:2,fill:true,tension:.3,pointRadius:0},
-    {label:labB,data:db.perfilPV,borderColor:'#d4a039',backgroundColor:'rgba(212,160,57,.15)',borderWidth:2,fill:true,tension:.3,pointRadius:0,borderDash:[5,3]}]},
-  options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'kWh/h',font:{size:10}}}},
-    plugins:{legend:{}}}});
-  // Perfil Consumo overlay
-  COMP_CHARTS.ccPC=new Chart($('ccPerfilCons'),{type:'line',data:{labels:hrs,datasets:[
-    {label:labA,data:da.perfilCons,borderColor:'#2a6b5a',backgroundColor:'rgba(42,107,90,.15)',borderWidth:2,fill:true,tension:.3,pointRadius:0},
-    {label:labB,data:db.perfilCons,borderColor:'#d4a039',backgroundColor:'rgba(212,160,57,.15)',borderWidth:2,fill:true,tension:.3,pointRadius:0,borderDash:[5,3]}]},
-  options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'kWh/h',font:{size:10}}}},
-    plugins:{legend:{}}}});
-}
-
-// ═══ C-PAGE 3: ECONOMIC BALANCE + CONSUMPTION ═══
-function renderCP3(){
-  const{da,db,labA,labB}=COMP;
-  $('cp3titleA').textContent='Consumo diario — '+labA;
-  $('cp3titleB').textContent='Consumo diario — '+labB;
-  const prM=Object.values(CFG.precios).reduce((s,p)=>s+p,0)/6;
-  const costeA=da.tC*prM*(1+CFG.IE)*(1+CFG.IVA),costeB=db.tC*prM*(1+CFG.IE)*(1+CFG.IVA);
-  // Economic bars
-  const cats=['Ahorro energía (€)','Ahorro total IE+IVA (€)','Coste red estimado (€)'];
-  const vaVals=[da.tAE,da.tAF,costeA],vbVals=[db.tAE,db.tAF,costeB];
-  COMP_CHARTS.ccE=new Chart($('ccEcon'),{type:'bar',data:{labels:cats,datasets:[
-    {label:labA,data:vaVals,backgroundColor:'#2a6b5acc',borderColor:'#2a6b5a',borderWidth:1},
-    {label:labB,data:vbVals,backgroundColor:'#d4a039aa',borderColor:'#d4a039',borderWidth:1}]},
-  options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'€',font:{size:10}}}},
-    plugins:{legend:{},
-      tooltip:{callbacks:{afterLabel:ctx=>{const i=ctx.dataIndex;const inv=[false,false,true][i];
-        const[dt]=deltaStr(vaVals[i],vbVals[i],inv);return dt}}}}}});
-  // Cons A
-  const cdA=da.cons.daily;
-  COMP_CHARTS.ccCA=new Chart($('ccConsA'),{type:'bar',data:{labels:cdA.map((_,i)=>i+1),datasets:[
-    {label:'Total',data:cdA.map(d=>d.total),backgroundColor:'rgba(42,107,90,.5)',borderWidth:0},
-    {label:'Red',data:cdA.map(d=>d.red),backgroundColor:'rgba(231,76,60,.4)',borderWidth:0}]},
-  options:{responsive:true,scales:{y:{beginAtZero:true}},plugins:{legend:{}}}});
-  // Cons B
-  const cdB=db.cons.daily;
-  COMP_CHARTS.ccCB=new Chart($('ccConsB'),{type:'bar',data:{labels:cdB.map((_,i)=>i+1),datasets:[
-    {label:'Total',data:cdB.map(d=>d.total),backgroundColor:'rgba(212,160,57,.5)',borderWidth:0},
-    {label:'Red',data:cdB.map(d=>d.red),backgroundColor:'rgba(231,76,60,.4)',borderWidth:0}]},
-  options:{responsive:true,scales:{y:{beginAtZero:true}},plugins:{legend:{}}}});
-  // Sync Y
-  const maxY=Math.max(Math.max(...cdA.map(d=>d.total)),Math.max(...cdB.map(d=>d.total)))*1.1;
-  COMP_CHARTS.ccCA.options.scales.y.max=maxY;COMP_CHARTS.ccCA.update();
-  COMP_CHARTS.ccCB.options.scales.y.max=maxY;COMP_CHARTS.ccCB.update();
-}
-
-// ═══ COMPARATIVE PDF (3 pages) ═══
-async function genCompPDF(){
-  if(!COMP.da){log('⚠ Genera la comparativa primero');return}
-  log('Generando PDF comparativa...');
-  const{jsPDF}=window.jspdf;const doc=new jsPDF('l','mm','a4');
-  const W=297,H=210,M=15;
-  const{da,db,labA,labB}=COMP;
-
-  function hdr(t,s){doc.setFillColor(26,60,52);doc.roundedRect(M,10,W-2*M,18,3,3,'F');
-    try{doc.addImage(LOGO_B64,'JPEG',M+2,11.5,15,15)}catch(e){}
-    doc.setTextColor(255);doc.setFontSize(12);doc.setFont(undefined,'bold');doc.text(t,M+20,20);
-    doc.setFontSize(8);doc.setFont(undefined,'normal');doc.text(s,M+20,25);doc.setTextColor(0)}
-  function ftr(p){doc.setFontSize(6);doc.setTextColor(150);
-    doc.text('Amixalan Business Group — Comparativa entre periodos',M,H-8);
-    doc.text('Pág '+p,W-M-8,H-8);doc.setTextColor(0)}
-  async function addC(id,x,y,w,h){const cv=$(id);if(cv&&cv.tagName==='CANVAS'){doc.addImage(cv.toDataURL('image/png'),'PNG',x,y,w,h)}}
-
-  // Show all comp tabs
-  document.querySelectorAll('#compResults .pcon').forEach(c=>c.classList.add('on'));
-  for(const k in COMP_CHARTS){try{COMP_CHARTS[k].resize()}catch(e){}}
-  await new Promise(r=>setTimeout(r,500));
-
-  // PAGE 1: KPI table
-  hdr('Comparativa: '+labA+' vs '+labB,'Edificio Gorraiz — Resumen de indicadores clave');
-  let y=34;
-  // Table header
-  doc.setFontSize(7);doc.setFillColor(26,60,52);doc.setTextColor(255);
-  doc.rect(M,y,W-2*M,5,'F');
-  const cx=[M+2,M+65,M+100,M+140];
-  doc.text('Indicador',cx[0],y+3.5);doc.text(labA.slice(0,20),cx[1],y+3.5);doc.text(labB.slice(0,20),cx[2],y+3.5);doc.text('Variación',cx[3],y+3.5);
-  doc.setTextColor(0);doc.setFont(undefined,'normal');y+=6;
-  const consMedA=da.dPV?da.tC/da.dPV:0,consMedB=db.dPV?db.tC/db.dPV:0;
-  const trows=[
-    ['Días de datos',da.dPV,db.dPV,false],['Producción FV (kWh)',da.tP,db.tP,false],
-    ['Media diaria (kWh)',da.avg,db.avg,false],['Yield (kWh/kWp)',da.yld,db.yld,false],
-    ['Consumo total (kWh)',da.tC,db.tC,true],['Consumo medio/día',consMedA,consMedB,true],
-    ['Autoconsumo FV (kWh)',da.tPV,db.tPV,false],['Cobertura FV (%)',da.pct*100,db.pct*100,false],
-    ['Ahorro energía (€)',da.tAE,db.tAE,false],['Ahorro total (€)',da.tAF,db.tAF,false],
-  ];
-  trows.forEach(([lbl,va,vb,inv],i)=>{
-    if(i%2===0){doc.setFillColor(244,248,251);doc.rect(M,y,W-2*M,5,'F')}
-    doc.setFontSize(7);doc.setTextColor(0);
-    doc.text(lbl,cx[0],y+3.5);
-    doc.text(va>=100?fn(va):fd(va),cx[1],y+3.5);
-    doc.text(vb>=100?fn(vb):fd(vb),cx[2],y+3.5);
-    const[dt,dc]=deltaStr(va,vb,inv);
-    const rgb=dc==='#27ae60'?[39,174,96]:dc==='#e74c3c'?[231,76,60]:[150,150,150];
-    doc.setTextColor(...rgb);doc.setFont(undefined,'bold');doc.text(dt,cx[3],y+3.5);
-    doc.setFont(undefined,'normal');doc.setTextColor(0);y+=5;
+  const {da,db,labA,labB}=COMP;
+  $('cp2titleA').textContent='Producción registrada — '+labA;$('cp2titleB').textContent='Producción registrada — '+labB;
+  [['A',da,'#2a6b5a'],['B',db,'#d4a039']].forEach(([id,d,color])=>{
+    COMP_CHARTS['ccP'+id]=new Chart($('ccProd'+id),{type:'bar',data:{labels:d.prod.daily.map(v=>v.date.slice(5)),datasets:[{label:'FV registrada',data:d.prod.daily.map(v=>v.total),backgroundColor:color}]},options:{responsive:true,plugins:{legend:{display:false},title:{display:true,text:`Total registrado: ${kwh(d.tP)} · media: ${fd(d.avg)} kWh/día`}},scales:{y:{beginAtZero:true}}}});
   });
-  y+=8;
-  await addC('ccFranja',M,y,W-2*M,60);
-  ftr(1);
+  igualaEscalas(COMP_CHARTS.ccPA,COMP_CHARTS.ccPB,[...da.prod.daily,...db.prod.daily].map(d=>d.total));
+  const horas=Array.from({length:24},(_,i)=>i+'h');
+  [['ccPerfilPV','perfilPV','ccPPV','FV · perfil de muestras'],['ccPerfilCons','perfilCons','ccPC','Importación de red (kWh/h)']].forEach(([id,campo,key,titulo])=>{
+    COMP_CHARTS[key]=new Chart($(id),{type:'line',data:{labels:horas,datasets:[
+      {label:labA,data:da[campo],borderColor:'#2a6b5a'}, {label:labB,data:db[campo],borderColor:'#d4a039'}].map(d=>({...d,borderWidth:1.5,fill:false,pointRadius:0,spanGaps:false,tension:.2}))},options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:titulo}}}}});
+  });
+}
+function renderCP3(){
+  const {da,db,labA,labB}=COMP;
+  const cats=['Ahorro base','Ahorro con IE, sin IVA','Caja con IVA','Energía de red con IE'];
+  COMP_CHARTS.ccE=new Chart($('ccEcon'),{type:'bar',data:{labels:cats,datasets:[
+    {label:labA,data:[da.tAE,da.tAF,da.tCash,da.tGrid],backgroundColor:'#2a6b5a'},
+    {label:labB,data:[db.tAE,db.tAF,db.tCash,db.tGrid],backgroundColor:'#d4a039'}]},options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'€ · días con balance y precio'}}}}});
+  [['A',da,labA],['B',db,labB]].forEach(([id,d,label])=>{
+    $('cp3title'+id).textContent='Balance diario — '+label;
+    COMP_CHARTS['ccC'+id]=new Chart($('ccCons'+id),{type:'bar',data:{labels:d.cons.daily.map(x=>x.date.slice(5)),datasets:[
+      {label:'Consumo',data:d.cons.daily.map(x=>x.total),backgroundColor:'#2a6b5a'},
+      {label:'Importación',data:d.cons.daily.map(x=>x.red),backgroundColor:'#e67e22'},
+      {label:'Vertido',data:d.cons.daily.map(x=>x.export),backgroundColor:'#5c95cf'}]},options:{responsive:true,scales:{y:{beginAtZero:true}}}});
+  });
+  igualaEscalas(COMP_CHARTS.ccCA,COMP_CHARTS.ccCB,[...da.cons.daily,...db.cons.daily].flatMap(d=>[d.total,d.red,d.export]));
+}
+async function genCompPDF(){
+  if(!COMP.da){log('⚠ Genera primero la comparativa');return}
+  const {doc,W,M,pagina,cerrar}=creaPdf(),{da,db,labA,labB}=COMP,ancho=W-2*M,mitad=ancho/2-3;
+  document.querySelectorAll('#compResults .pcon').forEach(c=>c.classList.add('on'));document.body.offsetHeight;
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  try{
+    pagina('Comparativa · Indicadores','A: '+labA+' · B: '+labB);
+    pdfTexto(doc,`A: ${textoCobertura(da.energia)} B: ${textoCobertura(db.energia)}`,M,34,ancho,6.5);
+    const xs=[M+2,M+105,M+162,M+220];let y=53;
+    doc.setFillColor(26,60,52);doc.rect(M,y,ancho,7,'F');doc.setTextColor(255);doc.setFontSize(7);
+    ['Indicador','Periodo A','Periodo B','Variación'].forEach((v,i)=>doc.text(v,xs[i],y+4.5));y+=8;
+    filasComp(da,db).forEach(([l,a,b,inv],i)=>{if(i%2===0){doc.setFillColor(244,248,246);doc.rect(M,y-1,ancho,5.5,'F')}
+      doc.setTextColor(30);doc.setFontSize(7);[l,fn(a,1),fn(b,1),deltaStr(a,b,inv)[0]].forEach((v,j)=>doc.text(v,xs[j],y+3));y+=5.5});
+    pdfTexto(doc,'Totales sobre la cobertura indicada; las variaciones no aíslan el efecto del antivertido. Los perfiles horarios siguientes son importación i-DE/Datadis y producción FV por separado.',M,140,ancho,6.5);
+    await pdfChart(doc,'ccFranja',M,151,ancho,40);
 
-  // PAGE 2: Production + profiles
-  doc.addPage();hdr('Comparativa: Producción y perfiles',labA+' vs '+labB);y=34;
-  const hw=(W-2*M)/2-2;
-  await addC('ccProdA',M,y,hw,55);await addC('ccProdB',W/2+2,y,hw,55);y+=60;
-  await addC('ccPerfilPV',M,y,hw,55);await addC('ccPerfilCons',W/2+2,y,hw,55);
-  ftr(2);
+    pagina('Comparativa · Producción y perfiles','A: '+labA+' · B: '+labB);
+    pdfTitulo(doc,'Producción registrada · A',M,36);pdfTitulo(doc,'Producción registrada · B',M+mitad+6,36);
+    await pdfChart(doc,'ccProdA',M,40,mitad,63);await pdfChart(doc,'ccProdB',M+mitad+6,40,mitad,63);
+    pdfTitulo(doc,'Perfil horario de producción FV',M,116);pdfTitulo(doc,'Perfil horario de importación de red',M+mitad+6,116);
+    await pdfChart(doc,'ccPerfilPV',M,120,mitad,65);await pdfChart(doc,'ccPerfilCons',M+mitad+6,120,mitad,65);
 
-  // PAGE 3: Economic + consumption
-  doc.addPage();hdr('Comparativa: Balance económico y consumo',labA+' vs '+labB);y=34;
-  await addC('ccEcon',M,y,W-2*M,55);y+=60;
-  await addC('ccConsA',M,y,hw,55);await addC('ccConsB',W/2+2,y,hw,55);
-  ftr(3);
-
-  // Restore tabs
-  document.querySelectorAll('#compResults .pcon').forEach(c=>c.classList.remove('on'));
-  document.querySelectorAll('#compResults .pcon').forEach(c=>c.classList.remove('on'));
-  $('cp1').classList.add('on');
-
-  const fname='Comparativa_FV_'+$('cDesdeA').value.replace(/-/g,'')+'_vs_'+$('cDesdeB').value.replace(/-/g,'')+'.pdf';
-  doc.save(fname);log('✓ PDF comparativa descargado: '+fname);
+    pagina('Comparativa · Valoración y balance','A: '+labA+' · B: '+labB);
+    pdfTexto(doc,'Precios medios mensuales de factura: valoración estimativa, no precio marginal horario. Ahorro con IE sin IVA; efecto en caja con IVA separado. Excedentes sin compensación valorada.',M,34,ancho,6.5);
+    await pdfChart(doc,'ccEcon',M,47,ancho,58);
+    pdfTexto(doc,`A: ${da.energia.coverage.pricedDays}/${da.energia.coverage.expectedDays} días valorados. B: ${db.energia.coverage.pricedDays}/${db.energia.coverage.expectedDays} días valorados. ${PRECIO_FUTURO?'Se permite estimar días posteriores con el último precio; consulta la cobertura del informe.':'Sin extensión de precios a fechas futuras.'}`,M,112,ancho,6.5);
+    pdfTitulo(doc,'Balance diario · A',M,126);pdfTitulo(doc,'Balance diario · B',M+mitad+6,126);
+    await pdfChart(doc,'ccConsA',M,130,mitad,59);await pdfChart(doc,'ccConsB',M+mitad+6,130,mitad,59);
+    cerrar();doc.save(`Comparativa_FV_${da.from.replace(/-/g,'')}_vs_${db.from.replace(/-/g,'')}.pdf`);log('✓ PDF comparativa descargado');
+  }catch(e){log('⚠ PDF comparativa: '+esc(e.message))}
+  finally{document.querySelectorAll('#compResults .pcon').forEach(c=>c.classList.remove('on'));$('cp1').classList.add('on')}
 }
 
 </script>

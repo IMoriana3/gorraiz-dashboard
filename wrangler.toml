@@ -1,0 +1,15 @@
+# SOLO VISTAS PREVIAS DE PR. No usar para desplegar producción.
+# Compatibilidad con Workers Builds: en algunas ramas ejecuta wrangler
+# preview desde la raíz e ignora Root directory=worker.
+# Configuración canónica de producción: worker/wrangler.toml.
+# Este shim no hereda KV, credenciales ni cron. La falta de PANEL_KEY impide
+# consultar datos mediante la vista previa.
+name = "gorraiz-dashboard"
+main = "worker/index.js"
+compatibility_date = "2025-01-01"
+workers_dev = false
+
+[previews]
+
+[previews.vars]
+SPC_SYNC_ENABLED = "false"

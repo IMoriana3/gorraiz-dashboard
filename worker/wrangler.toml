@@ -1,7 +1,9 @@
-# El proyecto de Cloudflare está configurado con Root directory = "worker", así
-# que wrangler busca esta configuración AQUÍ. Si alguna vez se vacía ese ajuste,
-# wrangler no encontrará ningún Worker en la raíz del repositorio, deducirá que
-# es un sitio estático y publicará todos los ficheros tal cual, .git incluida.
+# CONFIGURACIÓN CANÓNICA DEL WORKER DE PRODUCCIÓN.
+# En Cloudflare, mantener Root directory = "worker": esta es la configuración
+# que monta el KV real y declara los parámetros de producción.
+# El wrangler.toml de la raíz es un shim mínimo, sin datos, para previews de
+# PR (Cloudflare Builds puede ignorar el root directory en ramas).
+# Nunca cambiar la raíz de despliegue de producción al repositorio sin revisar.
 name = "gorraiz-dashboard"
 main = "index.js"
 compatibility_date = "2025-01-01"
@@ -9,10 +11,8 @@ compatibility_date = "2025-01-01"
 workers_dev = true
 preview_urls = false
 
-# IMPRESCINDIBLE: por defecto, `wrangler deploy` BORRA todo lo configurado desde
-# el panel que no figure en este fichero. Los secretos (PANEL_KEY, IDE_USER,
-# IDE_PASS...) se guardan ahí y no pueden vivir aquí, así que sin esto cada
-# despliegue desde GitHub los eliminaba justo después de añadirlos.
+# Conserva las variables de texto añadidas desde el panel. Los secretos se
+# gestionan aparte; nunca se escriben en este fichero.
 keep_vars = true
 
 # Origen(es) desde los que se acepta la llamada. Sin esto, el Worker deniega
@@ -20,6 +20,9 @@ keep_vars = true
 # añadir pruebas en local.
 [vars]
 ALLOWED_ORIGIN = "https://imoriana3.github.io"
+SPC_STATION_ID = "2026032317114373"
+SPC_TIMEZONE = "Europe/Madrid"
+SPC_SYNC_ENABLED = "false"
 
 # El resto NO va aquí: son secretos y se cargan desde el panel de Cloudflare
 # (Settings → Variables and Secrets) o con `wrangler secret put`.
@@ -30,3 +33,21 @@ ALLOWED_ORIGIN = "https://imoriana3.github.io"
 [[kv_namespaces]]
 binding = "DATOS"
 id = "060df5733aad4c61b01cbf05e4d7510b"
+
+# Activar solo después de probar HTTPS, el contador y los kWh de un día cerrado.
+# Cada ejecución actualiza el día anterior de Madrid; no requiere abrir el panel.
+# El cron usa UTC. Se repite para recoger correcciones o reintentar tras fallos.
+# [triggers]
+# crons = ["17 * * * *"]
+
+# Vista previa de rama, sin secretos ni almacén de producción.
+# Wrangler 4.135+ exige el bloque [previews] para "wrangler preview".
+# Los ajustes top-level no se heredan: aquí no se enlaza DATOS ni se
+# permite leer/escribir registros energéticos desde una rama en pruebas.
+[previews]
+
+[previews.vars]
+ALLOWED_ORIGIN = "https://imoriana3.github.io"
+SPC_STATION_ID = "2026032317114373"
+SPC_TIMEZONE = "Europe/Madrid"
+SPC_SYNC_ENABLED = "false"

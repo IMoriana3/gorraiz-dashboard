@@ -10,6 +10,7 @@
 // de ficheros .xlsx, para que el resto del informe no se entere del cambio.
 // ═══════════════════════════════════════════════════════════════════════════
 import {periodo} from './periodos.js';
+import {spcIntercambio, spcDiagnostico, spcDatos, spcEstado, spcScheduled, safeSpcError} from './spc.js';
 
 const DATADIS='https://datadis.es';
 // Solarman tiene varios centros de datos y el appId solo vale en el suyo:
@@ -584,7 +585,7 @@ export default{
     // configuración sin herramientas. Solo ellos: /consumo y /produccion
     // siguen exigiendo la cabecera, para no repartir la clave en direcciones
     // que quedan en el historial y en los registros.
-    const abrible=ruta==='/estado'||ruta.endsWith('/diagnostico');
+    const abrible=ruta==='/estado'||ruta==='/ide/diagnostico'||ruta==='/solarman/diagnostico';
     const clave=req.headers.get('X-Panel-Key')||(abrible?(url.searchParams.get('k')||''):'');
 
     if(!env.PANEL_KEY)
@@ -594,6 +595,12 @@ export default{
       return json({error:'La clave de panel no coincide con la PANEL_KEY del Worker.'},401,h);
 
     try{
+      // SPC solo consulta equipos. Sus rutas nunca admiten la clave de panel
+      // en la URL; el diagnóstico es POST, igual que la descarga de un día.
+      if((ruta==='/spc/intercambio'||ruta==='/spc/diagnostico')&&req.method!=='POST')
+        return json({error:'Esta consulta SPC requiere POST.'},405,{...h,Allow:'POST'});
+      if(ruta==='/spc/datos'&&!['GET','POST'].includes(req.method))
+        return json({error:'La consulta del almacén SPC requiere GET o POST.'},405,{...h,Allow:'GET, POST'});
       if(ruta==='/estado'){
         const sm=['SOLARMAN_APPID','SOLARMAN_APPSECRET','SOLARMAN_EMAIL','SOLARMAN_PASS'];
         const faltan=sm.filter(k=>!env[k]);
@@ -616,12 +623,16 @@ export default{
           solarmanInvA:env.SOLARMAN_INV_A||null,
           solarmanInvB:env.SOLARMAN_INV_B||null,
           almacen:!!env.DATOS,
+          ...await spcEstado(env),
         },200,h);
       }
 
       const b=req.method==='POST'?await req.json().catch(()=>({}))
         :Object.fromEntries(url.searchParams);
       const desde=b.desde,hasta=b.hasta;
+      if(ruta==='/spc/intercambio')return json(await spcIntercambio(env,desde,hasta),200,h);
+      if(ruta==='/spc/diagnostico')return json(await spcDiagnostico(env,b.dia),200,h);
+      if(ruta==='/spc/datos')return json(await spcDatos(env,desde,hasta),200,h);
       if(ruta==='/consumo'||ruta==='/produccion'){
         if(!/^\d{4}-\d{2}-\d{2}$/.test(desde||'')||!/^\d{4}-\d{2}-\d{2}$/.test(hasta||''))
           return json({error:'Faltan las fechas (desde/hasta en formato AAAA-MM-DD).'},400,h);
@@ -675,7 +686,18 @@ export default{
       }
       return json({error:'Ruta desconocida.'},404,h);
     }catch(e){
+      if(ruta.startsWith('/spc/')){
+        const safe=safeSpcError(e);
+        return json({error:safe.message,code:safe.code},safe.status,h);
+      }
       return json({error:e.message||String(e)},502,h);
     }
-  }
+  },
+  async scheduled(event,env,ctx){
+    // Sin SPC_SYNC_ENABLED=true no se consulta ni se escribe nada. El horario
+    // se activa por separado en Cloudflare; se lee únicamente ayer en Madrid.
+    const work=spcScheduled(env,{now:()=>event?.scheduledTime??Date.now()});
+    if(ctx&&typeof ctx.waitUntil==='function'){ctx.waitUntil(work);return;}
+    return work;
+  },
 };

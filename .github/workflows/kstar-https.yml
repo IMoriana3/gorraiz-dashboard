@@ -1,0 +1,124 @@
+name: KSTAR SPC · conectividad web sin credenciales
+
+on:
+  push:
+    branches: [codex/spc-automatizacion-gorraiz]
+    paths:
+      - ".github/workflows/kstar-https.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  https:
+    name: Comparar HTTP y HTTPS públicos del SPC
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Consultar solo la raíz pública sin credenciales
+        shell: bash
+        run: |
+          set +e
+          # Solo comprobación TLS/HTTP; NO se hace login ni se mandan credenciales.
+          result=$(curl --proto '=https' --max-redirs 0 --connect-timeout 8 --max-time 15             --silent --show-error --output /dev/null             --write-out 'HTTP=%{http_code};TLS=%{ssl_verify_result};REMOTE=%{remote_ip}'             'https://spc.ksdatacloud.com/' 2>&1)
+          code=$?
+          echo "curl exit: $code"
+          echo "$result"
+          if [ "$code" = "0" ]; then
+            echo "La conexión HTTPS desde GitHub responde. No implica autenticación válida ni acceso desde Cloudflare." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Falló la conexión HTTPS desde GitHub. No implica necesariamente fallo desde la red del usuario o Cloudflare." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "Resultado curl (sin secretos): $result" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "HTTP público — únicamente la página inicial, sin iniciar sesión ni enviar información privada:" >> "$GITHUB_STEP_SUMMARY"
+          http_result=$(curl --proto '=http' --max-redirs 0 --connect-timeout 8 --max-time 15 \
+            --silent --show-error --output /dev/null \
+            --write-out 'HTTP=%{http_code};REMOTE=%{remote_ip};REDIRECT=%{redirect_url}' \
+            'http://spc.ksdatacloud.com/' 2>&1)
+          http_code=$?
+          echo "HTTP curl exit: $http_code"
+          echo "$http_result"
+          echo "Resultado HTTP público (sin secretos): salida=$http_code $http_result" >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+
+      - name: Leer referencias de API en scripts públicos (sin ejecutar JS)
+        shell: bash
+        run: |
+          python - <<'PY'
+          import re
+          import urllib.parse
+          import urllib.request
+          base = "http://spc.ksdatacloud.com/"
+          try:
+              with urllib.request.urlopen(base, timeout=10) as response:
+                  html = response.read(750000).decode("utf-8", "replace")
+              srcs = re.findall(r'<script[^>]*?src=["\\\']([^"\\\']+)["\\\']', html, re.I)
+              refs = []
+              for src in srcs:
+                  url = urllib.parse.urljoin(base, src)
+                  if urllib.parse.urlsplit(url).hostname == "spc.ksdatacloud.com":
+                      refs.append(url)
+              print("Scripts públicos encontrados:", len(refs))
+              hosts = set(re.findall(r'https?://([a-z0-9.-]+)', html, re.I))
+              for url in refs[:7]:
+                  try:
+                      with urllib.request.urlopen(url, timeout=12) as response:
+                          js = response.read(1500000).decode("utf-8", "replace")
+                      hosts.update(re.findall(r'https?://([a-z0-9.-]+)', js, re.I))
+                      print("Script inspeccionado:", urllib.parse.urlsplit(url).path, "bytes leídos:", len(js))
+                  except Exception as exc:
+                      print("Script no disponible:", type(exc).__name__)
+              print("Hostnames absolutos citados en el HTML/JS público (no significa API accesible):")
+              for host in sorted(hosts):
+                  print(" -", host)
+          except Exception as exc:
+              print("No se pudo leer el HTML público:", type(exc).__name__)
+          PY
+
+      - name: Auditar referencias de API pública SPC sin credenciales
+        shell: bash
+        run: |
+          python - <<'PY'
+          import re, urllib.request, urllib.parse, collections
+          root = 'http://spc.ksdatacloud.com/'
+          queue = collections.deque([root])
+          scanned = set()
+          scripts = []
+          max_files, budget = 200, 30000000
+          processed = 0
+          while queue and len(scanned)<max_files and processed<budget:
+            url=queue.popleft()
+            if url in scanned or urllib.parse.urlsplit(url).hostname!='spc.ksdatacloud.com': continue
+            scanned.add(url)
+            try:
+              with urllib.request.urlopen(urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0'}),timeout=9) as resp:
+                data=resp.read(min(2000000,budget-processed))
+                processed+=len(data)
+                txt=data.decode('utf-8','replace')
+            except Exception as exc:
+              print('No disponible:',urllib.parse.urlsplit(url).path,type(exc).__name__)
+              continue
+            path=urllib.parse.urlsplit(url).path
+            print('Fichero:',path,'bytes:',len(data))
+            if path.endswith('.js'):scripts.append((path,txt))
+            if path.endswith('.js'):
+              links=set(re.findall(r'''["']([^"']{1,160}\.js)(?:\?[^"']*)?["']''',txt))
+            else:
+              links=set(re.findall(r'''<script[^>]+src=["']([^"']+)["']''',txt,re.I))
+            for href in sorted(links):
+              if not (href.startswith('/') or href.startswith('./') or href.startswith('http:')):continue
+              full=urllib.parse.urljoin(url,href)
+              if urllib.parse.urlsplit(full).hostname=='spc.ksdatacloud.com' and full not in scanned and full not in queue:queue.append(full)
+          print('TOTALES archivos:',len(scanned),'scripts:',len(scripts),'bytes:',processed)
+          targets=['station/monitor/detail/self','meter/monitor/detail/history/data','station/monitor/detail/meter/list','positiveElec','reverseElec']
+          hits=0
+          for path,txt in scripts:
+            for target in targets:
+              for m in list(re.finditer(re.escape(target),txt,re.I))[:4]:
+                snippet=txt[max(0,m.start()-200):min(len(txt),m.end()+300)].replace('\n',' ').replace('\r',' ')
+                print('CONTRATO:',path,'ruta:',target,'contexto:',repr(snippet[:560]))
+                hits+=1
+          if not hits:print('Las rutas no aparecen en estos scripts iniciales: posiblemente sean chunks cargados dinámicamente.')
+          PY

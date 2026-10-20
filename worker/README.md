@@ -1,6 +1,8 @@
 # Worker de datos — Gorraiz Dashboard
 
-Proxy mínimo que permite al dashboard traerse los datos con un botón, en lugar de descargar y subir ficheros a mano.
+Conexión del dashboard a Datadis, Solarman y SPC Cloud. Guarda las credenciales en Cloudflare y ofrece descarga por botón, caché compartida y sincronización SPC opcional.
+
+**SPC:** una descarga real del 19/10/2026 fue validada en el Worker aislado KSTAR. El dashboard puede usar su ruta `POST /spc/intercambio` con origen restringido y una clave independiente; consulta la guía [KSTAR_PRUEBA.md](KSTAR_PRUEBA.md). No hay cron activo y el Worker principal se mantiene ajeno a los secretos de esa prueba. [Detalles generales SPC](SPC.md).
 
 ## Por qué hace falta
 
@@ -22,8 +24,12 @@ Todas las rutas exigen la cabecera `X-Panel-Key` y un `Origin` que figure en `AL
 | `/produccion` | POST | `{desde, hasta}` | `{A:[{ts, pot, acum, dia}], B:[…], meta}` |
 | `/solarman/diagnostico` | POST | `{dia}` | Campos en crudo de un tramo, para mapear |
 | `/ide/diagnostico` | POST | — | Lista de contratos en crudo del portal de i-DE |
+| `/datos` | GET / POST | Fuentes de consumo al escribir | Histórico compartido de consumo |
+| `/spc/diagnostico` | POST | `{dia}` | Prueba real y resumen seguro del día |
+| `/spc/intercambio` | POST | `{desde, hasta}`; máximo un día | Histórico y balance diario del SPC |
+| `/spc/datos` | POST | `{desde, hasta}`; máximo 31 días | Solo caché SPC, sin login |
 
-`rows` sale con la misma forma que produce la lectura de un `.xlsx` de i-DE, así que el informe no distingue de dónde vienen los datos.
+En `/consumo`, `rows` tiene la forma de la lectura de un XLSX de i-DE. SPC conserva una estructura y almacenamiento propios: no se mezcla con el consumo horario ni sobrescribe la clave `consumo`.
 
 ## Despliegue
 
@@ -36,17 +42,17 @@ El Worker se despliega conectando el repositorio en **Workers & Pages → Create
 - **Deploy command**: `npx wrangler deploy`
 - **Production branch**: `main`
 
-El *Root directory* no es un detalle cosmético: si se deja en la raíz, wrangler no encuentra ningún `wrangler.toml`, deduce que el repositorio es un sitio estático y publica **todos** los ficheros tal cual, incluida la carpeta `.git`, sin llegar a desplegar el Worker.
+El *Root directory* de producción debe seguir siendo `worker`. La raíz del repositorio tiene ahora un `wrangler.toml` mínimo **solo para las vistas previas de las PR**, porque Cloudflare Builds puede ignorar ese directorio al compilar ramas ([incidencia pública #75](https://github.com/cloudflare/developer-platform/issues/75)). Ese fichero no monta el KV de producción ni incorpora credenciales; **no debe usarse para desplegar producción**. La configuración completa y única de producción es `worker/wrangler.toml`.
 
 Cada `push` a `main` que toque esta carpeta redespliega solo.
 
-**`keep_vars = true` en `wrangler.toml` no es opcional.** Por defecto, `wrangler deploy` borra del Worker todo lo configurado desde el panel que no figure en el fichero. Los secretos se guardan en el panel y no pueden estar en el fichero, así que sin ese ajuste cada despliegue los elimina — y el síntoma es desconcertante: los ves listados en el panel pero el Worker no los recibe.
+**`keep_vars = true` conserva variables de texto añadidas desde el panel.** Los secretos se gestionan aparte. Las variables declaradas en `wrangler.toml` sí se aplican al desplegar: un cambio de `SPC_SYNC_ENABLED` debe conservarse también en ese fichero. [Referencia de configuración](https://developers.cloudflare.com/workers/wrangler/configuration/).
 
 ### Sin instalar nada (desde el navegador)
 
 Si no tienes Node en el equipo, `bundle.js` es el Worker entero en un solo fichero, listo para pegar en el editor web de Cloudflare. En el panel de Cloudflare: **Workers & Pages → Create → Worker**, abre **Edit code**, borra lo que venga de ejemplo y pega el contenido de `bundle.js`. Luego, en **Settings → Variables and Secrets**, añade `ALLOWED_ORIGIN` como variable de texto y el resto como *Secret*.
 
-`bundle.js` está generado: si tocas `index.js` o `periodos.js`, regenéralo con `node construir.mjs`.
+`bundle.js` está generado: si tocas `index.js`, `periodos.js` o `spc.js`, regenéralo con `node construir.mjs` desde `worker/`.
 
 ### Con wrangler
 
@@ -100,7 +106,7 @@ Se deja el código porque puede servir desde otra red — un equipo en la oficin
 
 `/ide/diagnostico` vuelca la lista de contratos en crudo, útil si hay varios y hay que averiguar cuál es el de Gorraiz. Pasándole `{"dia":"AAAA-MM-DD"}` añade además un día de consumo sin procesar: claves devueltas, número de valores y los primeros, que es lo que permite ver de una vez la forma real y la magnitud de las cifras.
 
-Y cuando lleguen las credenciales de Solarman:
+Los secretos utilizados por el flujo Solarman existente son:
 
 ```bash
 npx wrangler secret put SOLARMAN_APPID
@@ -111,7 +117,7 @@ npx wrangler secret put SOLARMAN_STATION_ID # opcional: si hay una sola planta, 
 npx wrangler secret put SOLARMAN_ORGID      # SOLO si la cuenta es Business, no Smart
 ```
 
-**El rango se trocea en el dashboard, no aquí.** Cloudflare limita a **50 subpeticiones por invocación** del Worker en el plan gratuito. Cada día de producción son dos llamadas —una por inversor— más las de sesión, así que pedir más de tres semanas de una vez lo revienta. El dashboard parte el rango en bloques de 15 días para producción y de 20 meses para consumo, y va acumulando. Si algún día se cambia el número de inversores de la planta, ese tamaño de bloque hay que revisarlo.
+**El rango se trocea en el dashboard.** El límite de subpeticiones del plan gratuito es 50 por invocación. Cada día de producción necesita dos llamadas de inversor más las de sesión. El dashboard solicita producción en bloques de **10 días**, consumo en bloques de **600 días**, consulta SPC de **un día** y lectura de caché SPC de **31 días**. Si cambia el número de inversores, debe revisarse el tamaño del bloque. [Límites de Workers](https://developers.cloudflare.com/workers/platform/limits/).
 
 **Cuál es el inversor A y cuál el B.** Sin configurar nada, A es simplemente el primero que devuelve `/station/v1.0/device`: un orden que decide Solarman, que puede cambiar, y que no tiene por qué coincidir con el del informe. `SOLARMAN_INV_A` y `SOLARMAN_INV_B` lo fijan por número de serie —basta con los últimos dígitos— y la respuesta indica si la asignación fue explícita o por orden.
 
@@ -135,7 +141,7 @@ Después, en el dashboard: pega la URL del Worker y la `PANEL_KEY` en **⚡ Desc
 
 Los `.xlsx` de consumo solo existen en el equipo de quien los descarga, así que sin esto un compañero abría el dashboard y lo veía vacío. El Worker guarda esas fuentes en un espacio KV (`binding = "DATOS"`, configurado en `wrangler.toml`) y las sirve en `/datos`; el dashboard las sube al cargar ficheros y se las baja al abrir.
 
-**La producción no se guarda a propósito.** Solarman ya es su archivo y cualquiera la trae con el botón: duplicarla sería mantener dos verdades de lo mismo, con el riesgo de que se separen sin que nadie se entere.
+**La producción se conserva en el navegador, pero no en KV.** Cualquier equipo puede solicitarla a Solarman con el botón. SPC utiliza su propia caché por día (`spc:v1:<stationId>:<fecha>`), que permite recuperar lecturas realizadas por el cron sin iniciar sesión en el proveedor desde el navegador.
 
 Sin el enlace KV el Worker funciona igual: `/datos` responde que no hay almacén y cada navegador se queda con su copia local en IndexedDB.
 
@@ -159,8 +165,6 @@ Sin el enlace KV el Worker funciona igual: `/datos` responde que no hay almacén
 
 ## Estado de verificación
 
-La lógica está probada con las respuestas simuladas (`meses`, conversión horaria, recorte de rango, orden, duplicados, CORS, autenticación, caída de un mes suelto) y el calendario tarifario contra 17.544 horas de 2024–2025.
+El flujo Solarman existente tiene mapeadas las claves de los G50KT indicadas arriba. Las nuevas pruebas de `tests/spc.test.mjs` verifican autenticación acotada, respuestas inválidas, paginación, caché, ceros/ausencias, permisos de rutas y cron con datos ficticios. `tests/energia.test.mjs` comprueba el balance y la valoración por factura.
 
-Lo que **no** he podido comprobar es la llamada real: este entorno no tiene salida hacia `datadis.es`, `i-de.es` ni `solarmanpv.com`. La integración está escrita contra la documentación, así que la primera ejecución con credenciales reales es una prueba de verdad. La forma de validarla sin fiarse: pedir un mes del que ya tengas el `.xlsx` de i-DE y cargar los dos a la vez — el dashboard los une por día y el desglose dirá si cuadran.
-
-Solarman queda escrito pero inerte hasta tener `appId`/`appSecret`. Como no he podido ver los nombres reales de los campos, `smValor()` busca por nombre (igual que la carga de `.xlsx` busca por cabecera) y existe `/solarman/diagnostico` para volcar un tramo en crudo y afinar el mapeo el primer día.
+Estas pruebas no acreditan conectividad real ni credenciales SPC. La aceptación de esa integración requiere comparar un día cerrado con el portal, confirmar el medidor y comprobar las unidades desde el Worker. El procedimiento y el límite observado de HTTPS están descritos en [SPC.md](SPC.md).

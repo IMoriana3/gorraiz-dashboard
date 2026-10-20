@@ -1,0 +1,78 @@
+name: Gorraiz · SPC y balance FV
+
+on:
+  pull_request:
+    paths:
+      - "index.html"
+      - "energia.js"
+      - "worker/**"
+      - "tests/**"
+      - ".github/workflows/gorraiz-ci.yml"
+      - "wrangler.toml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests de energía, SPC y dashboard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Obtener código
+        uses: actions/checkout@v4
+      - name: Preparar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Ejecutar pruebas sin credenciales
+        run: node --test tests/*.test.mjs
+      - name: Reconstruir Worker para editor web
+        run: node worker/construir.mjs
+      - name: Comprobar sintaxis JavaScript
+        run: |
+          node --check energia.js
+          node --check worker/index.js
+          node --check worker/spc.js
+          node --check worker/kstar-prueba.js
+          node --check worker/bundle.js
+          node --check worker/kstar-prueba-bundle.js
+      - name: Confirmar que bundle.js está actualizado
+        run: git diff --exit-code -- worker/bundle.js worker/kstar-prueba-bundle.js
+
+  cloudflare-dry-run:
+    name: Wrangler dry-run · sin desplegar
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Obtener código
+        uses: actions/checkout@v4
+      - name: Preparar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verificar que previews no accede al almacén de producción
+        run: |
+          python - <<'PY'
+          import tomllib
+          with open("worker/wrangler.toml", "rb") as f:
+              config = tomllib.load(f)
+          preview = config["previews"]
+          assert not preview.get("kv_namespaces"), "Preview no debe montar KV de producción"
+          assert preview["vars"]["SPC_SYNC_ENABLED"] == "false"
+          assert "PANEL_KEY" not in preview["vars"]
+          assert "SPC_PASS" not in preview["vars"]
+          with open("wrangler.toml", "rb") as f:
+              shim = tomllib.load(f)
+          assert shim["name"] == config["name"]
+          assert shim["main"] == "worker/index.js"
+          assert shim["workers_dev"] is False
+          assert not shim.get("kv_namespaces")
+          assert not shim.get("vars")
+          assert not shim.get("triggers")
+          assert shim["previews"]["vars"] == {"SPC_SYNC_ENABLED": "false"}
+          print("Preview raíz aislada de producción, sin secretos, KV ni cron")
+          PY
+      - name: Compilar Worker sin credenciales ni despliegue
+        run: npx --yes wrangler@4.145.0 deploy --dry-run --config worker/wrangler.toml
