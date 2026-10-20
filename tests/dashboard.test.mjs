@@ -13,7 +13,10 @@ function section(start, end) {
   return html.slice(a, b);
 }
 function dashboard() {
-  const context = vm.createContext({Intl, Date});
+  const local=new Map(),session=new Map();
+  const store=m=>({getItem:k=>m.has(k)?m.get(k):null,
+    setItem:(k,v)=>m.set(k,String(v)),removeItem:k=>m.delete(k)});
+  const context = vm.createContext({Intl, Date, URL, localStorage:store(local), sessionStorage:store(session)});
   vm.runInContext(energy, context, {filename: 'energia.js'});
   const source = `
     const CFG={kwp:100,inv:10000};
@@ -28,7 +31,9 @@ function dashboard() {
     spcHoy=()=> '2026-10-20';
     globalThis.api={
       procProd,procCons,calcKPIs,calcEvol,calcAnalysis,calculaInforme,calcCompPeriod,
-      ponFuenteSpc,incorporaSpc,getSpcDaily,getSpcRows,bloquesSpc,fn,
+      ponFuenteSpc,incorporaSpc,getSpcDaily,getSpcRows,bloquesSpc,fn,kstarCfg,kstarCall,sugiereRango,
+      setFetch(fn){globalThis.fetch=fn},
+      setKstarAccess(url,key){localStorage.setItem(KSTAR_URL_KEY,url);sessionStorage.setItem(KSTAR_SESSION_KEY,key)},
       setRaw(value){RAW=value},
       setGrid(rows){SPC_FUENTES=[];rows.forEach(d=>ponFuenteSpc(d.date,{rows:[],daily:[d],meta:d.meta||{}}))},
       setPricing(value,forward=false){PRECIOS=value?GorraizEnergia.validatePricingConfig(value):null;PRECIO_FUTURO=forward}
@@ -140,3 +145,52 @@ test('SPC chunking covers more than 400 days and limits cache requests to 31 day
   const cache=d.bloquesSpc('2026-01-01','2026-02-01',31);
   assert.equal(cache.length,2);assert.equal(cache[0].hasta,'2026-01-31');assert.equal(cache[1].desde,'2026-02-01');
 });
+
+
+test('KSTAR externo es la fuente real del informe: un dia cerrado, usuario solo en Worker', async () => {
+  const d=dashboard(),day='2026-10-19',key='fictional-temporary-key-1234567890123';
+  const url='https://gorraiz-kstar-prueba.example.workers.dev';
+  d.setKstarAccess(url,key);
+  const payload={rows:[{saveTime:'2026-10-19 12:00:00',positiveActiveElec:147000,
+    reverseActiveElec:2140.5901}],daily:[{date:day,importKWh:658.92,exportKWh:0,selfConsumptionKWh:74}],
+    meta:{fuente:'spc',stationId:'2026032317114373',meterId:'210261430F3060020000661',
+      dailyScope:'station',historyScope:'meter',completo:true,fetchedAt:'2026-10-20T13:00:00Z'}};
+  let called=0;
+  d.setFetch(async (req,init)=>{
+    called++;
+    assert.equal(req,url+'/spc/intercambio');
+    assert.equal(init.method,'POST');
+    assert.equal(init.headers['X-KSTAR-Test-Key'],key);
+    assert.equal(init.headers['content-type'],'application/json');
+    assert.deepEqual(JSON.parse(init.body),{desde:day,hasta:day});
+    assert.equal(JSON.stringify(init).includes('fictional-password'),false);
+    return {ok:true,json:async()=>payload};
+  });
+  const data=await d.kstarCall(day,day);
+  assert.equal(data.daily[0].importKWh,658.92);
+  assert.equal(data.daily[0].exportKWh,0);
+  assert.equal(d.incorporaSpc(data,{desde:day,hasta:day}),1);
+  assert.equal(d.getSpcDaily()[0].importKWh,658.92);
+  const r=d.calcKPIs(production(d,day,30,44),d.procCons([]),{from:day,to:day});
+  assert.equal(r.tC,732.92);
+  assert.equal(r.tPV,74);
+  assert.equal(r.tExport,0);
+  assert.equal(called,1);
+});
+test('KSTAR rechaza estacion o medidor ajenos, fechas abiertas y respuestas incompletas', async () => {
+  const d=dashboard(),day='2026-10-19';
+  d.setKstarAccess('https://test.workers.dev','fictional-temporary-key-1234567890123');
+  let requests=0;
+  const valid={rows:[],daily:[{date:day,importKWh:2,exportKWh:0}],meta:{
+    fuente:'spc',stationId:'2026032317114373',meterId:'210261430F3060020000661',
+    dailyScope:'station',historyScope:'meter',completo:true}};
+  d.setFetch(async()=>{requests++;return{ok:true,json:async()=>({...valid,meta:{...valid.meta,meterId:'WRONG'}})}});
+  await assert.rejects(d.kstarCall(day,day),/contador/);
+  assert.equal(requests,1);
+  await assert.rejects(d.kstarCall('2026-10-20','2026-10-20'),/cerrado/);
+  assert.equal(requests,1);
+  d.setFetch(async()=>{requests++;return{ok:true,json:async()=>({...valid,daily:[]})}});
+  await assert.rejects(d.kstarCall(day,day),/formato/);
+  assert.equal(requests,2);
+});
+
