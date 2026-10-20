@@ -260,3 +260,58 @@ test('KSTAR primer dia real simulado: respuesta 000000, entrada 658.92 y salida 
     assert.equal(JSON.stringify(d).includes(secret),false);
 });
 
+
+test('KSTAR aislado ofrece intercambio diario normalizado con CORS solo a Gorraiz', async t => {
+  const calls=t.mock.method(globalThis,'fetch',async url=>{
+    const u=new URL(url);
+    if(u.pathname==='/api/authentication/form')
+      return json({token:{access_token:'fictional-bridge-token',expires_in:3600}});
+    if(u.pathname==='/api/station/monitor/detail/meter/list')
+      return json({code:200,rows:[{deviceId:'M_TEST',stationId:ENV.SPC_STATION_ID}],total:1});
+    if(u.pathname==='/api/meter/monitor/detail/history/data')
+      return json({code:200,rows:[
+        {saveTime:'2026-10-19 00:02:03',positiveActiveElec:146977.375,reverseActiveElec:2140.5901},
+        {saveTime:'2026-10-19 23:56:34',positiveActiveElec:147636.2969,reverseActiveElec:2140.5901},
+      ],total:2});
+    if(u.pathname==='/api/station/monitor/detail/self')
+      return json({code:'000000',success:true,data:{positiveElec:658.92,reverseElec:0,selfConsumption:74}});
+    throw Error('Unexpected request');
+  });
+  const url='https://kstar-test.example.invalid/spc/intercambio';
+  const origin='https://imoriana3.github.io';
+  const preflight=await worker.fetch(new Request(url,{method:'OPTIONS',headers:{Origin:origin,
+    'Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'X-KSTAR-Test-Key,Content-Type'}}),ENV);
+  assert.equal(preflight.status,204);
+  assert.equal(preflight.headers.get('access-control-allow-origin'),origin);
+  assert.equal(calls.mock.callCount(),0);
+  const deny=await worker.fetch(new Request(url,{method:'OPTIONS',headers:{Origin:'https://another.example.invalid'}}),ENV);
+  assert.equal(deny.status,403);
+  const raw=await worker.fetch(new Request(url,{method:'POST',headers:{
+    Origin:origin,'X-KSTAR-Test-Key':SECRET,'Content-Type':'application/json'},
+    body:JSON.stringify({desde:DAY,hasta:DAY})}),ENV);
+  assert.equal(raw.status,200);
+  assert.equal(raw.headers.get('access-control-allow-origin'),origin);
+  assert.equal(raw.headers.get('cache-control'),'no-store');
+  const b=await raw.json();
+  assert.equal(b.daily[0].importKWh,658.92);
+  assert.equal(b.daily[0].exportKWh,0);
+  assert.equal(b.meta.completo,true);
+  assert.equal(b.meta.persistido,false);
+  assert.equal(b.meta.origen,'kstar-worker-aislado');
+  assert.equal(b.rows.length,2);
+  for(const x of [ENV.SPC_USER,ENV.SPC_PASS,'fictional-bridge-token'])
+    assert.equal(JSON.stringify(b).includes(x),false);
+  assert.equal(calls.mock.callCount(),4);
+});
+test('KSTAR aisla descarga externa: sin clave, otro origen, futuro y rango largo no contactan al proveedor', async t=>{
+  const calls=t.mock.method(globalThis,'fetch',async()=>{throw Error('Network forbidden')});
+  const url='https://kstar-test.example.invalid/spc/intercambio';
+  const make=(origin,key,from,to)=>new Request(url,{method:'POST',headers:{
+    Origin:origin,'X-KSTAR-Test-Key':key,'Content-Type':'application/json'},
+    body:JSON.stringify({desde:from,hasta:to})});
+  assert.equal((await worker.fetch(make('https://wrong.example',SECRET,DAY,DAY),ENV)).status,403);
+  assert.equal((await worker.fetch(make('https://imoriana3.github.io','wrong',DAY,DAY),ENV)).status,401);
+  assert.equal((await worker.fetch(make('https://imoriana3.github.io',SECRET,DAY,'2026-10-20'),ENV)).status,400);
+  assert.equal((await worker.fetch(make('https://imoriana3.github.io',SECRET,'2026-10-20','2026-10-20'),ENV)).status,400);
+  assert.equal(calls.mock.callCount(),0);
+});

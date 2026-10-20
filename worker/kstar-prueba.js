@@ -1,6 +1,6 @@
 // Prueba aislada de lectura SPC. No contiene credenciales ni rutas de control.
 // Para copiar este Worker en Cloudflare, usar kstar-prueba-bundle.js generado.
-import {spcDiagnostico, safeSpcError} from './spc.js';
+import {spcDiagnostico, spcIntercambio, safeSpcError} from './spc.js';
 
 const HEADERS = {
   'cache-control': 'no-store',
@@ -49,8 +49,24 @@ const HTML = [
   '});</script></body></html>',
 ].join('\n');
 
-function output(data, status = 200) {
-  return new Response(JSON.stringify(data), {status, headers: {...HEADERS, 'content-type': 'application/json; charset=utf-8'}});
+// La ruta de intercambio es la única que permite CORS desde el dashboard.
+// No usamos comodines, cookies ni credenciales del proveedor en el navegador.
+const DASHBOARD_ORIGIN = 'https://imoriana3.github.io';
+function corsHeaders(req) {
+  const origin = req.headers.get('Origin');
+  return origin === DASHBOARD_ORIGIN ? {
+    'access-control-allow-origin': DASHBOARD_ORIGIN,
+    'access-control-allow-headers': 'content-type, X-KSTAR-Test-Key',
+    'access-control-allow-methods': 'POST, OPTIONS',
+    'access-control-max-age': '600',
+    vary: 'Origin',
+  } : {};
+}
+function output(data, status = 200, req = null) {
+  return new Response(JSON.stringify(data), {status, headers: {
+    ...HEADERS, 'content-type': 'application/json; charset=utf-8',
+    ...(req ? corsHeaders(req) : {}),
+  }});
 }
 async function equalSecret(candidate, actual) {
   if (typeof actual !== 'string' || actual.length < 24 || typeof candidate !== 'string') return false;
@@ -153,17 +169,26 @@ export default {
     const path = new URL(req.url).pathname;
     if (req.method === 'GET' && path === '/')
       return new Response(HTML, {headers: {...HEADERS, 'content-type': 'text/html; charset=utf-8'}});
-    if (path !== '/comprobar' && path !== '/sondeo') return output({error: 'Ruta no disponible.'}, 404);
-    if (req.method !== 'POST') return output({error: 'Se requiere POST.'}, 405);
+    const exchange = path === '/spc/intercambio';
+    const origin = req.headers.get('Origin');
+    if (exchange && origin && origin !== DASHBOARD_ORIGIN)
+      return output({error: 'Origen no autorizado.'}, 403);
+    if (exchange && req.method === 'OPTIONS') {
+      return new Response(null, {status: 204, headers: {...HEADERS, ...corsHeaders(req)}});
+    }
+    if (path !== '/comprobar' && path !== '/sondeo' && !exchange)
+      return output({error: 'Ruta no disponible.'}, 404);
+    if (req.method !== 'POST')
+      return output({error: 'Se requiere POST.'}, 405, exchange ? req : null);
     if (!env.KSTAR_TEST_KEY || String(env.KSTAR_TEST_KEY).length < 24)
       return output({error: 'Configura KSTAR_TEST_KEY como secreto de al menos 24 caracteres.'}, 503);
     if (!await equalSecret(req.headers.get('X-KSTAR-Test-Key'), env.KSTAR_TEST_KEY))
-      return output({error: 'Clave de prueba incorrecta.'}, 401);
+      return output({error: 'Clave de prueba incorrecta.'}, 401, exchange ? req : null);
     if (path === '/sondeo') return output(await probeNetwork());
     if (env.SPC_TRANSPORT !== 'http' || env.SPC_HTTP_RISK_ACK !== 'I_ACCEPT_UNENCRYPTED_CREDENTIALS')
-      return output({error: 'La prueba HTTP no está habilitada. Revisa ambas variables de aceptación.'}, 501);
+      return output({error: 'La prueba HTTP no está habilitada. Revisa ambas variables de aceptación.'}, 501, exchange ? req : null);
     if (!env.SPC_USER || !env.SPC_PASS || !env.SPC_STATION_ID)
-      return output({error: 'Faltan SPC_USER, SPC_PASS o SPC_STATION_ID en el Worker.'}, 501);
+      return output({error: 'Faltan SPC_USER, SPC_PASS o SPC_STATION_ID en el Worker.'}, 501, exchange ? req : null);
     let text;
     try { text = await req.text(); }
     catch { return output({error: 'Cuerpo de consulta no disponible.'}, 400); }
@@ -171,7 +196,26 @@ export default {
     let body;
     try { body = JSON.parse(text); }
     catch { return output({error: 'Formato de consulta incorrecto.'}, 400); }
-    if (!validPastDate(body?.dia)) return output({error: 'Selecciona un día cerrado válido.'}, 400);
+    const dia = exchange
+      ? (body?.desde === body?.hasta ? body.desde : '')
+      : body?.dia;
+    if (!validPastDate(dia))
+      return output({error: 'Selecciona un único día cerrado válido.'}, 400, exchange ? req : null);
+    // Solo la ruta aislada comparte registros normalizados con el dashboard.
+    // Evitamos escribir KV aquí; no tenemos programación automática ni control.
+    if (exchange) {
+      try {
+        const r = await spcIntercambio({...env, DATOS: undefined}, dia, dia, {sessionCache: new Map()});
+        if (r.meta?.stationId !== env.SPC_STATION_ID || r.daily?.[0]?.date !== dia)
+          return output({error: 'La estación o el día KSTAR no coinciden.'}, 502, req);
+        return output({rows: r.rows, daily: r.daily, meta: {
+          ...r.meta, persistido: false, origen: 'kstar-worker-aislado',
+        }}, 200, req);
+      } catch (error) {
+        const safe = safeSpcError(error);
+        return output({code: safe.code, error: safe.message}, safe.status, req);
+      }
+    }
     let etapa = 'preparacion', detalleRed = null, proveedor = null, historico = null;
     // En la prueba aislada usamos redirección manual: nunca seguir un 302
     // con la contraseña o el Bearer a otro destino. No registrar URLs ni headers.
