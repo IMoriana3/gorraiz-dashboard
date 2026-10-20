@@ -225,13 +225,54 @@ test('si el token personal ve cero plantas pero su cuenta tiene otra organizaci�
   assert.deepEqual(api.tokens.map(x=>x.orgId??null),[null]);
 });
 
-test('un token personal sin orgId rechazado y sin orgId configurado no se repite',async t=>{
+test('rollback sin SOLARMAN_ORGID: fallback real Amixalan tras login personal rechazado',async t=>{
   const api=simulaProveedor(t,{personalValido:false});
   const env={...base,SOLARMAN_ORGID:undefined};
   const response=await worker.fetch(prod(),env);
+  assert.equal(response.status,200,await response.clone().text());
+  const data=await response.json();
+  assert.deepEqual(api.tokens.map(x=>x.orgId??null),[null,10865841]);
+  assert.equal(data.meta.organizacion.id,'10865841');
+  assert.equal(data.meta.organizacion.nombre,'Amixalan (Gorraiz)');
+  assert.equal(data.meta.organizacion.automatico,true);
+  assert.equal(data.A.length,1);
+  assert.equal(data.B.length,1);
+
+  const estado=await worker.fetch(state(),env);
+  const st=await estado.json();
+  assert.equal(st.solarman,true);
+  assert.equal(st.solarmanOrgId,null);
+  assert.equal(st.solarmanOrgIdEfectivo,'10865841');
+  assert.equal(st.solarmanOrgIdOrigen,'respaldo-gorraiz');
+});
+
+test('sin ORGID y con rechazo real en ambos modos: diagnóstico distinto sin revelar secretos',async t=>{
+  const api=simulaProveedor(t,{personalValido:false,orgValido:false});
+  const env={...base,SOLARMAN_ORGID:undefined};
+  const response=await worker.fetch(prod(),env);
   assert.equal(response.status,502);
-  assert.match((await response.json()).error,/login personal sin orgId rechazado/);
-  assert.deepEqual(api.tokens.map(x=>x.orgId??null),[null]);
+  const result=await response.json();
+  assert.match(result.error,/han fallado los dos modos de login/);
+  assert.match(result.error,/Personal:/);
+  assert.match(result.error,/Organización:/);
+  assert.deepEqual(api.tokens.map(x=>x.orgId??null),[null,10865841]);
+  for(const secret of [env.SOLARMAN_PASS,env.SOLARMAN_APPSECRET,hash,env.SOLARMAN_EMAIL])
+    assert.equal(result.error.includes(secret),false);
+});
+
+test('ORGID configurado tiene prioridad sobre respaldo fijo de Gorraiz',async t=>{
+  const api=simulaProveedor(t,{personalValido:false});
+  const env={...base,SOLARMAN_ORGID:'12345678'};
+  const response=await worker.fetch(prod(),env);
+  assert.equal(response.status,200,await response.clone().text());
+  assert.deepEqual(api.tokens.map(x=>x.orgId??null),[null,12345678]);
+  const result=await response.json();
+  assert.equal(result.meta.organizacion.id,'12345678');
+  assert.equal(result.meta.organizacion.automatico,false);
+  const estado=await worker.fetch(state(),env);
+  const st=await estado.json();
+  assert.equal(st.solarmanOrgIdEfectivo,'12345678');
+  assert.equal(st.solarmanOrgIdOrigen,'configurado');
 });
 
 test('token personal válido sin permiso para listar plantas cambia a organización configurada',async t=>{
