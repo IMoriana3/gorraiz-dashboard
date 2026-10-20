@@ -262,7 +262,10 @@ test('KSTAR primer dia real simulado: respuesta 000000, entrada 658.92 y salida 
 
 
 test('KSTAR aislado ofrece intercambio diario normalizado con CORS solo a Gorraiz', async t => {
-  const calls=t.mock.method(globalThis,'fetch',async url=>{
+  const calls=t.mock.method(globalThis,'fetch',async (url,init)=>{
+    // Regresión: /comprobar funcionaba porque usaba redirect:'manual',
+    // mientras que /spc/intercambio fallaba con el modo 'error'.
+    assert.equal(init.redirect,'manual');
     const u=new URL(url);
     if(u.pathname==='/api/authentication/form')
       return json({token:{access_token:'fictional-bridge-token',expires_in:3600}});
@@ -314,4 +317,49 @@ test('KSTAR aisla descarga externa: sin clave, otro origen, futuro y rango largo
   assert.equal((await worker.fetch(make('https://imoriana3.github.io',SECRET,DAY,'2026-10-20'),ENV)).status,400);
   assert.equal((await worker.fetch(make('https://imoriana3.github.io',SECRET,'2026-10-20','2026-10-20'),ENV)).status,400);
   assert.equal(calls.mock.callCount(),0);
+});
+
+
+test('el puente KSTAR no sigue 302 que contenga credenciales y da etapa saneada',async t=>{
+  const upstream=t.mock.method(globalThis,'fetch',async(url,init)=>{
+    assert.equal(init.redirect,'manual');
+    return new Response(null,{status:302,headers:{
+      location:'http://other.example.invalid/login?password='+ENV.SPC_PASS,
+    }});
+  });
+  const url='https://kstar-test.example.invalid/spc/intercambio';
+  const r=await worker.fetch(new Request(url,{method:'POST',headers:{
+    Origin:'https://imoriana3.github.io',
+    'X-KSTAR-Test-Key':SECRET,'Content-Type':'application/json',
+  },body:JSON.stringify({desde:DAY,hasta:DAY})}),ENV);
+  assert.equal(r.status,502);
+  assert.equal(r.headers.get('access-control-allow-origin'),'https://imoriana3.github.io');
+  const body=await r.json();
+  assert.equal(body.code,'SPC_REDIRECT');
+  assert.equal(body.etapa,'autenticacion');
+  assert.equal(body.detalleRed,undefined);
+  assert.equal(JSON.stringify(body).includes(ENV.SPC_PASS),false);
+  assert.equal(JSON.stringify(body).includes('other.example.invalid'),false);
+  assert.equal(upstream.mock.callCount(),1);
+});
+
+test('el puente KSTAR distingue la etapa del fallo de transporte sin devolver URL ni secretos',async t=>{
+  const upstream=t.mock.method(globalThis,'fetch',async(url,init)=>{
+    assert.equal(init.redirect,'manual');
+    throw Error('Network error fetching '+url+' with '+ENV.SPC_PASS);
+  });
+  const url='https://kstar-test.example.invalid/spc/intercambio';
+  const r=await worker.fetch(new Request(url,{method:'POST',headers:{
+    Origin:'https://imoriana3.github.io',
+    'X-KSTAR-Test-Key':SECRET,'Content-Type':'application/json',
+  },body:JSON.stringify({desde:DAY,hasta:DAY})}),ENV);
+  assert.equal(r.status,503);
+  const body=await r.json();
+  assert.equal(body.code,'SPC_NETWORK');
+  assert.equal(body.etapa,'autenticacion');
+  assert.equal(body.detalleRed,'fallo_de_transporte');
+  assert.equal(JSON.stringify(body).includes(ENV.SPC_USER),false);
+  assert.equal(JSON.stringify(body).includes(ENV.SPC_PASS),false);
+  assert.equal(JSON.stringify(body).includes('username='),false);
+  assert.equal(upstream.mock.callCount(),1);
 });
