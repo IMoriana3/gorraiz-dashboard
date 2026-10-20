@@ -388,6 +388,13 @@ function createSpcClient(env, options = {}) {
     validateSpcRange(date, date);
     const {meterId, meterCount} = await discoverMeter();
     const h = await history(meterId, date);
+    // El comprobador independiente puede conocer la cobertura y las
+    // primeras/últimas lecturas aunque el resumen de estación falle.
+    // No altera el resultado, no persiste datos ni cambia el flujo normal.
+    if (typeof options.onHistory === 'function') {
+      try { options.onHistory({meterId, meterCount, rows: h.rows, totalDeclarado: h.total, paginas: h.pages}); }
+      catch { /* El diagnóstico opcional no debe invalidar una lectura real. */ }
+    }
     const daily = normaliseSpcDaily(await request('/station/monitor/detail/self', {
       params: {stationId: cfg.stationId, startTime: date},
     }), date);
