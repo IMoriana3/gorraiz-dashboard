@@ -31,7 +31,7 @@ function dashboard() {
     spcHoy=()=> '2026-10-20';
     globalThis.api={
       procProd,procCons,calcKPIs,calcEvol,calcAnalysis,calculaInforme,calcCompPeriod,
-      ponFuenteSpc,incorporaSpc,getSpcDaily,getSpcRows,bloquesSpc,fn,kstarCfg,kstarCall,sugiereRango,
+      ponFuenteSpc,incorporaSpc,getSpcDaily,getSpcRows,bloquesSpc,fn,kstarCfg,kstarCall,
       setFetch(fn){globalThis.fetch=fn},
       setKstarAccess(url,key){localStorage.setItem(KSTAR_URL_KEY,url);sessionStorage.setItem(KSTAR_SESSION_KEY,key)},
       setRaw(value){RAW=value},
