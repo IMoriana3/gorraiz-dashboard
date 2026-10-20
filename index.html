@@ -163,10 +163,10 @@ input[type=file]{display:none}
   <div id="pUpload">
     <div class="uz" id="zA" onclick="$('fA').click()"><h3>📂 Inversor A — Ficheros de producción (.xlsx)</h3><p>Selecciona uno o varios ficheros .xlsx del Inversor A</p><div class="st" id="stA"></div><input type="file" id="fA" accept=".xlsx" multiple></div>
     <div class="uz" id="zB" onclick="$('fB').click()"><h3>📂 Inversor B — Ficheros de producción (.xlsx)</h3><p>Selecciona uno o varios ficheros .xlsx del Inversor B</p><div class="st" id="stB"></div><input type="file" id="fB" accept=".xlsx" multiple></div>
-    <div class="uz" id="zI" onclick="$('fI').click()"><h3>📂 Consumo i-DE (.xlsx)</h3><p>Carga los ficheros de consumo horario de i-DE (hoja "Horarias"). Se unirán sin duplicar los días repetidos.</p><div class="st" id="stI"></div><div class="fl" id="flI"></div><input type="file" id="fI" accept=".xlsx" multiple></div>
+    <div class="uz" id="zI" style="display:none" onclick="$('fI').click()"><h3>📂 Consumo i-DE (.xlsx)</h3><p>Carga los ficheros de consumo horario de i-DE (hoja "Horarias"). Se unirán sin duplicar los días repetidos.</p><div class="st" id="stI"></div><div class="fl" id="flI"></div><input type="file" id="fI" accept=".xlsx" multiple></div>
     <div class="az" id="zAuto">
       <h3>⚡ Descarga automática</h3>
-      <p>Trae la producción, el intercambio con la red de SPC y el consumo de Datadis, según las conexiones disponibles.</p>
+      <p>Trae producción FV de Solarman e importación/exportación de KSTAR SPC01. Las fuentes anteriores i-DE/Datadis quedan archivadas.</p>
       <div class="row">
         <label>Desde:</label><input type="date" id="aDesde">
         <label>Hasta:</label><input type="date" id="aHasta">
@@ -179,7 +179,8 @@ input[type=file]{display:none}
       <div class="cfg" id="cfgAuto"></div>
     </div>
     <div class="az" id="zSpc">
-      <div class="spc-head"><h3>Intercambio de red · SPC</h3><button class="btn btn2" id="btnSpc" onclick="comprobarSpc()" disabled>Comprobar SPC</button></div>
+      <div class="spc-head"><h3>Intercambio de red · KSTAR SPC01</h3><button class="btn btn2" id="btnSpc" onclick="comprobarSpc()" disabled>Comprobar SPC</button></div>
+      <div class="cfg" id="cfgKstar"></div>
       <div class="st" id="spcEstado" role="status">Estado de SPC sin comprobar.</div>
       <div class="krow">
         <div class="kbox"><div class="kl">Días con datos</div><div class="kv" id="spcDias">—</div><div class="ks" id="spcFechas">Sin datos guardados</div></div>
@@ -557,6 +558,58 @@ function encajaGraficas(){
 // Se conservan los campos y las horas del portal. Los contadores acumulados
 // no se convierten aquí en energía horaria ni se mezclan con RAW.I.
 let SPC_FUENTES=[],SPC_PRUEBA=null,SPC_OCUPADO=false;
+const KSTAR_ONLY=true;
+const KSTAR_URL_KEY='gorraiz_kstar_url_v1',KSTAR_SESSION_KEY='gorraiz_kstar_key_sesion_v1';
+const KSTAR_STATION='2026032317114373',KSTAR_METER='210261430F3060020000661';
+function kstarCfg(){
+  try{return {url:(localStorage.getItem(KSTAR_URL_KEY)||'').trim(),
+    key:sessionStorage.getItem(KSTAR_SESSION_KEY)||''}}catch{return{url:'',key:''}}
+}
+function pintaKstarCfg(){
+  const cfg=kstarCfg();
+  $('cfgKstar').innerHTML=`<div class="row">
+    <label>Worker KSTAR independiente:</label><input type="url" id="kstarUrl" placeholder="https://gorraiz-kstar-prueba.tu-subdominio.workers.dev" value="${esc(cfg.url)}">
+    <label>Clave de prueba:</label><input type="password" id="kstarKey" autocomplete="off" placeholder="KSTAR_TEST_KEY (no contraseña del proveedor)" value="" minlength="24">
+    <button class="btn btn2" type="button" onclick="guardarKstarCfg()">Guardar sesión KSTAR</button>
+    <button class="btn btn2" type="button" onclick="borrarKstarCfg()">Desconectar KSTAR</button></div>
+    <div class="hint">La clave temporal solo se conserva durante la sesión del navegador; las credenciales de KSTAR siguen en Cloudflare. El tramo Cloudflare → KSTAR por HTTP carece de cifrado.</div>`;
+}
+function guardarKstarCfg(){
+  try{
+    const raw=$('kstarUrl').value.trim().replace(/\/+$/,'');
+    const parsed=new URL(raw);
+    if(parsed.protocol!=='https:'||!parsed.hostname.endsWith('.workers.dev')||parsed.username||parsed.password||
+      parsed.search||parsed.hash||parsed.pathname!=='/')
+      throw new Error('Usa la URL HTTPS principal del Worker de pruebas de Cloudflare, sin rutas ni parámetros.');
+    const clave=$('kstarKey').value;
+    if(clave.length<24&&!kstarCfg().key)throw new Error('Introduce KSTAR_TEST_KEY (mínimo 24 caracteres).');
+    localStorage.setItem(KSTAR_URL_KEY,raw);
+    if(clave.length>=24)sessionStorage.setItem(KSTAR_SESSION_KEY,clave);
+    SPC_PRUEBA=null;pintaKstarCfg();pintaSpc();estadoApi();
+    $('spcAccion').textContent='Worker KSTAR configurado. Elige un día cerrado y pulsa «Comprobar SPC».';
+  }catch(e){$('spcAccion').textContent=e.message}
+}
+function borrarKstarCfg(){
+  localStorage.removeItem(KSTAR_URL_KEY);sessionStorage.removeItem(KSTAR_SESSION_KEY);
+  SPC_PRUEBA=null;pintaKstarCfg();pintaSpc();estadoApi();
+}
+async function kstarCall(desde,hasta){
+  const cfg=kstarCfg();
+  if(!cfg.url||cfg.key.length<24)throw new Error('Guarda la URL y la clave temporal de KSTAR.');
+  if(desde!==hasta||!spcFecha(desde)||desde>=spcHoy('Europe/Madrid'))
+    throw new Error('KSTAR solo admite un día cerrado por consulta.');
+  const r=await fetch(cfg.url+'/spc/intercambio',{method:'POST',cache:'no-store',
+    headers:{'content-type':'application/json','X-KSTAR-Test-Key':cfg.key},
+    body:JSON.stringify({desde,hasta})});
+  const p=await r.json().catch(()=>({error:'Respuesta ilegible del Worker KSTAR.'}));
+  if(!r.ok)throw new Error(p.error||('Error de KSTAR HTTP '+r.status));
+  if(!p||!Array.isArray(p.rows)||!Array.isArray(p.daily)||p.daily.length!==1||
+    p.daily[0].date!==desde||p.meta?.stationId!==KSTAR_STATION||
+    p.meta?.meterId!==KSTAR_METER||p.meta?.dailyScope!=='station'||
+    p.meta?.historyScope!=='meter'||p.meta?.fuente!=='spc')
+    throw new Error('Datos KSTAR rechazados: estación, contador, día o formato incorrectos.');
+  return p;
+}
 function spcFecha(v){
   if(typeof v!=='string'||!/^\d{4}-\d{2}-\d{2}(?:$|[ T])/.test(v))return '';
   const d=v.slice(0,10),n=Date.parse(d+'T00:00:00Z');
