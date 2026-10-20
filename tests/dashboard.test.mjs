@@ -99,12 +99,13 @@ test('selected report, full-history pages and comparison keep their separate cal
   assert.equal(cmp.energia.coverage.expectedDays,4);assert.equal(cmp.tAF,null);assert.equal(cmp.franja.P1,null);
 });
 
-test('hourly import remains separate from PV and an open day is never valued', () => {
+test('KSTAR operativo ignora el legado horario i-DE/Datadis y no valora un día abierto', () => {
   const d=dashboard(),date='2026-10-20';d.setPricing(fakePrices,true);d.setGrid([grid(date)]);
   const cons=d.procCons([{ts:new Date(date+'T12:00:00'),consumo:8,periodo:'P2'}]);
-  assert.equal(cons.hourly[0].red,8);assert.equal(cons.hourly[0].total,undefined);
+  assert.equal(cons.hourly.length,0,'ninguna curva i-DE se presenta como medida KSTAR');
   const r=d.calcKPIs(production(d,date),cons,{from:date,to:date});
   assert.equal(r.energia.coverage.completeDays,0);assert.equal(r.tAF,null);
+  assert.ok(r.hpCons.LV.every(v=>v===null));
 });
 
 test('future-price permission is explicit in dashboard wiring and preserves measured zero', () => {
