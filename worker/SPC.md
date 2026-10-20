@@ -14,6 +14,23 @@ No hay rutas de control, ajustes del antivertido ni cambios de los inversores. E
 
 **Alcance de la fase actual:** solo el intercambio de energía de KSTAR SPC01 y la generación FV que ya se descarga de Solarman. No se desarrollan ni prueban ahora i-DE o Datadis.
 
+## Modo HTTP experimental (solo con aceptación del riesgo)
+
+KSTAR sirve su web pública por HTTP, mientras que desde GitHub el mismo host no acepta conexiones HTTPS. Esta PR admite **pruebas manuales por HTTP** solo mediante dos variables expresas. **No están configuradas ni activadas en Cloudflare** y el conector nunca cambia de protocolo automáticamente.
+
+**Riesgo real:** el login de KSTAR incluye `username` y `password` en la URL y las consultas llevan token Bearer. En HTTP, **todo viaja sin cifrar por Internet**, y terceros con acceso a la red pueden interceptar esas credenciales o el token. Aunque nuestro Worker reciba las peticiones del dashboard por HTTPS, eso no protege el tramo Cloudflare → KSTAR. Puede dar acceso no autorizado a la cuenta y a funciones de control, según sus permisos. **No usar la cuenta principal de control:** solicitar a KSTAR una cuenta de prueba temporal, revocable y de solo lectura, si el servicio lo permite. Nunca introducir credenciales en el chat, repositorio o logs.
+
+Para habilitar una prueba acotada, en **Cloudflare → Worker → Settings → Variables and Secrets** configurar expresamente:
+
+| Variable de prueba | Valor exacto |
+|---|---|
+| `SPC_TRANSPORT` | `http` |
+| `SPC_HTTP_RISK_ACK` | `I_ACCEPT_UNENCRYPTED_CREDENTIALS` |
+
+`SPC_USER` y `SPC_PASS` se mantienen como *secretos* del Worker. El cron no debe activarse hasta completar pruebas: `SPC_SYNC_ENABLED=false`. El dashboard muestra «HTTP SIN CIFRAR» y el estado del Worker `spcUnencryptedTransport=true`.
+
+Para recuperar el modo seguro, **eliminar ambas variables o poner `SPC_TRANSPORT=https`**. HTTP queda bloqueado por defecto; no hay redirecciones ni fallback desde HTTPS. Recomendación de operación definitiva: endpoint HTTPS del fabricante o lectura local segura.
+
 ## 1. Desplegar y configurar
 
 Despliega el código revisado del Worker con el procedimiento habitual del repositorio. En Cloudflare, abre el Worker y **Settings → Variables and Secrets**. Añade como secretos:

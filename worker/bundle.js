@@ -73,11 +73,13 @@ function periodo(y,mes,dia,h){
 // El cliente público del portal documenta estas llamadas, pero no es una API
 // pública estable. El primer acceso real debe contrastarse con su pantalla/XLS.
 const SPC_BASE = 'https://spc.ksdatacloud.com';
+const SPC_HTTP_BASE = 'http://spc.ksdatacloud.com';
+// Sin cambio automático a HTTP cuando HTTPS falla: solo activación deliberada.
 const SPC_FIELDS = Object.freeze([
   'saveTime', 'positiveActiveElec', 'reverseActiveElec', 'totalActivePower', 'currentRatio',
 ]);
 const SPC_LIMITS = Object.freeze({pageSize: 100, maxPages: 25, cacheDays: 31, maxRequests: 36});
-const API = SPC_BASE + '/api';
+// La URL efectiva se selecciona por configuración al abrir el cliente.
 const DAY_MS = 86400000;
 const TOKEN_TTL_MS = 4 * 60000;
 const MAX_JSON_CHARS = 4 * 1024 * 1024;
@@ -150,7 +152,12 @@ function settings(env, requireCredentials = true) {
   const timezone = env.SPC_TIMEZONE || 'Europe/Madrid';
   try { new Intl.DateTimeFormat('sv-SE', {timeZone: timezone}).format(new Date()); }
   catch { fail('SPC_CONFIG', 'SPC_TIMEZONE no es una zona horaria válida.', 501); }
-  return {stationId, meterId, timezone};
+  const transport = env.SPC_TRANSPORT === undefined ? 'https' : String(env.SPC_TRANSPORT).trim().toLowerCase();
+  if (transport !== 'https' && transport !== 'http')
+    fail('SPC_CONFIG', 'SPC_TRANSPORT debe ser https o http.', 501);
+  if (transport === 'http' && env.SPC_HTTP_RISK_ACK !== 'I_ACCEPT_UNENCRYPTED_CREDENTIALS')
+    fail('SPC_HTTP_LOCKED', 'HTTP sin cifrar está bloqueado. Hay que aceptar expresamente el riesgo de exponer las credenciales y la sesión.', 403);
+  return {stationId, meterId, timezone, transport};
 }
 
 function localTime(date, timezone) {
@@ -210,6 +217,7 @@ async function credentialsKey(user, pass) {
 
 function createSpcClient(env, options = {}) {
   const cfg = settings(env);
+  const api = (cfg.transport === 'http' ? SPC_HTTP_BASE : SPC_BASE) + '/api';
   const fetcher = options.fetch || globalThis.fetch;
   const tokenStore = options.sessionCache || sessions;
   const user = env.SPC_USER.trim(), pass = env.SPC_PASS;
@@ -223,7 +231,7 @@ function createSpcClient(env, options = {}) {
     if (requestCount >= SPC_LIMITS.maxRequests)
       fail('SPC_REQUEST_LIMIT', 'SPC necesita demasiadas consultas para completar el día. No se ha guardado un resultado truncado.');
     requestCount++;
-    const url = new URL(API + path);
+    const url = new URL(api + path);
     if (params) for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
     const headers = {Accept: 'application/json', language: 'en',
       client_time: localTime(clock(options), cfg.timezone)};
@@ -239,10 +247,10 @@ function createSpcClient(env, options = {}) {
         ...(body !== undefined ? {body: JSON.stringify(body)} : {})});
       if (response.status === 401) fail('SPC_SESSION_EXPIRED', 'La sesión de SPC ha caducado.');
       if (response.status >= 300 && response.status < 400) {
-        fail('SPC_REDIRECT', 'SPC intentó redirigir la consulta. Solo se permite el servicio HTTPS configurado.');
+        fail('SPC_REDIRECT', 'SPC intentó redirigir la consulta fuera del origen fijo autorizado.');
       }
       if (!response.ok) {
-        fail('SPC_HTTP', 'SPC no está disponible por HTTPS (HTTP ' + response.status + ').',
+        fail('SPC_HTTP', 'SPC no está disponible por ' + (cfg.transport === 'http' ? 'HTTP sin cifrar' : 'HTTPS') + ' (HTTP ' + response.status + ').',
           response.status >= 500 ? 503 : 502);
       }
       if (!/application\/(?:[\w.+-]+\+)?json\b/i.test(response.headers.get('content-type') || '')) {
@@ -254,7 +262,9 @@ function createSpcClient(env, options = {}) {
       if (text.length > MAX_JSON_CHARS) fail('SPC_SIZE', 'La respuesta de SPC supera el tamaño admitido.');
     } catch (error) {
       if (error instanceof SpcError) throw error;
-      fail('SPC_NETWORK', 'No se ha podido contactar con SPC mediante HTTPS. No se ha usado HTTP.', 503);
+      fail('SPC_NETWORK', cfg.transport === 'http'
+        ? 'No se ha podido contactar con SPC por HTTP sin cifrar (modo experimental).'
+        : 'No se ha podido contactar con SPC mediante HTTPS. No se ha usado HTTP.', 503);
     } finally { clearTimeout(timer); }
     let data;
     try { data = JSON.parse(text); }
@@ -390,6 +400,7 @@ function createSpcClient(env, options = {}) {
       fuente: 'spc', stationId: cfg.stationId, meterId, desde: date, hasta: date,
       solicitado: {desde: date, hasta: date}, registros: h.rows.length,
       actualizado: updated, fetchedAt: updated, timezone: cfg.timezone, timezoneVerified: false,
+      transport: cfg.transport, unencryptedTransport: cfg.transport === 'http',
       paginas: h.pages, totalDeclarado: h.total, sinHistorico: !h.rows.length,
       completo: closed && hasHistoryEnergy && daily.importKWh !== null && daily.exportKWh !== null && daily.importKWh >= 0 && daily.exportKWh >= 0,
       resumenDiarioCompleto: closed && daily.importKWh !== null && daily.exportKWh !== null && daily.importKWh >= 0 && daily.exportKWh >= 0,
@@ -489,6 +500,8 @@ function validateCached(payload, stationId, date) {
     desde: date, hasta: date, solicitado: {desde: date, hasta: date}, registros: rows.length,
     actualizado: m.actualizado, fetchedAt: isoOrNull(m.fetchedAt) || m.actualizado,
     timezone: typeof m.timezone === 'string' ? m.timezone : null, timezoneVerified: false,
+    transport: m.transport === 'http' ? 'http' : 'https',
+    unencryptedTransport: m.unencryptedTransport === true,
     completo: m.completo === true, sinHistorico: !rows.length, diaCerrado: m.diaCerrado === true,
     resumenDiarioCompleto: m.resumenDiarioCompleto === true,
     paginas: Number.isSafeInteger(m.paginas) ? m.paginas : null,
@@ -536,6 +549,8 @@ async function spcEstado(env) {
   // Configurado no equivale a autenticación comprobada: esa evidencia está en
   // spcUltima y en el resultado del diagnóstico, no en la presencia de secretos.
   return {spc: faltan.length === 0 && !!config, spcFaltan: faltan,
+    spcTransport: config ? config.transport : 'https',
+    spcUnencryptedTransport: !!(config && config.transport === 'http'),
     spcSync: enabled(env.SPC_SYNC_ENABLED), spcConfigError: configError,
     spcUltima: last, spcLastAttempt: last ? last.lastAttempt : null,
     spcLastSuccess: last ? last.lastSuccess : null, spcError: last ? last.lastError : null};

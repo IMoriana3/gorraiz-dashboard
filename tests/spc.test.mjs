@@ -60,13 +60,14 @@ function fixture({
   daily = {positiveElec: 2, reverseElec: 3, selfConsumption: 4},
   meters = [{deviceId: 'METER_TEST', stationId: ENV.SPC_STATION_ID}],
   override,
+  protocol = 'https:',
 } = {}) {
   const calls = [];
   let logins = 0;
   const fetch = async (url, init) => {
     const parsed = new URL(url);
     calls.push({url: parsed, init});
-    assert.equal(parsed.protocol, 'https:');
+    assert.equal(parsed.protocol, protocol);
     assert.equal(parsed.hostname, 'spc.ksdatacloud.com');
     assert.ok(Object.values(PATHS).includes(parsed.pathname), 'Solo rutas de lectura conocidas');
     assert.equal(init.redirect, 'error');
@@ -119,6 +120,62 @@ function assertSanitised(value) {
     assert.equal(text.includes(forbidden), false, 'No expone ' + forbidden);
   }
 }
+
+
+test('SPC bloquea HTTP salvo doble activación explícita y conserva HTTPS por defecto', async () => {
+  const missingAck = {...ENV, SPC_TRANSPORT: 'http'};
+  let attempts = 0;
+  const noNetwork = () => { attempts++; throw new Error('Network should not be called'); };
+  await assert.rejects(createSpcClient(missingAck, {fetch: noNetwork}).readDay(DAY),
+    e => e.code === 'SPC_HTTP_LOCKED' && e.status === 403);
+  assert.equal(attempts, 0);
+  const noAccess = await spcEstado(missingAck);
+  assert.equal(noAccess.spc, false);
+  assert.match(noAccess.spcConfigError, /HTTP sin cifrar/);
+  assertSanitised(noAccess);
+  await assert.rejects(createSpcClient({...ENV, SPC_TRANSPORT: 'http', SPC_HTTP_RISK_ACK: 'yes'}, {fetch: noNetwork}).readDay(DAY),
+    e => e.code === 'SPC_HTTP_LOCKED');
+  assert.equal(attempts, 0);
+
+  const enabledHttp = {...ENV, SPC_TRANSPORT: 'http',
+    SPC_HTTP_RISK_ACK: 'I_ACCEPT_UNENCRYPTED_CREDENTIALS'};
+  const f = fixture({protocol: 'http:'});
+  const day = await createSpcClient(enabledHttp, f.options).readDay(DAY);
+  assert.equal(day.meta.transport, 'http');
+  assert.equal(day.meta.unencryptedTransport, true);
+  assert.equal(f.calls.length, 4);
+  assert.ok(f.calls.every(c => c.url.protocol === 'http:'));
+  assert.equal(f.calls[0].url.hostname, 'spc.ksdatacloud.com');
+  const state = await spcEstado(enabledHttp);
+  assert.equal(state.spc, true);
+  assert.equal(state.spcTransport, 'http');
+  assert.equal(state.spcUnencryptedTransport, true);
+  assertSanitised(state);
+
+  const fSecure = fixture();
+  const secure = await createSpcClient(ENV, fSecure.options).readDay(DAY);
+  assert.equal(secure.meta.unencryptedTransport, false);
+  assert.equal((await spcEstado(ENV)).spcUnencryptedTransport, false);
+  assert.ok(fSecure.calls.every(c => c.url.protocol === 'https:'));
+});
+
+test('SPC modo HTTP rechaza redirecciones y sanea errores de red', async () => {
+  const env = {...ENV, SPC_TRANSPORT: 'http',
+    SPC_HTTP_RISK_ACK: 'I_ACCEPT_UNENCRYPTED_CREDENTIALS'};
+  const f = fixture({protocol: 'http:', override: () => {
+    throw new Error('URL HTTP con password=' + ENV.SPC_PASS);
+  }});
+  await assert.rejects(createSpcClient(env, f.options).readDay(DAY), e => {
+    assert.equal(e.code, 'SPC_NETWORK');
+    assertSanitised(safeSpcError(e));
+    return true;
+  });
+  const redirect = fixture({protocol: 'http:', override: () =>
+    new Response(null, {status: 302, headers: {location: 'https://other.example.invalid'}})});
+  await assert.rejects(createSpcClient(env, redirect.options).readDay(DAY),
+    e => e.code === 'SPC_REDIRECT');
+  assert.equal(redirect.calls.length, 1);
+});
 
 test('SPC conserva crudos, nulos y ceros; no multiplica por CT; reutiliza sesión y aísla KV', async () => {
   const env = {...ENV, DATOS: new FakeKV()}, f = fixture();

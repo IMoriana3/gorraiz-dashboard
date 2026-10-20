@@ -627,13 +627,13 @@ function pintaSpc(){
   const est=API_ESTADO||{},ultimo=est.spcUltima||{},config=!!apiCfg().url;
   const mensaje=$('spcEstado');
   if(SPC_PRUEBA){
-    mensaje.innerHTML=SPC_PRUEBA.ok?`Conexión comprobada · ${esc(spcMomento(SPC_PRUEBA.actualizado))}`:`<span class="err">${esc(SPC_PRUEBA.error)}</span>`;
+    mensaje.innerHTML=SPC_PRUEBA.ok?`Conexión comprobada${est.spcUnencryptedTransport?' (HTTP SIN CIFRAR)':''} · ${esc(spcMomento(SPC_PRUEBA.actualizado))}`:`<span class="err">${esc(SPC_PRUEBA.error)}</span>`;
   }else if(!config)mensaje.textContent='Guarda la conexión al Worker para consultar SPC.';
   else if(!API_ESTADO)mensaje.textContent='Estado de SPC sin comprobar.';
   else if(!est.spc)mensaje.textContent='Conexión SPC pendiente de configurar en el servidor.';
   else if(ultimo.status==='error')mensaje.innerHTML=`<span class="err">Última consulta SPC sin completar: ${esc(ultimo.lastError&&ultimo.lastError.message||'revisa la conexión.')}</span>`;
   else if(ultimo.lastSuccess||est.spcLastSuccess)mensaje.textContent='Última consulta correcta: '+spcMomento(ultimo.lastSuccess||est.spcLastSuccess)+(ultimo.status==='partial'?' · datos parciales':'');
-  else mensaje.textContent='SPC configurado · conexión pendiente de comprobar.';
+  else mensaje.textContent='SPC configurado'+(est.spcUnencryptedTransport?' · HTTP SIN CIFRAR':'')+' · conexión pendiente de comprobar.';
   $('btnSpc').disabled=SPC_OCUPADO||!config||!est.spc;
   const dias=getSpcDaily(),fechas=SPC_FUENTES.map(f=>f.date),n=fechas.length;
   $('spcDias').textContent=n?fn(n):'—';
@@ -648,6 +648,7 @@ function pintaSpc(){
   const lectura=ultima&&(ultima.rows||[]).map(r=>r.saveTime).filter(v=>v!==null&&v!==undefined&&v!=='').sort((a,b)=>String(a).localeCompare(String(b))).pop();
   $('spcUltimo').textContent=lectura?'Última lectura del portal: '+String(lectura):(ultima?'Último día con datos: '+fdmy(ultima.date):'');
   const avisos=[];
+  if(est.spcUnencryptedTransport)avisos.push('ATENCIÓN: SPC HTTP sin cifrar. Usuario, contraseña y sesión pueden ser interceptados. Solo pruebas con cuenta limitada.');
   if(SPC_FUENTES.some(f=>f.date===spcHoy(f.meta.timezone||'Europe/Madrid')))avisos.push('El día en curso es parcial y se actualiza al traer datos.');
   if(SPC_FUENTES.some(f=>f.meta.sinHistorico||f.meta.completo===false))avisos.push('Hay días con datos parciales o sin histórico del contador.');
   if(n&&dias.some(d=>!spcNumero(d.importKWh)||!spcNumero(d.exportKWh)))avisos.push('Los valores que faltan no se cuentan como cero.');
