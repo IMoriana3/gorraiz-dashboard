@@ -35,7 +35,9 @@ for(const [tipo,override,campo,value] of [
 ]){
   test('Solarman login '+tipo+' envía solo '+campo+' con contraseña SHA256 y ORGID',async t=>{
     const env={...base,...override};
+    let intentos=0;
     const outbound=t.mock.method(globalThis,'fetch',async(r,init)=>{
+      intentos++;
       const parsed=new URL(r);
       assert.equal(parsed.origin,env.SOLARMAN_BASE);
       assert.equal(parsed.pathname,'/account/v1.0/token');
@@ -46,7 +48,7 @@ for(const [tipo,override,campo,value] of [
       assert.equal(payload.password,hash);
       // El primer intento reproduce el login personal de agosto;
       // solo tras el rechazo se intenta el token de organización.
-      assert.equal(payload.orgId,outbound.mock.callCount()===1?undefined:10865841);
+      assert.equal(payload.orgId,intentos===1?undefined:10865841);
       if(tipo==='mobile')assert.equal(payload.countryCode,'34');
       for(const other of ['email','username','mobile'].filter(x=>x!==campo))
         assert.equal(payload[other],undefined);
