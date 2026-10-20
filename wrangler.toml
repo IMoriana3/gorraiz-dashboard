@@ -1,0 +1,18 @@
+# DIAGNÓSTICO TEMPORAL — NO DESPLEGAR COMO WORKER DE PRODUCCIÓN.
+# Cloudflare Workers Builds puede ignorar Root directory = worker en previews
+# (incidencia cloudflare/developer-platform#75, septiembre 2026).
+# La configuración canónica de producción sigue en worker/wrangler.toml.
+# Este archivo está solo en la rama de PR para comprobar esa hipótesis.
+# No enlaza el KV de datos ni incorpora credenciales o cron.
+name = "gorraiz-dashboard"
+main = "worker/index.js"
+compatibility_date = "2025-01-01"
+workers_dev = false
+
+[previews]
+
+[previews.vars]
+ALLOWED_ORIGIN = "https://imoriana3.github.io"
+SPC_STATION_ID = "2026032317114373"
+SPC_TIMEZONE = "Europe/Madrid"
+SPC_SYNC_ENABLED = "false"
