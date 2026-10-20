@@ -55,6 +55,16 @@ El comprobador actualizado devuelve información **saneada** para depurar un ún
 
 **No repetir una sesión por HTTP con cuenta principal de control.** La siguiente ejecución, solo si existe una cuenta de prueba limitada, debe realizarse con el bundle actualizado, y comprobarse el código numérico antes de decidir si el problema se debe a permisos, fecha o datos ausentes.
 
+## Conexión directa al dashboard (sin credenciales KSTAR en GitHub Pages)
+
+El Worker independiente ofrece `POST /spc/intercambio` con un único día cerrado, devuelve `{rows,daily,meta}` y exige la cabecera `X-KSTAR-Test-Key`. Solo admite peticiones CORS desde `https://imoriana3.github.io`; no expone rutas de control ni activa cron. Las credenciales y el token de SPC permanecen en Cloudflare, no en el dashboard.
+
+Cuando hayas pegado y desplegado la última versión de `worker/kstar-prueba-bundle.js` en `gorraiz-kstar-prueba`, abre el dashboard actualizado y guarda en la sección KSTAR la URL `https://<tu-worker>.workers.dev` y la clave `KSTAR_TEST_KEY`. La **URL** queda guardada en `localStorage` y la **clave de prueba** solo en `sessionStorage` (pide introducirla de nuevo en una sesión distinta). No introducir `SPC_USER` ni `SPC_PASS` en el navegador.
+
+`Comprobar SPC` trae un día cerrado y lo conserva en IndexedDB. `Traer datos` consulta a Solarman con el Worker habitual y a KSTAR con este Worker aislado, limita los días KSTAR a 14 por tanda y omite el día en curso. El PDF calcula el balance diario con KSTAR+Solarman; el reparto P1-P6 es **provisional**, sin valorar el precio indexado exacto.
+
+**Estado:** validada en vivo la lectura del 19/10/2026 (658,92 kWh entrantes; 0 kWh salientes; 74 kWh de autoconsumo KSTAR). Pendiente probar la exportación positiva del 20/10 después de su cierre, mañana 21/10. Todavía no hay activación de Cron y **HTTP entre Cloudflare y KSTAR continúa sin cifrado**; usar solo cuenta temporal y de permisos limitados.
+
 ## 4. Cierre
 
 Borrar los secretos y desactivar el Worker temporal una vez validado el formato. El dashboard principal y la PR #36 permanecen sin desplegar a producción; el cron SPC continúa desactivado.

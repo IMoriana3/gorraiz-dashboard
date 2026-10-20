@@ -56,7 +56,7 @@ Por defecto no aplica precios a fechas fuera de la factura. La opción de usar e
 - Los importes se calculan sobre el subconjunto que, además, tiene precio. El informe presenta ambas coberturas.
 - Un dato ausente devuelve `null` y se muestra como no disponible; un cero medido sigue siendo cero.
 - La energía exportada no es energía perdida por limitación del inversor. No se estima generación que el antivertido haya impedido producir.
-- La exportación diaria no se distribuye artificialmente por horas. Los perfiles de importación i-DE/Datadis y generación Solarman siguen siendo series independientes.
+- La exportación **diaria** no se distribuye artificialmente por horas. Si los intervalos acumulados KSTAR cumplen continuidad y reconciliación, `spc-horario.js` ofrece un reparto **aproximado** de kWh P1-P6 según la [Circular 3/2020 (CNMC/BOE)](https://www.boe.es/buscar/act.php?id=BOE-A-2020-1066). Se excluyen intervalos incompletos y días de cambio horario. No se calculan euros por periodo sin precios indexados reales por hora.
 - El módulo no calcula automáticamente una compensación regulada, límites de compensación, monedero ni impuestos de una venta de energía.
 
 Para revisar el cálculo: `node --test tests/energia.test.mjs`. Las pruebas utilizan cifras ficticias, no facturas de clientes.

@@ -9,11 +9,11 @@ Dashboard de producción, intercambio con la red y valoración económica del Ed
 | Datos | Fuente | Entrada |
 |---|---|---|
 | Generación de los dos inversores | Solarman | API del Worker o ficheros XLSX |
-| Importación horaria del contador | i-DE / Datadis | XLSX de i-DE o API de Datadis |
-| Importación y exportación diaria; histórico del medidor | SPC Cloud | API del Worker, caché compartida y sincronización opcional |
+| Importación/exportación diaria e histórico del contador | KSTAR SPC01 | Worker independiente en Cloudflare, conectado al dashboard |
+| Reparto provisional P1-P6 de energía | Acumulados KSTAR | Solo fechas con intervalos compatibles; sin precios horarios |
 | Precios medios por periodo de factura | Configuración privada | Archivo JSON importado en el navegador |
 
-El botón **Traer datos** consulta las fuentes configuradas. Si una falla, las otras pueden continuar. La integración SPC se basa en las llamadas observadas en el cliente web del proveedor: requiere una primera prueba autenticada antes de activarla en producción. No configura ni controla el antivertido.
+El botón **Traer datos** consulta Solarman y KSTAR por conexiones independientes. i-DE y Datadis permanecen archivados en el código, sin consultas ni curvas en el informe actual. El 19/10/2026 se validó una descarga real de KSTAR: 658,92 kWh importados, 0 kWh exportados, 74 kWh de autoconsumo comunicado y 287 registros del contador.
 
 ## Informes y cálculo
 
@@ -23,18 +23,18 @@ El botón **Traer datos** consulta las fuentes configuradas. Si una falla, las o
 - La falta de datos no equivale a cero. Se muestra qué días están cubiertos. El día en curso y los balances incoherentes quedan fuera de los totales cerrados.
 - La tarifa indexada se aproxima mediante el término de energía de cada factura dividido entre sus kWh importados. No es el precio horario exacto ni una reconstrucción completa de la factura.
 - Los costes de potencia, alquiler y otros cargos fijos no se añaden al ahorro energético. El IE y el IVA se distinguen; no se presupone un ingreso por vender excedentes.
-- No se reparte una exportación diaria entre horas. Los perfiles horarios conservan la importación de red y la generación como series separadas.
+- No se reparte una exportación **diaria** artificialmente entre horas. Un módulo aparte estima kWh por P1-P6 desde intervalos del contador SPC solo si pasan controles de continuidad, límites y reconciliación. No convierte automáticamente esos kWh en facturación exacta.
 
 Ver [configuración y límites económicos](docs/precios.md) y [activación de SPC](worker/SPC.md).
 
 ## Uso
 
-1. Configura la URL del Worker y la clave del panel, o carga los XLSX de los inversores y del contador.
-2. Pulsa **Comprobar SPC** para validar el acceso. **Traer datos** descarga el rango seleccionado por bloques.
-3. Importa el JSON de precios de factura en la sección económica. Se guarda solo en ese navegador.
-4. Genera el informe y revisa su cobertura antes de exportar el PDF.
+1. Configura la URL y la clave del Worker habitual **Solarman**.
+2. En la tarjeta **KSTAR SPC01**, indica la URL HTTPS `*.workers.dev` del Worker aislado y su `KSTAR_TEST_KEY` (nunca la contraseña del proveedor). La URL se guarda en el navegador y la clave dura solo esa sesión.
+3. Selecciona un día cerrado y pulsa **Comprobar SPC**. **Traer datos** descarga como máximo 14 días KSTAR por tanda y conserva los días en IndexedDB.
+4. Importa la configuración privada de precios medios de factura, genera el informe y revisa la cobertura y el reparto provisional P1-P6 antes de exportar el PDF.
 
-La apertura del panel recupera el almacenamiento local y la caché compartida; no inicia sesión en SPC. Para recoger datos sin tener el navegador abierto, configura el cron del Worker siguiendo su guía.
+La apertura del panel recupera datos de IndexedDB y no inicia sesión en SPC. **No se activa cron KSTAR** mientras el proveedor exija HTTP sin cifrar. Para integración y limitaciones consulta [la guía de Worker aislado](worker/KSTAR_PRUEBA.md).
 
 ## Datos y despliegue
 
@@ -52,7 +52,7 @@ node worker/construir.mjs
 node --check worker/bundle.js
 ```
 
-Las pruebas usan respuestas ficticias: validan el cálculo y el tratamiento de errores, pero no acreditan acceso real al servicio SPC. Los precios reales, PDFs de factura, `.env` y `.dev.vars` no deben incorporarse al repositorio público.
+Las pruebas automáticas utilizan respuestas ficticias. Además, el 19/10/2026 se validó por separado una **descarga autenticada real KSTAR en un Worker de pruebas**, concordante con los totales de su portal. Eso todavía no certifica una automatización de producción. Los precios reales, PDFs de factura, `.env` y `.dev.vars` no deben incorporarse al repositorio público.
 
 
 ### Cloudflare Builds y vistas previas de las PR

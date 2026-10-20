@@ -2,7 +2,7 @@
 
 Conexión del dashboard a Datadis, Solarman y SPC Cloud. Guarda las credenciales en Cloudflare y ofrece descarga por botón, caché compartida y sincronización SPC opcional.
 
-**SPC:** la configuración, prueba de acceso y activación del cron están en [SPC.md](SPC.md). El conector está preparado y probado con respuestas simuladas; falta validar una lectura autenticada real de la planta.
+**SPC:** una descarga real del 19/10/2026 fue validada en el Worker aislado KSTAR. El dashboard puede usar su ruta `POST /spc/intercambio` con origen restringido y una clave independiente; consulta la guía [KSTAR_PRUEBA.md](KSTAR_PRUEBA.md). No hay cron activo y el Worker principal se mantiene ajeno a los secretos de esa prueba. [Detalles generales SPC](SPC.md).
 
 ## Por qué hace falta
 
