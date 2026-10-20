@@ -1,7 +1,9 @@
-# El proyecto de Cloudflare está configurado con Root directory = "worker", así
-# que wrangler busca esta configuración AQUÍ. Si alguna vez se vacía ese ajuste,
-# wrangler no encontrará ningún Worker en la raíz del repositorio, deducirá que
-# es un sitio estático y publicará todos los ficheros tal cual, .git incluida.
+# CONFIGURACIÓN CANÓNICA DEL WORKER DE PRODUCCIÓN.
+# En Cloudflare, mantener Root directory = "worker": esta es la configuración
+# que monta el KV real y declara los parámetros de producción.
+# El wrangler.toml de la raíz es un shim mínimo, sin datos, para previews de
+# PR (Cloudflare Builds puede ignorar el root directory en ramas).
+# Nunca cambiar la raíz de despliegue de producción al repositorio sin revisar.
 name = "gorraiz-dashboard"
 main = "index.js"
 compatibility_date = "2025-01-01"

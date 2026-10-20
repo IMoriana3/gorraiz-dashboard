@@ -8,15 +8,7 @@ on:
       - "worker/**"
       - "tests/**"
       - ".github/workflows/gorraiz-ci.yml"
-  push:
-    branches:
-      - "codex/spc-automatizacion-gorraiz"
-    paths:
-      - "index.html"
-      - "energia.js"
-      - "worker/**"
-      - "tests/**"
-      - ".github/workflows/gorraiz-ci.yml"
+      - "wrangler.toml"
   workflow_dispatch:
 
 permissions:
@@ -69,7 +61,16 @@ jobs:
           assert preview["vars"]["SPC_SYNC_ENABLED"] == "false"
           assert "PANEL_KEY" not in preview["vars"]
           assert "SPC_PASS" not in preview["vars"]
-          print("Preview aislada de KV, sin secretos y sin cron SPC")
+          with open("wrangler.toml", "rb") as f:
+              shim = tomllib.load(f)
+          assert shim["name"] == config["name"]
+          assert shim["main"] == "worker/index.js"
+          assert shim["workers_dev"] is False
+          assert not shim.get("kv_namespaces")
+          assert not shim.get("vars")
+          assert not shim.get("triggers")
+          assert shim["previews"]["vars"] == {"SPC_SYNC_ENABLED": "false"}
+          print("Preview raíz aislada de producción, sin secretos, KV ni cron")
           PY
       - name: Compilar Worker sin credenciales ni despliegue
         run: npx --yes wrangler@4.145.0 deploy --dry-run --config worker/wrangler.toml

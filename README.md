@@ -54,4 +54,11 @@ node --check worker/bundle.js
 
 Las pruebas usan respuestas ficticias: validan el cálculo y el tratamiento de errores, pero no acreditan acceso real al servicio SPC. Los precios reales, PDFs de factura, `.env` y `.dev.vars` no deben incorporarse al repositorio público.
 
+
+### Cloudflare Builds y vistas previas de las PR
+
+La configuración **de producción** está en `worker/wrangler.toml`. El pequeño `wrangler.toml` de la raíz es un shim **solo de preview**: facilita que Cloudflare compile una PR cuando ignora Root directory = `worker`, incidencia [Cloudflare #75](https://github.com/cloudflare/developer-platform/issues/75). No contiene variables de acceso, enlaces KV ni cron y no debe usarse con `wrangler deploy` para actualizar producción.
+
+La CI verifica las dos configuraciones, las pruebas y la compilación. Publicar una preview no activa la conexión real al SPC: requiere secretos y contraste del medidor antes de habilitar el cron.
+
 *Factiun · Gorraiz.*

@@ -42,7 +42,7 @@ El Worker se despliega conectando el repositorio en **Workers & Pages → Create
 - **Deploy command**: `npx wrangler deploy`
 - **Production branch**: `main`
 
-El *Root directory* no es un detalle cosmético: si se deja en la raíz, wrangler no encuentra ningún `wrangler.toml`, deduce que el repositorio es un sitio estático y publica **todos** los ficheros tal cual, incluida la carpeta `.git`, sin llegar a desplegar el Worker.
+El *Root directory* de producción debe seguir siendo `worker`. La raíz del repositorio tiene ahora un `wrangler.toml` mínimo **solo para las vistas previas de las PR**, porque Cloudflare Builds puede ignorar ese directorio al compilar ramas ([incidencia pública #75](https://github.com/cloudflare/developer-platform/issues/75)). Ese fichero no monta el KV de producción ni incorpora credenciales; **no debe usarse para desplegar producción**. La configuración completa y única de producción es `worker/wrangler.toml`.
 
 Cada `push` a `main` que toque esta carpeta redespliega solo.
 
