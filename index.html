@@ -1447,7 +1447,27 @@ async function genPDF(){
     const w1=ancho*.35-2,w2=ancho*.35-2,w3=ancho*.30-4;
     pdfTitulo(doc,'Media por día de semana',M,135);pdfTitulo(doc,'KSTAR horario · pendiente de validar',M+w1+4,135);pdfTitulo(doc,'Cobertura FV',M+w1+w2+8,135);
     await pdfChart(doc,'c3week',M,139,w1,47);await pdfChart(doc,'c3hourly',M+w1+4,139,w2,47);await pdfChart(doc,'c3donut',M+w1+w2+8,139,w3,47);
-    pdfTexto(doc,'Autoconsumo = FV − vertido. Consumo = importación + autoconsumo. Los acumulados de ambos inversores deben cubrir el cierre del día; un Excel recortado puede estar incompleto. No se reconstruye consumo horario ni se toma ausencia de SPC como vertido cero.',M,193,ancho,6);
+    pdfTexto(doc,'Autoconsumo = FV - vertido. Consumo = importación + autoconsumo. Los acumulados de ambos inversores deben cubrir el cierre del día. No se inventa consumo horario donde faltan intervalos SPC.',M,193,ancho,6);
+
+    // Una página separada evita confundir el reparto provisional de los
+    // acumulados con el ahorro económico de la factura indexada.
+    if(R.spcPeriodos&&R.spcPeriodos.diasCompatibles>0){
+      const reparto=R.spcPeriodos;
+      pagina('KSTAR SPC - Reparto energético P1-P6 (provisional)','Periodo elegido: '+per);
+      pdfTexto(doc,'Distribución aproximada de kWh por periodo CNMC obtenida de intervalos acumulados KSTAR. No son precios ni importes de facturación.',M,37,ancho,8);
+      doc.setFillColor(26,60,52);doc.rect(M,48,ancho,9,'F');
+      doc.setTextColor(255);doc.setFontSize(9);doc.setFont(undefined,'bold');
+      doc.text('Periodo',M+5,54);doc.text('Importación (kWh)',M+70,54);doc.text('Exportación (kWh)',M+165,54);
+      let ypos=66;
+      for(const p of ['P1','P2','P3','P4','P5','P6']){
+        const d=reparto.periodos[p];doc.setFontSize(9);doc.setTextColor(30);doc.setFont(undefined,'normal');
+        doc.text(p,M+5,ypos);doc.text(fn(d.importKWh,2),M+70,ypos);
+        doc.text(fn(d.exportKWh,2),M+165,ypos);
+        ypos+=12;
+      }
+      pdfTexto(doc,'Días compatibles: '+reparto.diasCompatibles+' de '+reparto.diasRevisados+'. Días descartados: '+reparto.rechazados.length+
+        '. La asignación de intervalos entre horas es proporcional al tiempo; la zona horaria del portal no está certificada. No se aplican precios indexados ni compensación de excedentes.',M,153,ancho,8);
+    }
 
     pagina('Histórico acumulado','Todos los datos cargados: '+R.historico.from+' a '+R.historico.to);
     pdfTexto(doc,notaValoracion(R.historico.energia),M,34,ancho,6);
