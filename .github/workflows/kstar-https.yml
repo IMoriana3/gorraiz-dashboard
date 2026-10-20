@@ -1,4 +1,4 @@
-name: KSTAR SPC · conectividad HTTPS (sin credenciales)
+name: KSTAR SPC · conectividad web sin credenciales
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   https:
-    name: Comprobar dominio HTTPS de SPC
+    name: Comparar HTTP y HTTPS públicos del SPC
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -31,4 +31,14 @@ jobs:
             echo "Falló la conexión HTTPS desde GitHub. No implica necesariamente fallo desde la red del usuario o Cloudflare." >> "$GITHUB_STEP_SUMMARY"
           fi
           echo "Resultado curl (sin secretos): $result" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "HTTP público — únicamente la página inicial, sin iniciar sesión ni enviar información privada:" >> "$GITHUB_STEP_SUMMARY"
+          http_result=$(curl --proto '=http' --max-redirs 0 --connect-timeout 8 --max-time 15 \
+            --silent --show-error --output /dev/null \
+            --write-out 'HTTP=%{http_code};REMOTE=%{remote_ip};REDIRECT=%{redirect_url}' \
+            'http://spc.ksdatacloud.com/' 2>&1)
+          http_code=$?
+          echo "HTTP curl exit: $http_code"
+          echo "$http_result"
+          echo "Resultado HTTP público (sin secretos): salida=$http_code $http_result" >> "$GITHUB_STEP_SUMMARY"
           exit 0
