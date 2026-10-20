@@ -14,7 +14,7 @@ jobs:
   https:
     name: Comparar HTTP y HTTPS públicos del SPC
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 5
     steps:
       - name: Consultar solo la raíz pública sin credenciales
         shell: bash
@@ -86,14 +86,14 @@ jobs:
           queue = collections.deque([root])
           scanned = set()
           scripts = []
-          max_files, budget = 35, 18000000
+          max_files, budget = 200, 30000000
           processed = 0
           while queue and len(scanned)<max_files and processed<budget:
             url=queue.popleft()
             if url in scanned or urllib.parse.urlsplit(url).hostname!='spc.ksdatacloud.com': continue
             scanned.add(url)
             try:
-              with urllib.request.urlopen(urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0'}),timeout=12) as resp:
+              with urllib.request.urlopen(urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0'}),timeout=9) as resp:
                 data=resp.read(min(2000000,budget-processed))
                 processed+=len(data)
                 txt=data.decode('utf-8','replace')
@@ -112,7 +112,7 @@ jobs:
               full=urllib.parse.urljoin(url,href)
               if urllib.parse.urlsplit(full).hostname=='spc.ksdatacloud.com' and full not in scanned and full not in queue:queue.append(full)
           print('TOTALES archivos:',len(scanned),'scripts:',len(scripts),'bytes:',processed)
-          targets=['station/monitor/detail/self','meter/monitor/detail/history/data','station/monitor/detail/meter/list']
+          targets=['station/monitor/detail/self','meter/monitor/detail/history/data','station/monitor/detail/meter/list','positiveElec','reverseElec']
           hits=0
           for path,txt in scripts:
             for target in targets:
