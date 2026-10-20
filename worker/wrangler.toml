@@ -37,3 +37,15 @@ id = "060df5733aad4c61b01cbf05e4d7510b"
 # El cron usa UTC. Se repite para recoger correcciones o reintentar tras fallos.
 # [triggers]
 # crons = ["17 * * * *"]
+
+# Vista previa de rama, sin secretos ni almacén de producción.
+# Wrangler 4.135+ exige el bloque [previews] para "wrangler preview".
+# Los ajustes top-level no se heredan: aquí no se enlaza DATOS ni se
+# permite leer/escribir registros energéticos desde una rama en pruebas.
+[previews]
+
+[previews.vars]
+ALLOWED_ORIGIN = "https://imoriana3.github.io"
+SPC_STATION_ID = "2026032317114373"
+SPC_TIMEZONE = "Europe/Madrid"
+SPC_SYNC_ENABLED = "false"

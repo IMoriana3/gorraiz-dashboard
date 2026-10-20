@@ -58,5 +58,18 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Verificar que previews no accede al almacén de producción
+        run: |
+          python - <<'PY'
+          import tomllib
+          with open("worker/wrangler.toml", "rb") as f:
+              config = tomllib.load(f)
+          preview = config["previews"]
+          assert not preview.get("kv_namespaces"), "Preview no debe montar KV de producción"
+          assert preview["vars"]["SPC_SYNC_ENABLED"] == "false"
+          assert "PANEL_KEY" not in preview["vars"]
+          assert "SPC_PASS" not in preview["vars"]
+          print("Preview aislada de KV, sin secretos y sin cron SPC")
+          PY
       - name: Compilar Worker sin credenciales ni despliegue
-        run: npx --yes wrangler@4.45.0 deploy --dry-run --config worker/wrangler.toml
+        run: npx --yes wrangler@4.145.0 deploy --dry-run --config worker/wrangler.toml
