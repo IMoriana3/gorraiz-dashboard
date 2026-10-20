@@ -943,9 +943,9 @@ async function apiCall(ruta,body){
 }
 let API_ESTADO=null;
 async function estadoApi(){
-  const c=apiCfg();if(!c.url){API_ESTADO=null;$('hintAuto').textContent='sin configurar';pintaSpc();return}
+  const c=apiCfg();if(!c.url){API_ESTADO=null;$('hintAuto').textContent=kstarCfg().url?'KSTAR independiente; Solarman pendiente':'sin configurar';pintaSpc();return}
   try{API_ESTADO=await apiCall('/estado');
-    $('hintAuto').innerHTML=`consumo ${API_ESTADO.datadis?'✓ Datadis':'✗'} · producción ${API_ESTADO.solarman?'✓ Solarman':'✗'} · SPC ${API_ESTADO.spc?'configurado':'sin configurar'}`;
+    $('hintAuto').textContent=`producción ${API_ESTADO.solarman?'Solarman conectado':'Solarman pendiente'} · intercambio ${kstarCfg().url?'KSTAR independiente':API_ESTADO.spc?'SPC configurado':'KSTAR pendiente'}`;
   }catch(e){API_ESTADO=null;$('hintAuto').innerHTML=`<span style="color:var(--red)">${esc(e.message)}</span>`}
   pintaSpc();
 }
@@ -986,7 +986,7 @@ async function traerDatos(){
   // el tráfico que no viene de un navegador doméstico. Pedirlo solo servía para
   // enseñar un error rojo en cada descarga. El código sigue ahí por si algún
   // día se ejecuta desde otra red.
-  if(est.datadis){
+  if(!KSTAR_ONLY&&est.datadis){
     try{
       // 20 meses por bloque: por debajo del tope con margen de sobra.
       const bl=bloques(desde,hasta,600),filas=[];let meta=null,fallos=[];
@@ -1013,10 +1013,8 @@ async function traerDatos(){
       partes.push(`<span class="err">✗ Consumo: ${esc(e.message)}</span>`);
       log('⚠ Consumo: '+e.message);
     }
-  }else{
-    partes.push(est.ide
-      ? 'Consumo: se sigue subiendo con los .xlsx de i-DE. La descarga automática solo funciona con Datadis.'
-      : '<span class="warn">Consumo no configurado: sigue subiendo los .xlsx de i-DE.</span>');
+  }else if(!KSTAR_ONLY){
+    partes.push('Consumo antiguo sin configurar. Las fuentes i-DE/Datadis no se consultan.');
   }
 
   if(est.solarman){
@@ -1048,15 +1046,20 @@ async function traerDatos(){
     partes.push('<span class="warn">Producción no configurada: sigue subiendo los .xlsx de los inversores.</span>');
   }
 
-  if(est.spc){
+  const separado=!!kstarCfg().url;
+  if(separado||est.spc){
     SPC_PRUEBA=null;const fallos=[];let guardados=0,parciales=0;
     try{
-      const bl=bloquesSpc(desde,hasta,1);
+      const hastaSpc=separado&&hasta>=spcHoy()?spcSumaDias(spcHoy(),-1):hasta;
+      const bl=desde<=hastaSpc?bloquesSpc(desde,hastaSpc,1):[];
+      if(separado&&bl.length>14)throw new Error('Para KSTAR selecciona un máximo de 14 días por descarga manual.');
+      if(separado&&kstarCfg().key.length<24)throw new Error('Falta KSTAR_TEST_KEY en esta sesión. Vuelve a guardarla.');
+      if(!bl.length)throw new Error('Todavía no hay días cerrados de KSTAR en ese rango.');
       for(let i=0;i<bl.length;i++){
         avance('Pidiendo intercambio SPC',i+1,bl.length);
         try{
           // Consulta de nuevo cada día pedido, incluido hoy aunque ya esté guardado.
-          const p=await apiCall('/spc/intercambio',bl[i]);
+          const p=separado?await kstarCall(bl[i].desde,bl[i].hasta):await apiCall('/spc/intercambio',bl[i]);
           if(!spcTieneDatos(p))throw new Error('sin datos para este día');
           const n=incorporaSpc(p,bl[i]);
           if(!n)throw new Error(p.meta&&p.meta.completo===false?'respuesta parcial; se conserva el día completo guardado':'sin datos válidos para este día');
