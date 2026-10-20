@@ -11,6 +11,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="energia.js"></script>
+<script type="module" src="spc-horario.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&family=JetBrains+Mono:wght@500;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
@@ -246,6 +247,7 @@ input[type=file]{display:none}
       <div class="slbl">Balance energético</div>
       <div class="krow" id="k3"></div>
       <div class="hint" id="balanceCobertura"></div>
+      <div class="st" id="spcPeriodosKwh"></div>
       <div class="cc"><h4>Balance diario — consumo, importación, autoconsumo y vertido</h4><canvas id="c3daily" height="200"></canvas></div>
       <div class="row">
         <div class="cc" style="flex:1.2"><h4>Consumo medio por día de la semana</h4><canvas id="c3week" height="180"></canvas></div>
@@ -1300,6 +1302,25 @@ function renderP2(){
 }
 function renderP3(){
   $('k3').innerHTML=cajasKpi(kpisBalance(R));$('balanceCobertura').textContent=textoCobertura(R.energia);
+  let detalle=null;
+  try {
+    if(typeof GorraizSpcHorario!=='undefined')
+      detalle=GorraizSpcHorario.agruparDias(SPC_FUENTES,R.from,R.to);
+  }catch(e){log('⚠ Reparto horario KSTAR: '+e.message)}
+  R.spcPeriodos=detalle;
+  if(detalle&&detalle.diasCompatibles){
+    let html='<strong>Importación/exportación KSTAR por periodo (kWh provisionales, NO importes)</strong>';
+    html+='<table><tr><th>Periodo</th><th>Importación aproximada</th><th>Exportación aproximada</th></tr>';
+    for(const p of GorraizSpcHorario.PERIODS){
+      const x=detalle.periodos[p];
+      html+='<tr><td>'+p+'</td><td>'+fn(x.importKWh,2)+' kWh</td><td>'+fn(x.exportKWh,2)+' kWh</td></tr>';
+    }
+    html+='</table><div class="hint">'+detalle.diasCompatibles+' días compatibles de '+detalle.diasRevisados+
+      '; '+detalle.rechazados.length+' días excluidos por falta de cobertura. Distribución temporal aproximada, precios indexados no aplicados.</div>';
+    $('spcPeriodosKwh').innerHTML=html;
+  }else{
+    $('spcPeriodosKwh').textContent='Reparto P1–P6 pendiente: faltan intervalos KSTAR completos y validados. El balance energético diario sigue disponible.';
+  }
   const cd=R.cons.daily;
   CHARTS.c3d=new Chart($('c3daily'),{type:'line',data:{labels:cd.map(d=>d.date.slice(5)),datasets:[
     {label:'Consumo',data:cd.map(d=>d.total),borderColor:'#2a6b5a'},
