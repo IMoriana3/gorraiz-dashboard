@@ -574,7 +574,7 @@ function pintaKstarCfg(){
     <label>Clave de prueba:</label><input type="password" id="kstarKey" autocomplete="off" placeholder="KSTAR_TEST_KEY (no contraseña del proveedor)" value="" minlength="24">
     <button class="btn btn2" type="button" onclick="guardarKstarCfg()">Guardar sesión KSTAR</button>
     <button class="btn btn2" type="button" onclick="borrarKstarCfg()">Desconectar KSTAR</button></div>
-    <div class="hint">La clave temporal solo se conserva durante la sesión del navegador; las credenciales de KSTAR siguen en Cloudflare. El tramo Cloudflare → KSTAR por HTTP carece de cifrado.</div>`;
+    <div class="hint" role="status"><strong>Clave KSTAR: ${cfg.key.length>=24?'guardada en esta sesión':'pendiente de guardar en esta sesión'}.</strong> La clave temporal no se guarda de forma permanente; las credenciales del proveedor siguen en Cloudflare. El tramo Cloudflare → KSTAR por HTTP carece de cifrado.</div>`;
 }
 function guardarKstarCfg(){
   try{
@@ -1060,15 +1060,24 @@ async function traerDatos(){
   }
 
   const separado=!!kstarCfg().url;
-  if(separado||est.spc){
-    SPC_PRUEBA=null;const fallos=[];let guardados=0,parciales=0;
+  if(separado&&kstarCfg().key.length<24){
+    const previos=SPC_FUENTES.filter(f=>f.date>=desde&&f.date<=hasta&&f.meta?.completo===true).length;
+    if(previos)algo=true;
+    partes.push('<span class="warn">KSTAR: no se ha repetido la conexión porque la clave temporal falta en esta sesión. '+
+      'Se conservan '+fn(previos)+' día(s) completos ya guardados. Vuelve a introducir KSTAR_TEST_KEY y pulsa «Guardar sesión KSTAR» para consultar días nuevos.</span>');
+  }else if(separado||est.spc){
+    SPC_PRUEBA=null;const fallos=[];let guardados=0,parciales=0,reutilizados=0;
     try{
       const hastaSpc=separado&&hasta>=spcHoy()?spcSumaDias(spcHoy(),-1):hasta;
       const bl=desde<=hastaSpc?bloquesSpc(desde,hastaSpc,1):[];
       if(separado&&bl.length>14)throw new Error('Para KSTAR selecciona un máximo de 14 días por descarga manual.');
-      if(separado&&kstarCfg().key.length<24)throw new Error('Falta KSTAR_TEST_KEY en esta sesión. Vuelve a guardarla.');
       if(!bl.length)throw new Error('Todavía no hay días cerrados de KSTAR en ese rango.');
       for(let i=0;i<bl.length;i++){
+        // Un día KSTAR ya comprobado no precisa otro login HTTP para Traer datos.
+        // Para una actualización deliberada se utiliza Comprobar SPC.
+        if(separado&&SPC_FUENTES.some(f=>f.date===bl[i].desde&&f.meta?.completo===true)){
+          reutilizados++;continue;
+        }
         avance('Pidiendo intercambio SPC',i+1,bl.length);
         try{
           // Consulta de nuevo cada día pedido, incluido hoy aunque ya esté guardado.
@@ -1082,6 +1091,7 @@ async function traerDatos(){
       }
     }catch(e){fallos.push(e.message)}
     const resumen=[];
+    if(reutilizados){algo=true;resumen.push(`✓ KSTAR: ${fn(reutilizados)} días completos ya guardados; sin nueva conexión al proveedor`)}
     if(guardados){algo=true;resumen.push(`✓ SPC: ${fn(guardados)} días cargados${parciales?` · ${fn(parciales)} con datos parciales`:''}`)}
     if(fallos.length){
       resumen.push(`<span class="err">SPC: ${fn(fallos.length)} consultas sin completar. Se conservan los datos anteriores de esos días. ${esc(fallos.slice(0,3).join(' · '))}${fallos.length>3?' · …':''}</span>`);
