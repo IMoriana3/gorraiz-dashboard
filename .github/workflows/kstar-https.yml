@@ -76,3 +76,49 @@ jobs:
           except Exception as exc:
               print("No se pudo leer el HTML público:", type(exc).__name__)
           PY
+
+      - name: Auditar referencias de API pública SPC sin credenciales
+        shell: bash
+        run: |
+          python - <<'PY'
+          import re, urllib.request, urllib.parse, collections
+          root = 'http://spc.ksdatacloud.com/'
+          queue = collections.deque([root])
+          scanned = set()
+          scripts = []
+          max_files, budget = 35, 18000000
+          processed = 0
+          while queue and len(scanned)<max_files and processed<budget:
+            url=queue.popleft()
+            if url in scanned or urllib.parse.urlsplit(url).hostname!='spc.ksdatacloud.com': continue
+            scanned.add(url)
+            try:
+              with urllib.request.urlopen(urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0'}),timeout=12) as resp:
+                data=resp.read(min(2000000,budget-processed))
+                processed+=len(data)
+                txt=data.decode('utf-8','replace')
+            except Exception as exc:
+              print('No disponible:',urllib.parse.urlsplit(url).path,type(exc).__name__)
+              continue
+            path=urllib.parse.urlsplit(url).path
+            print('Fichero:',path,'bytes:',len(data))
+            if path.endswith('.js'):scripts.append((path,txt))
+            if path.endswith('.js'):
+              links=set(re.findall(r'''["']([^"']{1,160}\.js)(?:\?[^"']*)?["']''',txt))
+            else:
+              links=set(re.findall(r'''<script[^>]+src=["']([^"']+)["']''',txt,re.I))
+            for href in sorted(links):
+              if not (href.startswith('/') or href.startswith('./') or href.startswith('http:')):continue
+              full=urllib.parse.urljoin(url,href)
+              if urllib.parse.urlsplit(full).hostname=='spc.ksdatacloud.com' and full not in scanned and full not in queue:queue.append(full)
+          print('TOTALES archivos:',len(scanned),'scripts:',len(scripts),'bytes:',processed)
+          targets=['station/monitor/detail/self','meter/monitor/detail/history/data','station/monitor/detail/meter/list']
+          hits=0
+          for path,txt in scripts:
+            for target in targets:
+              for m in list(re.finditer(re.escape(target),txt,re.I))[:4]:
+                snippet=txt[max(0,m.start()-200):min(len(txt),m.end()+300)].replace('\n',' ').replace('\r',' ')
+                print('CONTRATO:',path,'ruta:',target,'contexto:',repr(snippet[:560]))
+                hits+=1
+          if not hits:print('Las rutas no aparecen en estos scripts iniciales: posiblemente sean chunks cargados dinámicamente.')
+          PY
