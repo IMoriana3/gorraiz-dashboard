@@ -308,14 +308,16 @@ test('KSTAR aislado ofrece intercambio diario normalizado con CORS solo a Gorrai
 });
 test('KSTAR aisla descarga externa: sin clave, otro origen, futuro y rango largo no contactan al proveedor', async t=>{
   const calls=t.mock.method(globalThis,'fetch',async()=>{throw Error('Network forbidden')});
+  // Una fecha fija acaba dejando de ser futura; calcularla a partir del reloj actual.
+  const futuro=new Date(Date.now()+3*86400000).toISOString().slice(0,10);
   const url='https://kstar-test.example.invalid/spc/intercambio';
   const make=(origin,key,from,to)=>new Request(url,{method:'POST',headers:{
     Origin:origin,'X-KSTAR-Test-Key':key,'Content-Type':'application/json'},
     body:JSON.stringify({desde:from,hasta:to})});
   assert.equal((await worker.fetch(make('https://wrong.example',SECRET,DAY,DAY),ENV)).status,403);
   assert.equal((await worker.fetch(make('https://imoriana3.github.io','wrong',DAY,DAY),ENV)).status,401);
-  assert.equal((await worker.fetch(make('https://imoriana3.github.io',SECRET,DAY,'2026-10-20'),ENV)).status,400);
-  assert.equal((await worker.fetch(make('https://imoriana3.github.io',SECRET,'2026-10-20','2026-10-20'),ENV)).status,400);
+  assert.equal((await worker.fetch(make('https://imoriana3.github.io',SECRET,DAY,futuro),ENV)).status,400);
+  assert.equal((await worker.fetch(make('https://imoriana3.github.io',SECRET,futuro,futuro),ENV)).status,400);
   assert.equal(calls.mock.callCount(),0);
 });
 
