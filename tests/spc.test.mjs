@@ -126,14 +126,14 @@ test('SPC bloquea HTTP salvo doble activación explícita y conserva HTTPS por d
   const missingAck = {...ENV, SPC_TRANSPORT: 'http'};
   let attempts = 0;
   const noNetwork = () => { attempts++; throw new Error('Network should not be called'); };
-  await assert.rejects(createSpcClient(missingAck, {fetch: noNetwork}).readDay(DAY),
+  assert.throws(() => createSpcClient(missingAck, {fetch: noNetwork}),
     e => e.code === 'SPC_HTTP_LOCKED' && e.status === 403);
   assert.equal(attempts, 0);
   const noAccess = await spcEstado(missingAck);
   assert.equal(noAccess.spc, false);
   assert.match(noAccess.spcConfigError, /HTTP sin cifrar/);
   assertSanitised(noAccess);
-  await assert.rejects(createSpcClient({...ENV, SPC_TRANSPORT: 'http', SPC_HTTP_RISK_ACK: 'yes'}, {fetch: noNetwork}).readDay(DAY),
+  assert.throws(() => createSpcClient({...ENV, SPC_TRANSPORT: 'http', SPC_HTTP_RISK_ACK: 'yes'}, {fetch: noNetwork}),
     e => e.code === 'SPC_HTTP_LOCKED');
   assert.equal(attempts, 0);
 
