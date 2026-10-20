@@ -1,38 +1,57 @@
-# Gorraiz Dashboard — Informe FV Edificio Gorraiz
+# Gorraiz Dashboard — informes de autoconsumo
 
-> Generador de informes fotovoltaicos en el navegador para el Edificio Gorraiz (123,84 kWp · autoconsumo sin excedentes): réplica del PDF aprobado de 5 páginas.
+Dashboard de producción, intercambio con la red y valoración económica del Edificio Gorraiz. Frontend en GitHub Pages y conexión opcional a proveedores mediante un Cloudflare Worker.
 
-## Qué es
-App **100 % cliente** (sin backend ni base de datos) que reproduce el informe FV aprobado de 5 páginas a partir de los ficheros de producción de los inversores y del consumo horario, y permite comparar dos periodos. Todo el procesado ocurre en el navegador; desplegada en GitHub Pages.
+**Panel:** https://imoriana3.github.io/gorraiz-dashboard/
 
-## Funcionalidades
-- Carga de `.xlsx`: Inversor A y B (producción, admite varios ficheros) + Consumo i-DE (hoja `Horarias`, **admite varios ficheros**).
-- **Unión automática del consumo i-DE** cuando el histórico se descarga en varios trozos (i-DE no deja bajar más de un año de una vez): los ficheros se fusionan por día, los días presentes en más de un fichero **no se duplican** (se conserva la versión más completa de cada día) y se avisa si quedan días sin cubrir dentro del rango.
-- Informe de 5 páginas: Producción · Inversores · Consumo · Acumulados · Avanzado.
-- **Exportación a PDF** apaisado (A4 horizontal) de las 5 páginas.
-- **Comparativa entre dos periodos** (A vs B): KPIs, Producción y Económico, con su propio PDF de 3 páginas.
-- Datos meteo vía Open-Meteo (GHI medio, horas de sol y temperatura) con conversión de unidades.
-- Cálculo de ahorro cruzando la producción horaria con los precios por periodo tarifario **P1–P6** (Impuesto Eléctrico + IVA). Métricas de rendimiento (kWh/kWp).
+## Fuentes
 
-- **Descarga automática con un botón** (opcional): trae el consumo directamente de Datadis sin descargar ni subir ficheros, pidiendo el histórico mes a mes por dentro. Requiere desplegar el Worker de `worker/` — ver [`worker/README.md`](worker/README.md). La producción vía Solarman queda escrita y se activa al obtener sus credenciales de API.
+| Datos | Fuente | Entrada |
+|---|---|---|
+| Generación de los dos inversores | Solarman | API del Worker o ficheros XLSX |
+| Importación horaria del contador | i-DE / Datadis | XLSX de i-DE o API de Datadis |
+| Importación y exportación diaria; histórico del medidor | SPC Cloud | API del Worker, caché compartida y sincronización opcional |
+| Precios medios por periodo de factura | Configuración privada | Archivo JSON importado en el navegador |
+
+El botón **Traer datos** consulta las fuentes configuradas. Si una falla, las otras pueden continuar. La integración SPC se basa en las llamadas observadas en el cliente web del proveedor: requiere una primera prueba autenticada antes de activarla en producción. No configura ni controla el antivertido.
+
+## Informes y cálculo
+
+- Informe con cinco páginas principales y anexo mensual en PDF; comparación de dos periodos y PDF de tres páginas.
+- Las páginas 1–3 usan el rango elegido; las páginas 4–5 muestran el histórico completo con su propia cobertura.
+- Balance de días cerrados con datos de ambos inversores y del SPC: **autoconsumo = generación − exportación**; **consumo = importación + autoconsumo**. Se supone una instalación sin almacenamiento y mediciones del mismo perímetro.
+- La falta de datos no equivale a cero. Se muestra qué días están cubiertos. El día en curso y los balances incoherentes quedan fuera de los totales cerrados.
+- La tarifa indexada se aproxima mediante el término de energía de cada factura dividido entre sus kWh importados. No es el precio horario exacto ni una reconstrucción completa de la factura.
+- Los costes de potencia, alquiler y otros cargos fijos no se añaden al ahorro energético. El IE y el IVA se distinguen; no se presupone un ingreso por vender excedentes.
+- No se reparte una exportación diaria entre horas. Los perfiles horarios conservan la importación de red y la generación como series separadas.
+
+Ver [configuración y límites económicos](docs/precios.md) y [activación de SPC](worker/SPC.md).
 
 ## Uso
-1. Abre `index.html` o el despliegue.
-2. Sube los `.xlsx` de producción (Inversor A / B) y **los** de consumo de i-DE (hoja `Horarias`). Puedes soltarlos todos a la vez o ir añadiéndolos uno a uno; bajo la zona de carga se lista lo cargado, los días solapados unificados y un botón **✕ Vaciar consumo** para empezar de cero.
-3. Pulsa **⚡ Generar informe** y revisa las 5 páginas.
-4. **📄 Descargar PDF (5 páginas)** para exportar el informe.
-5. *(Opcional)* En **Comparativa entre dos periodos**, define el Periodo A y el B y genera su PDF de 3 páginas.
 
-## Stack
-HTML/CSS/JS sin framework (un único `index.html`) · SheetJS (xlsx) · Chart.js · jsPDF + html2canvas · Open-Meteo · GitHub Pages.
-Descarga automática (opcional): Cloudflare Worker en `worker/` contra Datadis y Solarman.
+1. Configura la URL del Worker y la clave del panel, o carga los XLSX de los inversores y del contador.
+2. Pulsa **Comprobar SPC** para validar el acceso. **Traer datos** descarga el rango seleccionado por bloques.
+3. Importa el JSON de precios de factura en la sección económica. Se guarda solo en ese navegador.
+4. Genera el informe y revisa su cobertura antes de exportar el PDF.
 
-## Despliegue (URL)
-GitHub Pages: https://imoriana3.github.io/gorraiz-dashboard/ · `.nojekyll` incluido.
+La apertura del panel recupera el almacenamiento local y la caché compartida; no inicia sesión en SPC. Para recoger datos sin tener el navegador abierto, configura el cron del Worker siguiendo su guía.
 
-## Notas
-- Cliente: **Amixalan Business Group** (Edificio Gorraiz). Modalidad autoconsumo sin excedentes (consumo total = red + FV).
-- El **informe se mantiene en tema claro a propósito** para conservar la fidelidad del PDF aprobado; el chrome (barra superior / pie Factiun) es oscuro y se oculta al imprimir/exportar (`@media print`).
-- Los datos **no se envían a ningún servidor**: el procesado es local en el navegador.
+## Datos y despliegue
 
-*Factiun · proyecto interno.*
+Los ficheros originales y la configuración económica no se publican en este repositorio. Producción y SPC se conservan localmente en IndexedDB. El consumo cargado puede compartirse a través del KV del Worker; SPC tiene claves propias por día. La configuración económica permanece en `localStorage` y no se envía al Worker. Las credenciales de los proveedores se guardan como secretos de Cloudflare.
+
+El frontend utiliza HTML/JS, SheetJS, Chart.js, jsPDF y Open-Meteo. El código del Worker y su despliegue se describen en [worker/README.md](worker/README.md).
+
+## Verificación local
+
+Con Node 22 o posterior:
+
+```bash
+node --test tests/*.test.mjs
+node worker/construir.mjs
+node --check worker/bundle.js
+```
+
+Las pruebas usan respuestas ficticias: validan el cálculo y el tratamiento de errores, pero no acreditan acceso real al servicio SPC. Los precios reales, PDFs de factura, `.env` y `.dev.vars` no deben incorporarse al repositorio público.
+
+*Factiun · Gorraiz.*
