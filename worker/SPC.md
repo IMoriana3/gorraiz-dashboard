@@ -6,6 +6,12 @@ El Worker obtiene las mediciones del SPC, guarda cada día en el KV existente y 
 
 No hay rutas de control, ajustes del antivertido ni cambios de los inversores. El cliente usa exclusivamente `https://spc.ksdatacloud.com`, no sigue redirecciones y no cambia a HTTP cuando falla.
 
+**Estado de conectividad comprobado el 20/10/2026 (desde GitHub Actions, sin credenciales):** la raíz pública `http://spc.ksdatacloud.com/` devolvió HTTP **200**, mientras que `https://spc.ksdatacloud.com/` rechazó la conexión en el puerto **443** (`curl: (7)`). Se probó sin iniciar sesión ni enviar usuario, contraseña o token. [Resultado de la prueba](https://github.com/IMoriana3/gorraiz-dashboard/actions/runs/39434430084/job/118667583221).
+
+**Consecuencia:** el conector usa correctamente HTTPS, pero **no se ha podido obtener ningún dato real** y no debe cambiarse automáticamente a HTTP para enviar credenciales. La ausencia de HTTPS desde GitHub no demuestra que todas las redes estén bloqueadas, pero impide dar la conexión cloud por operativa. El cron sigue desactivado.
+
+**Alcance de la fase actual:** solo el intercambio de energía de KSTAR SPC01 y la generación FV que ya se descarga de Solarman. No se desarrollan ni prueban ahora i-DE o Datadis.
+
 ## 1. Desplegar y configurar
 
 Despliega el código revisado del Worker con el procedimiento habitual del repositorio. En Cloudflare, abre el Worker y **Settings → Variables and Secrets**. Añade como secretos:
@@ -30,13 +36,13 @@ Se reutilizan `PANEL_KEY`, `ALLOWED_ORIGIN` y el binding KV `DATOS`. La contrase
 
 1. Abre el dashboard con su URL del Worker y clave habituales.
 2. En **Hasta**, elige un día anterior a hoy y pulsa **Comprobar SPC**. El botón consulta esa fecha.
-3. Revisa que la planta y el medidor sean los esperados y que importación/exportación coincidan con la pantalla o exportación del portal para ese mismo día.
-4. Contrasta las unidades y el perímetro con el contador de i-DE. Un total diario del SPC corresponde a la estación; el histórico procede del medidor seleccionado. Con varios medidores, valida especialmente esa correspondencia.
+3. Revisa que la planta y el medidor sean los esperados y que importación/exportación coincidan con la pantalla o exportación del **propio portal KSTAR** para ese mismo día.
+4. Valida las unidades y la correspondencia entre el resumen diario de la estación y el medidor seleccionado. Con varios medidores, es imprescindible seleccionar y comprobar el correcto. La comparación con otras fuentes queda fuera de esta fase.
 5. Pulsa **Traer datos** para descargar el rango. Cada día se solicita por separado; un fallo no borra los días anteriores.
 
 `SPC configurado` solo indica que existen las variables necesarias. `Conexión comprobada` requiere una respuesta autenticada válida. El día en curso sigue siendo parcial. El huso de los timestamps del histórico se conserva sin afirmar que haya sido verificado; no se fabrican kWh horarios a partir de esas filas.
 
-Si el diagnóstico responde que no hay acceso por HTTPS, la descarga no está operativa. En la comprobación sin credenciales realizada durante el desarrollo, HTTPS devolvió 503 desde el entorno de trabajo; esto **no determina** lo que responderá desde Cloudflare. Hay que probar allí. Si también falla, será necesario que KSTAR confirme un endpoint HTTPS accesible o facilite una API compatible; no debe enviarse la contraseña por HTTP como alternativa.
+En GitHub Actions ya hemos comprobado acceso HTTP público y rechazo de la conexión HTTPS (puerto 443). Todavía falta comprobar el destino desde el Worker real, pero **no hay base para activar el login** hasta disponer de un endpoint HTTPS operativo. Si tampoco es accesible, KSTAR debe proporcionar el acceso HTTPS o un método local documentado. No transmitir la contraseña por HTTP.
 
 ## 3. Recoger datos sin abrir el navegador
 
@@ -47,11 +53,21 @@ Tras validar la lectura, cambia `SPC_SYNC_ENABLED` a `"true"` en `wrangler.toml`
 crons = ["17 * * * *"]
 ```
 
-Después despliega. Cada hora el Worker actualiza **el día anterior de Madrid** en KV. Repetir la lectura permite recoger correcciones y reintentar fallos transitorios. El cron es UTC; el día de energía lo determina `SPC_TIMEZONE`. Este cron solo sincroniza SPC, no la producción Solarman ni Datadis. El informe sigue obteniendo esas fuentes mediante su flujo habitual.
+Después despliega. Cada hora el Worker actualiza **el día anterior de Madrid** en KV. Repetir la lectura permite recoger correcciones y reintentar fallos transitorios. El cron es UTC; el día de energía lo determina `SPC_TIMEZONE`. Este cron solo sincroniza SPC; no cambia la descarga Solarman.
 
 Los huecos de varios días o el histórico anterior se recuperan eligiendo el rango y pulsando **Traer datos**. El cron de ayer no realiza un relleno ilimitado de fechas antiguas. Desactivar `SPC_SYNC_ENABLED` detiene las consultas del manejador aunque permanezca el cron.
 
 Las variables declaradas en `wrangler.toml` se vuelven a aplicar al desplegar: conserva el cambio de activación en ese fichero. `keep_vars` permite mantener variables de texto adicionales del panel; los secretos se gestionan por separado.
+
+## Vías seguras para desbloquear KSTAR
+
+**A. Acceso cloud HTTPS de solo lectura (preferente).** Solicitar a KSTAR un hostname y puerto HTTPS válidos para SPC Cloud, documentación del mecanismo de autenticación, permiso mínimo de lectura, límite de llamadas y endpoint de medidor/histórico y resumen diario. Confirmar si pueden devolver importación/exportación en kWh para la estación `2026032317114373`, su zona horaria, resolución y fecha de cierre. No enviar las credenciales por correo ni incorporarlas al repositorio.
+
+**B. Lectura local (alternativa).** KSTAR documenta conexión Ethernet/Wi-Fi/4G y supervisión Bluetooth, pero **no hemos localizado un mapa oficial de registros de lectura local SPC01**. Antes de programar cualquier colector hay que confirmar con fabricante el protocolo, dirección y puertos, si existe modo solo lectura y la tabla de registros del contador. No suponer que el puerto Modbus TCP 502 ni los registros de otros fabricantes son compatibles con SPC01. Si existe acceso local, un pequeño proceso dentro de la red del edificio podría leer las medidas y remitirlas mediante un canal cifrado a nuestro sistema sin entrar en la web HTTP.
+
+**C. Exportación XLSX desde KSTAR mientras se resuelve la automatización.** Permite verificar el formato real de las lecturas y distinguir acumulados de intervalos. Es una vía temporal; no afirmar que está automatizada.
+
+**Orden de aceptación:** comprobar conexión segura → prueba de un día cerrado → validar totales y unidades → historial de varios días → habilitar sincronización diaria. Hasta completar ese proceso, `SPC_SYNC_ENABLED=false`.
 
 ## Contrato HTTP
 
