@@ -8,6 +8,8 @@ No hay rutas de control, ajustes del antivertido ni cambios de los inversores. E
 
 **Estado de conectividad comprobado el 20/10/2026 (desde GitHub Actions, sin credenciales):** la raíz pública `http://spc.ksdatacloud.com/` devolvió HTTP **200**, mientras que `https://spc.ksdatacloud.com/` rechazó la conexión en el puerto **443** (`curl: (7)`). Se probó sin iniciar sesión ni enviar usuario, contraseña o token. [Resultado de la prueba](https://github.com/IMoriana3/gorraiz-dashboard/actions/runs/39434430084/job/118667583221).
 
+**Revisión adicional de código web público:** la portada HTTP enlaza el JavaScript `/static/js/index-5f57a108.js`; el análisis de referencias absolutas en esa entrada **no ha identificado un host de API HTTPS alternativo**. Es una inspección parcial de los scripts de entrada, no una prueba de inexistencia. No se ejecutó el JavaScript descargado ni se usaron credenciales. [Registro del análisis](https://github.com/IMoriana3/gorraiz-dashboard/actions/runs/39435594620).
+
 **Consecuencia:** el conector usa correctamente HTTPS, pero **no se ha podido obtener ningún dato real** y no debe cambiarse automáticamente a HTTP para enviar credenciales. La ausencia de HTTPS desde GitHub no demuestra que todas las redes estén bloqueadas, pero impide dar la conexión cloud por operativa. El cron sigue desactivado.
 
 **Alcance de la fase actual:** solo el intercambio de energía de KSTAR SPC01 y la generación FV que ya se descarga de Solarman. No se desarrollan ni prueban ahora i-DE o Datadis.
@@ -61,7 +63,7 @@ Las variables declaradas en `wrangler.toml` se vuelven a aplicar al desplegar: c
 
 ## Vías seguras para desbloquear KSTAR
 
-**A. Acceso cloud HTTPS de solo lectura (preferente).** Solicitar a KSTAR un hostname y puerto HTTPS válidos para SPC Cloud, documentación del mecanismo de autenticación, permiso mínimo de lectura, límite de llamadas y endpoint de medidor/histórico y resumen diario. Confirmar si pueden devolver importación/exportación en kWh para la estación `2026032317114373`, su zona horaria, resolución y fecha de cierre. No enviar las credenciales por correo ni incorporarlas al repositorio.
+**A. Acceso cloud HTTPS de solo lectura (preferente).** Contacto oficial para solicitar soporte: [KSTAR SPC01](https://es.kstarnewenergy.com/products/inversores-fotovoltaicos/inversores-comerciales-e-industriales/caja-de-comunicacion-spc01.html) (dirección publicada: sales@kstar.com). Solicitar a KSTAR un hostname y puerto HTTPS válidos para SPC Cloud, documentación del mecanismo de autenticación, permiso mínimo de lectura, límite de llamadas y endpoint de medidor/histórico y resumen diario. Confirmar si pueden devolver importación/exportación en kWh para la estación `2026032317114373`, su zona horaria, resolución y fecha de cierre. No enviar las credenciales por correo ni incorporarlas al repositorio.
 
 **B. Lectura local (alternativa).** KSTAR documenta conexión Ethernet/Wi-Fi/4G y supervisión Bluetooth, pero **no hemos localizado un mapa oficial de registros de lectura local SPC01**. Antes de programar cualquier colector hay que confirmar con fabricante el protocolo, dirección y puertos, si existe modo solo lectura y la tabla de registros del contador. No suponer que el puerto Modbus TCP 502 ni los registros de otros fabricantes son compatibles con SPC01. Si existe acceso local, un pequeño proceso dentro de la red del edificio podría leer las medidas y remitirlas mediante un canal cifrado a nuestro sistema sin entrar en la web HTTP.
 
