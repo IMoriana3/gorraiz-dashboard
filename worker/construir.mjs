@@ -24,3 +24,14 @@ const cab=`// ══════════════════════
 `;
 writeFileSync(new URL('./bundle.js',import.meta.url),cab+per+'\n\n'+spc+'\n\n'+idx+'\n');
 console.log('bundle.js generado');
+
+const prueba = readFileSync(new URL('./kstar-prueba.js',import.meta.url),'utf8')
+  .replace(/^import\s*\{[^}]*\}\s*from\s*['"]\.\/spc\.js['"];?\s*$/gm,'')
+  .trim();
+const pruebaHeader=`// GENERADO AUTOMÁTICAMENTE: SOLO PRUEBA AISLADA DE KSTAR SPC.
+// No copiar credenciales a este fichero. Regenerar: node worker/construir.mjs
+
+`;
+writeFileSync(new URL('./kstar-prueba-bundle.js',import.meta.url),
+  pruebaHeader+spc+'\n\n'+prueba+'\n');
+console.log('kstar-prueba-bundle.js generado');

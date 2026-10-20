@@ -35,9 +35,11 @@ jobs:
           node --check energia.js
           node --check worker/index.js
           node --check worker/spc.js
+          node --check worker/kstar-prueba.js
           node --check worker/bundle.js
+          node --check worker/kstar-prueba-bundle.js
       - name: Confirmar que bundle.js está actualizado
-        run: git diff --exit-code -- worker/bundle.js
+        run: git diff --exit-code -- worker/bundle.js worker/kstar-prueba-bundle.js
 
   cloudflare-dry-run:
     name: Wrangler dry-run · sin desplegar
