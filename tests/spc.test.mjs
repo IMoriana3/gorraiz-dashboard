@@ -366,6 +366,30 @@ test('SPC rechaza HTML, JSON ilegible y errores de aplicación aunque HTTP sea 2
   }
 });
 
+
+test('SPC acepta 000000 real, importacion 658.92 y exportacion 0 con datos simulados', async () => {
+  const f=fixture({override: url => url.pathname===PATHS.daily
+    ? jsonResponse({code:'000000',success:true,data:{
+      positiveElec:658.92,reverseElec:0,selfConsumption:74}})
+    : undefined});
+  const result=await createSpcClient(ENV,f.options).readDay(DAY);
+  assert.deepEqual(result.daily,[{
+    date:DAY,importKWh:658.92,exportKWh:0,selfConsumptionKWh:74}]);
+  assert.equal(result.meta.completo,true);
+  assert.equal(result.meta.coberturaHorariaVerificada,false);
+});
+test('SPC no acepta 000401 ni falsos exitos con 000000', async () => {
+  const casos=[
+    {code:'000401',success:true,data:{positiveElec:1}},
+    {code:'000000',success:false,data:{positiveElec:1}},
+    {code:'000000',success:true,error:'denied',data:{positiveElec:1}},
+  ];
+  for(const d of casos) {
+    const f=fixture({override: url => url.pathname===PATHS.daily ? jsonResponse(d) : undefined});
+    await assert.rejects(createSpcClient(ENV,f.options).readDay(DAY),e=>e.code==='SPC_PROVIDER_ERROR');
+  }
+});
+
 for (const expired of [401, 10031, 10032]) {
   test('SPC renueva una sola vez la sesión caducada ' + expired, async () => {
     let attempts = 0;

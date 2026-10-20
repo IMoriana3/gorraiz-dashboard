@@ -227,3 +227,36 @@ test('sin histórico, código no numérico no se devuelve y se conservan nulos',
   assert.equal(upstream.mock.callCount(),4);
 });
 
+
+test('KSTAR primer dia real simulado: respuesta 000000, entrada 658.92 y salida 0', async t => {
+  const fetcher=t.mock.method(globalThis,'fetch',async url=>{
+    const p=new URL(url).pathname;
+    if(p==='/api/authentication/form')
+      return json({token:{access_token:'fictitious-regression-token',expires_in:3600}});
+    if(p==='/api/station/monitor/detail/meter/list')
+      return json({code:200,rows:[{deviceId:'M_TEST',stationId:ENV.SPC_STATION_ID}],total:1});
+    if(p==='/api/meter/monitor/detail/history/data')
+      return json({code:200,rows:[
+        {saveTime:'2026-10-19 23:56:34',positiveActiveElec:147636.2969,reverseActiveElec:2140.5901},
+        {saveTime:'2026-10-19 00:02:03',positiveActiveElec:146977.375,reverseActiveElec:2140.5901},
+      ],total:2});
+    if(p==='/api/station/monitor/detail/self')
+      return json({code:'000000',success:true,data:{
+        positiveElec:658.92,reverseElec:0,selfConsumption:74}});
+    throw Error('Unexpected path');
+  });
+  const resp=await worker.fetch(request(),ENV);
+  assert.equal(resp.status,200);
+  const d=await resp.json();
+  assert.equal(d.ok,true);
+  assert.equal(d.importKWh,658.92);
+  assert.equal(d.exportKWh,0);
+  assert.equal(d.selfConsumptionKWh,74);
+  assert.equal(d.proveedor.codigo,'000000');
+  assert.equal(d.complete,true);
+  assert.equal(d.historico.registros,2);
+  assert.equal(fetcher.mock.callCount(),4);
+  for(const secret of [ENV.SPC_USER,ENV.SPC_PASS,'fictitious-regression-token'])
+    assert.equal(JSON.stringify(d).includes(secret),false);
+});
+

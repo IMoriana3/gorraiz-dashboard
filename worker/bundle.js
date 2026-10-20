@@ -274,7 +274,10 @@ function createSpcClient(env, options = {}) {
     if (code === '10031' || code === '10032' || code === '401') {
       fail('SPC_SESSION_EXPIRED', 'La sesión de SPC ha caducado.');
     }
-    if ((code !== null && code !== '0' && code !== '200') || data.success === false || data.error) {
+    // El código "000000" con success:true está confirmado como éxito en KSTAR.
+    // No normalizar a número: otros códigos con ceros iniciales son errores.
+    const goodCode = code === null || ['0', '200', '000000'].includes(code);
+    if (!goodCode || data.success === false || data.error) {
       fail('SPC_PROVIDER_ERROR', 'SPC devolvió un error de aplicación; no se han utilizado sus datos.');
     }
     return data;
