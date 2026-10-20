@@ -204,8 +204,25 @@ export default {
     // Solo la ruta aislada comparte registros normalizados con el dashboard.
     // Evitamos escribir KV aquí; no tenemos programación automática ni control.
     if (exchange) {
+      let etapa = 'preparacion', detalleRed = null;
+      // La ruta /comprobar que ya lee datos reales usa redirect:'manual'.
+      // Reutilizamos exactamente ese comportamiento: no seguir redirects
+      // con username/password en la URL o tokens Bearer en la cabecera.
+      // Con redirect:'error' Cloudflare puede convertir una redirección
+      // upstream en un SPC_NETWORK genérico antes de que podamos verla.
+      const fetchManual = async (url, init) => {
+        etapa = stageOf(url);
+        try {
+          return await fetch(url, {...init, redirect: 'manual'});
+        } catch (error) {
+          detalleRed = init.signal?.aborted || error?.name === 'AbortError'
+            ? 'tiempo_agotado' : 'fallo_de_transporte';
+          throw error;
+        }
+      };
       try {
-        const r = await spcIntercambio({...env, DATOS: undefined}, dia, dia, {sessionCache: new Map()});
+        const r = await spcIntercambio({...env, DATOS: undefined}, dia, dia,
+          {sessionCache: new Map(), fetch: fetchManual});
         if (r.meta?.stationId !== env.SPC_STATION_ID || r.daily?.[0]?.date !== dia)
           return output({error: 'La estación o el día KSTAR no coinciden.'}, 502, req);
         return output({rows: r.rows, daily: r.daily, meta: {
@@ -213,7 +230,8 @@ export default {
         }}, 200, req);
       } catch (error) {
         const safe = safeSpcError(error);
-        return output({code: safe.code, error: safe.message}, safe.status, req);
+        return output({code: safe.code, error: safe.message, etapa,
+          ...(detalleRed ? {detalleRed} : {})}, safe.status, req);
       }
     }
     let etapa = 'preparacion', detalleRed = null, proveedor = null, historico = null;

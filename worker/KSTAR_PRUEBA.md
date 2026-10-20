@@ -1,3 +1,11 @@
+## Corrección del puente /spc/intercambio (20/10/2026)
+
+**Incidencia del dashboard:** el botón «Comprobar lectura KSTAR» del Worker de pruebas descargó el 19/10/2026 correctamente, pero el botón «Comprobar SPC» del dashboard dio `SPC_NETWORK` para el mismo día. La diferencia de código era `fetchDiagnostic(... redirect:'manual')` en `/comprobar` frente a la llamada directa al conector con `redirect:'error'` en `/spc/intercambio`.
+
+La ruta de intercambio ahora aplica **`redirect:'manual'` en todas las subpeticiones a KSTAR**. Ninguna redirección se sigue, y cualquier HTTP 3xx continúa rechazándose como `SPC_REDIRECT` por la capa principal. Añade `etapa` (`autenticacion`, `lista_medidores`, `historico_medidor` o `resumen_diario`) y `detalleRed` genérico al error de interfaz, sin revelar URLs, headers, usuarios, contraseñas, cuerpos completos ni tokens.
+
+**Pruebas automáticas** verifican que las subpeticiones usan redirección manual, que nunca se sigue una redirección que pudiera contener la contraseña, y que los errores de transporte se identifican sin filtrar secretos. **Pendiente:** desplegar el bundle corregido en `gorraiz-kstar-prueba` y verificar de nuevo 19/10 desde el dashboard; no modificar el Worker habitual de Solarman.
+
 # Gorraiz · prueba aislada KSTAR (después de HTTP 200 / API 401)
 
 **Resultado previo:** el Worker `gorraiz-kstar-prueba` ya puede llegar al portal por HTTP, y la API devuelve 401 sin sesión. El siguiente ensayo es autenticado, **exclusivamente con una cuenta KSTAR temporal y de solo lectura**. No utilizar la cuenta principal con permisos de control.
