@@ -4,7 +4,7 @@
 
 El Worker obtiene las mediciones del SPC, guarda cada día en el KV existente y las ofrece al dashboard. La lectura usa las llamadas observadas en el JavaScript público del portal. **No se ha validado todavía una descarga autenticada de esta planta**, por lo que el conector requiere una prueba real antes de activar el cron.
 
-No hay rutas de control, ajustes del antivertido ni cambios de los inversores. El cliente usa exclusivamente `https://spc.ksdatacloud.com`, no sigue redirecciones y no cambia a HTTP cuando falla.
+No hay rutas de control, ajustes del antivertido ni cambios de los inversores. Por defecto el cliente utiliza `https://spc.ksdatacloud.com` y no cambia automáticamente a HTTP cuando falla. El ensayo HTTP requiere las dos variables de aceptación documentadas abajo; tampoco sigue redirecciones.
 
 **Estado de conectividad comprobado el 20/10/2026 (desde GitHub Actions, sin credenciales):** la raíz pública `http://spc.ksdatacloud.com/` devolvió HTTP **200**, mientras que `https://spc.ksdatacloud.com/` rechazó la conexión en el puerto **443** (`curl: (7)`). Se probó sin iniciar sesión ni enviar usuario, contraseña o token. [Resultado de la prueba](https://github.com/IMoriana3/gorraiz-dashboard/actions/runs/39434430084/job/118667583221).
 
@@ -61,7 +61,7 @@ Se reutilizan `PANEL_KEY`, `ALLOWED_ORIGIN` y el binding KV `DATOS`. La contrase
 
 `SPC configurado` solo indica que existen las variables necesarias. `Conexión comprobada` requiere una respuesta autenticada válida. El día en curso sigue siendo parcial. El huso de los timestamps del histórico se conserva sin afirmar que haya sido verificado; no se fabrican kWh horarios a partir de esas filas.
 
-En GitHub Actions ya hemos comprobado acceso HTTP público y rechazo de la conexión HTTPS (puerto 443). Todavía falta comprobar el destino desde el Worker real, pero **no hay base para activar el login** hasta disponer de un endpoint HTTPS operativo. Si tampoco es accesible, KSTAR debe proporcionar el acceso HTTPS o un método local documentado. No transmitir la contraseña por HTTP.
+En GitHub Actions hemos comprobado acceso HTTP público y rechazo de la conexión HTTPS (puerto 443). Falta comprobar el acceso desde el Worker real. El **camino recomendable** es conseguir HTTPS o lectura local documentada de KSTAR. El modo HTTP experimental puede ensayarse de forma consciente con cuenta aislada y revocable, pero no proporciona confidencialidad a las credenciales ni a la sesión y **no se ha activado**.
 
 ## 3. Recoger datos sin abrir el navegador
 
@@ -118,4 +118,4 @@ Las pruebas simulan las respuestas del portal; no prueban credenciales, conectiv
 - [Cloudflare: Cron Triggers](https://developers.cloudflare.com/workers/configuration/cron-triggers/)
 - [Cloudflare: configuración de Wrangler](https://developers.cloudflare.com/workers/wrangler/configuration/)
 - [Cloudflare: límites de Workers](https://developers.cloudflare.com/workers/platform/limits/)
-- [Cliente web SPC](http://spc.ksdatacloud.com/), consultado para identificar su protocolo. El conector utiliza HTTPS.
+- [Cliente web SPC](http://spc.ksdatacloud.com/), consultado para identificar su protocolo. El conector usa HTTPS por defecto; HTTP experimental está bloqueado salvo doble autorización.
