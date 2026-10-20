@@ -42,3 +42,37 @@ jobs:
           echo "$http_result"
           echo "Resultado HTTP público (sin secretos): salida=$http_code $http_result" >> "$GITHUB_STEP_SUMMARY"
           exit 0
+
+      - name: Leer referencias de API en scripts públicos (sin ejecutar JS)
+        shell: bash
+        run: |
+          python - <<'PY'
+          import re
+          import urllib.parse
+          import urllib.request
+          base = "http://spc.ksdatacloud.com/"
+          try:
+              with urllib.request.urlopen(base, timeout=10) as response:
+                  html = response.read(750000).decode("utf-8", "replace")
+              srcs = re.findall(r'<script[^>]*?src=["\\\']([^"\\\']+)["\\\']', html, re.I)
+              refs = []
+              for src in srcs:
+                  url = urllib.parse.urljoin(base, src)
+                  if urllib.parse.urlsplit(url).hostname == "spc.ksdatacloud.com":
+                      refs.append(url)
+              print("Scripts públicos encontrados:", len(refs))
+              hosts = set(re.findall(r'https?://([a-z0-9.-]+)', html, re.I))
+              for url in refs[:7]:
+                  try:
+                      with urllib.request.urlopen(url, timeout=12) as response:
+                          js = response.read(1500000).decode("utf-8", "replace")
+                      hosts.update(re.findall(r'https?://([a-z0-9.-]+)', js, re.I))
+                      print("Script inspeccionado:", urllib.parse.urlsplit(url).path, "bytes leídos:", len(js))
+                  except Exception as exc:
+                      print("Script no disponible:", type(exc).__name__)
+              print("Hostnames absolutos citados en el HTML/JS público (no significa API accesible):")
+              for host in sorted(hosts):
+                  print(" -", host)
+          except Exception as exc:
+              print("No se pudo leer el HTML público:", type(exc).__name__)
+          PY
