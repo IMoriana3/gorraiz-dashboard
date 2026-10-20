@@ -411,9 +411,6 @@ const orgId=o=>o.companyId!=null?o.companyId:(o.orgId!=null?o.orgId:(o.id!=null?
 const orgNombre=o=>o.companyName||o.orgName||o.name||'sin nombre';
 const listaPlantas=l=>l.stationList||l.list||(l.data&&(l.data.stationList||l.data.list))||[];
 
-// Abre sesión resolviendo el caso de las plantas de empresa: si el token
-// personal no ve ninguna planta y la cuenta pertenece a una sola organización,
-// se repite el login con su orgId en lugar de obligar a configurarlo a mano.
 // Compatibilidad comprobada en Gorraiz (PR #21, agosto de 2026):
 // 1. token PERSONAL sin orgId; 2. consultar plantas; 3. descubrir companyId
 // en orgInfoList; 4. pedir token de la organización si no hay plantas.
