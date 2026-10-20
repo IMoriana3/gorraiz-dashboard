@@ -16,6 +16,10 @@ const DATADIS='https://datadis.es';
 // Solarman tiene varios centros de datos y el appId solo vale en el suyo:
 // llamar al que no toca devuelve "appId or api is locked", que suena a
 // problema de permisos y en realidad es de dominio. Se prueban por orden.
+// ID de organización real de Gorraiz (Amixalan), comprobado en la PR #21.
+// No es secreto ni credencial: el propio histórico de GitHub lo documenta.
+// Sirve solo de respaldo si un rollback/despliegue pierde SOLARMAN_ORGID.
+const GORRAIZ_ORGID='10865841';
 const SOLARMAN_BASES=['https://globalapi.solarmanpv.com','https://api.solarmanpv.com'];
 
 // ── utilidades ───────────────────────────────────────────────────────────
@@ -419,17 +423,19 @@ const listaPlantas=l=>l.stationList||l.list||(l.data&&(l.data.stationList||l.dat
 // Solo se prueba la misma identidad configurada, como máximo en dos modos;
 // nunca se adivinan correos, contraseñas, organizaciones ni centros nuevos.
 async function smSesion(env){
-  const fija=cred(env.SOLARMAN_ORGID);
+  const orgConfigurado=cred(env.SOLARMAN_ORGID);
+  const fija=orgConfigurado||GORRAIZ_ORGID;
   let personal;
   try{
     // Pasar '' fuerza omitir orgId incluso cuando existe SOLARMAN_ORGID.
     personal=await smToken(env,'');
   }catch(sinOrg){
     // Algunas cuentas Business exigen el token directo de organización.
-    if(!fija)throw new Error('Solarman: login personal sin orgId rechazado. '+sinOrg.message);
     try{
       const org=await smToken(env,fija);
-      return{...org,org:{id:fija,nombre:'organización configurada',automatico:false}};
+      return{...org,org:{id:fija,
+        nombre:orgConfigurado?'organización configurada':'Amixalan (Gorraiz)',
+        automatico:!orgConfigurado}};
     }catch(conOrg){
       throw new Error('Solarman: han fallado los dos modos de login (personal sin orgId y organización con orgId). '
         +'Personal: '+sinOrg.message+' · Organización: '+conOrg.message);
@@ -442,7 +448,6 @@ async function smSesion(env){
     plantas=listaPlantas(l);
   }catch(e){
     // El token personal puede ser válido pero no tener permiso para listar plantas.
-    if(!fija)throw e;
     try{
       const org=await smToken(env,fija);
       return{...org,org:{id:fija,nombre:'organización configurada',automatico:false}};
@@ -455,7 +460,7 @@ async function smSesion(env){
 
   // Mismo descubrimiento que permitió encontrar Amixalan en agosto.
   const o=await smOrganizaciones(env,personal.tk,personal.base);
-  if(fija){
+  if(orgConfigurado){
     const elegida=o.orgs.find(x=>String(orgId(x))===String(fija));
     if(o.orgs.length&&!elegida)
       throw new Error('Solarman: SOLARMAN_ORGID no coincide con ninguna organización de la cuenta. '
@@ -702,6 +707,8 @@ export default{
           solarmanEmail:huella(env.SOLARMAN_EMAIL),
           solarmanPass:huella(env.SOLARMAN_PASS),
           solarmanOrgId:env.SOLARMAN_ORGID||null,
+          solarmanOrgIdEfectivo:cred(env.SOLARMAN_ORGID)||GORRAIZ_ORGID,
+          solarmanOrgIdOrigen:cred(env.SOLARMAN_ORGID)?'configurado':'respaldo-gorraiz',
           solarmanInvA:env.SOLARMAN_INV_A||null,
           solarmanInvB:env.SOLARMAN_INV_B||null,
           almacen:!!env.DATOS,
