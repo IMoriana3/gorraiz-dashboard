@@ -1,0 +1,34 @@
+name: KSTAR SPC · conectividad HTTPS (sin credenciales)
+
+on:
+  push:
+    branches: [codex/spc-automatizacion-gorraiz]
+    paths:
+      - ".github/workflows/kstar-https.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  https:
+    name: Comprobar dominio HTTPS de SPC
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Consultar solo la raíz pública sin credenciales
+        shell: bash
+        run: |
+          set +e
+          # Solo comprobación TLS/HTTP; NO se hace login ni se mandan credenciales.
+          result=$(curl --proto '=https' --max-redirs 0 --connect-timeout 8 --max-time 15             --silent --show-error --output /dev/null             --write-out 'HTTP=%{http_code};TLS=%{ssl_verify_result};REMOTE=%{remote_ip}'             'https://spc.ksdatacloud.com/' 2>&1)
+          code=$?
+          echo "curl exit: $code"
+          echo "$result"
+          if [ "$code" = "0" ]; then
+            echo "La conexión HTTPS desde GitHub responde. No implica autenticación válida ni acceso desde Cloudflare." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Falló la conexión HTTPS desde GitHub. No implica necesariamente fallo desde la red del usuario o Cloudflare." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "Resultado curl (sin secretos): $result" >> "$GITHUB_STEP_SUMMARY"
+          exit 0
