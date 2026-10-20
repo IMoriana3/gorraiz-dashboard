@@ -330,13 +330,39 @@ async function smPost(env,ruta,cuerpo,tk,base){
   if(j.success===false)throw new Error('Solarman '+ruta+': '+(j.msg||j.code||'error'));
   return j;
 }
+
+// Tres modalidades de login permitidas por la API oficial de SOLARMAN.
+// Nunca probar automáticamente identidades alternativas: sería insistir con
+// credenciales reales y podría bloquear la cuenta.
+const SOLARMAN_LOGIN_FIELDS=Object.freeze({
+  email:'SOLARMAN_EMAIL',username:'SOLARMAN_USERNAME',mobile:'SOLARMAN_MOBILE',
+});
+function smLoginType(env){
+  return String(cred(env.SOLARMAN_LOGIN_TYPE)||'email').trim().toLowerCase();
+}
+function smLoginIdentity(env){
+  const tipo=smLoginType(env),variable=SOLARMAN_LOGIN_FIELDS[tipo];
+  if(!variable)throw new Error('Solarman: SOLARMAN_LOGIN_TYPE debe ser email, username o mobile.');
+  const value=cred(env[variable]);
+  if(!value)throw new Error('Solarman: falta '+variable+' en Settings → Variables and Secrets.');
+  if(tipo==='email'&&!value.includes('@'))
+    throw new Error('Solarman: SOLARMAN_EMAIL no parece un correo electrónico. Si la cuenta entra por nombre de usuario, configura SOLARMAN_LOGIN_TYPE=username y SOLARMAN_USERNAME.');
+  if(tipo==='mobile'){
+    const code=String(cred(env.SOLARMAN_COUNTRY_CODE)||'').replace(/^\+/,'');
+    if(!/^\d{1,4}$/.test(code)||!/^\d{5,20}$/.test(value))
+      throw new Error('Solarman: para mobile configura SOLARMAN_COUNTRY_CODE (p. ej. 34) y SOLARMAN_MOBILE solo con dígitos.');
+    return {tipo,variable,fields:{mobile:value,countryCode:code}};
+  }
+  return {tipo,variable,fields:{[tipo]:value}};
+}
 async function smToken(env,orgForzado){
   const bases=env.SOLARMAN_BASE?[env.SOLARMAN_BASE]:SOLARMAN_BASES;
-  // Las cuentas SOLARMAN Business necesitan orgId en el login; las Smart no lo
-  // llevan. Sin él, una cuenta Business responde "auth failed" aunque el correo
-  // y la contraseña sean correctos.
-  const datos={appSecret:cred(env.SOLARMAN_APPSECRET),email:cred(env.SOLARMAN_EMAIL),
-    password:await sha256(cred(env.SOLARMAN_PASS))};
+  // El token de organización exige orgId; el tipo de identificador es
+  // independiente (email, username o mobile según el alta de la cuenta).
+  const identity=smLoginIdentity(env);
+  const pass=cred(env.SOLARMAN_PASS),secret=cred(env.SOLARMAN_APPSECRET);
+  if(!pass||!secret)throw new Error('Solarman: faltan SOLARMAN_PASS o SOLARMAN_APPSECRET.');
+  const datos={appSecret:secret,...identity.fields,password:await sha256(pass)};
   const org=orgForzado!==undefined&&orgForzado!==null?String(orgForzado):cred(env.SOLARMAN_ORGID);
   if(org)datos.orgId=isNaN(+org)?org:+org;
   const cuerpo=JSON.stringify(datos);
@@ -348,16 +374,20 @@ async function smToken(env,orgForzado){
     if(j.access_token)return{tk:j.access_token,base:base};
     fallos.push(new URL(base).hostname+': '+(j.msg||j.error||('HTTP '+r.status)));
   }
-  // Los dos mensajes de Solarman apuntan a cosas muy distintas y ninguno lo
-  // dice: "locked" es del appId, "auth failed" es de la cuenta.
-  let pista='';
-  if(fallos.some(f=>/auth failed/i.test(f)))
-    pista=' — "auth failed" en un centro significa que el appId es válido ahí y lo que falla son las credenciales.'
-      +(org?' Se ha enviado orgId, así que revisa que sea el correcto, junto con SOLARMAN_APPSECRET, SOLARMAN_EMAIL y SOLARMAN_PASS.'
-           :' Si la cuenta es SOLARMAN Business en lugar de Smart, el login exige además SOLARMAN_ORGID; sin él falla aunque el correo y la contraseña sean correctos.')
-      +' Consulta /estado para ver la huella de cada credencial.';
-  else if(fallos.some(f=>/locked/i.test(f)))
-    pista=' — "locked" en todos los centros significa que el appId no está activado por su soporte, o que sobra algún carácter en él. Consulta /estado para ver su huella.';
+  // Según SOLARMAN, 'auth failed' es ambiguo: método de login, cuenta,
+  // contraseña, APPID/APPSECRET, ORGID y centro de datos pueden influir.
+  // No afirmar que el APPID sea válido solo porque un centro dice 'auth failed'.
+  const auth=fallos.some(f=>/auth failed|AUTH_INVALID_USERNAME_OR_PASSWORD/i.test(f));
+  const locked=fallos.some(f=>/locked|AUTH_INVALID_APPID/i.test(f));
+  const tipo=identity.tipo;
+  const pista=auth
+    ? ' Se ha usado el identificador '+tipo+(org?' y un orgId configurado.':', sin orgId.')+
+      ' Comprueba que la cuenta accede realmente mediante '+tipo+
+      ', la contraseña ORIGINAL sin SHA-256 previo, SOLARMAN_APPSECRET y el orgId correspondiente.'+
+      ' El mensaje auth failed no prueba por sí solo que el APPID esté validado.'
+    : locked
+      ? ' Comprueba el centro del APPID (internacional suele ser globalapi) y su activación con SOLARMAN.'
+      : ' Revisa método de login, centro de datos y credenciales sin publicarlas.';
   throw new Error('Solarman: login rechazado. '+fallos.join(' · ')+pista);
 }
 // En Solarman las plantas de una empresa cuelgan de la ORGANIZACIÓN, no de la
@@ -602,7 +632,10 @@ export default{
       if(ruta==='/spc/datos'&&!['GET','POST'].includes(req.method))
         return json({error:'La consulta del almacén SPC requiere GET o POST.'},405,{...h,Allow:'GET, POST'});
       if(ruta==='/estado'){
-        const sm=['SOLARMAN_APPID','SOLARMAN_APPSECRET','SOLARMAN_EMAIL','SOLARMAN_PASS'];
+        const tipo=smLoginType(env),variable=SOLARMAN_LOGIN_FIELDS[tipo];
+        const sm=['SOLARMAN_APPID','SOLARMAN_APPSECRET','SOLARMAN_PASS',
+          ...(variable?[variable]:['SOLARMAN_LOGIN_TYPE']),
+          ...(tipo==='mobile'?['SOLARMAN_COUNTRY_CODE']:[])];
         const faltan=sm.filter(k=>!env[k]);
         return json({
           datadis:!!(env.DATADIS_USER&&env.DATADIS_PASS),
@@ -612,6 +645,10 @@ export default{
           // Decir cuáles faltan ahorra adivinar: en Cloudflare, añadir un
           // secreto crea una versión que puede quedarse sin desplegar.
           solarmanFaltan:faltan,
+          solarmanLoginType:tipo,
+          solarmanLoginVariable:variable||null,
+          solarmanLoginConfigurado:!!(variable&&env[variable]),
+          solarmanPasswordPareceHashPrevio:typeof env.SOLARMAN_PASS==='string'&&/^[a-f0-9]{64}$/i.test(env.SOLARMAN_PASS.trim()),
           // Huella del appId para poder cotejarlo con el que dio Solarman sin
           // exponerlo entero: un espacio o un carácter de más al pegarlo da el
           // mismo error que un appId bloqueado.
