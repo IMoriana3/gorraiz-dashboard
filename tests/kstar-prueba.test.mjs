@@ -71,3 +71,92 @@ test('consulta protegida da importación y exportación, sin token ni contraseñ
   assert.equal(txt.includes('fictional-token-123'),false);
   assert.equal(upstream.mock.callCount(),4);
 });
+
+
+test('sondeo sin usuario, contraseña ni token, muestra solo GET/POST y código de red', async t => {
+  const upstream = t.mock.method(globalThis, 'fetch', async (url, init) => {
+    const u = new URL(url);
+    assert.equal(u.protocol, 'http:');
+    assert.equal(u.hostname, 'spc.ksdatacloud.com');
+    assert.equal(u.search, '');
+    assert.equal(init.redirect, 'manual');
+    assert.equal(init.headers.Authorization, undefined);
+    assert.ok(['GET','POST'].includes(init.method));
+    assert.ok(['/', '/api/station/monitor/detail/self', '/api/authentication/form'].includes(u.pathname));
+    const status = u.pathname === '/' ? 200
+      : u.pathname.includes('authentication') ? 400 : 401;
+    return new Response('', {status});
+  });
+  const r = await worker.fetch(new Request('https://kstar-test.example.invalid/sondeo', {
+    method:'POST', headers:{'X-KSTAR-Test-Key':SECRET},
+  }),ENV);
+  assert.equal(r.status,200);
+  const body = await r.json();
+  assert.equal(body.sinCredencialesKstar,true);
+  assert.deepEqual(body.resultados.map(x=>x.http),[200,401,400]);
+  assert.equal(upstream.mock.callCount(),3);
+  for(const forbidden of [ENV.SPC_USER,ENV.SPC_PASS,'Authorization','Bearer']) {
+    assert.equal(JSON.stringify(body).includes(forbidden),false);
+  }
+});
+
+test('sondeo sin clave no contacta KSTAR', async t => {
+  const upstream=t.mock.method(globalThis,'fetch',async()=>{throw Error('No debe consultar upstream')});
+  const r=await worker.fetch(new Request('https://kstar-test.example.invalid/sondeo',{
+    method:'POST',headers:{'X-KSTAR-Test-Key':'contraseña-incorrecta'},
+  }),ENV);
+  assert.equal(r.status,401);
+  assert.equal(upstream.mock.callCount(),0);
+});
+
+test('error de transporte identifica etapa del login sin divulgar la URL ni credenciales', async t => {
+  const upstream=t.mock.method(globalThis,'fetch',async(url)=>{
+    throw Error('Secret leaked in low-level error ' + url);
+  });
+  const r=await worker.fetch(request(),ENV);
+  assert.equal(r.status,503);
+  const body=await r.json();
+  assert.equal(body.code,'SPC_NETWORK');
+  assert.equal(body.etapa,'autenticacion');
+  assert.equal(body.detalleRed,'fallo_de_transporte');
+  assert.equal(upstream.mock.callCount(),1);
+  for(const forbidden of [ENV.SPC_USER, ENV.SPC_PASS, 'username=', 'password=', 'http://']) {
+    assert.equal(JSON.stringify(body).includes(forbidden),false);
+  }
+});
+
+test('si falla el histórico indica etapa y no expone el token KSTAR', async t => {
+  const upstream=t.mock.method(globalThis,'fetch',async(url,init)=>{
+    const u=new URL(url);
+    assert.equal(init.redirect,'manual');
+    if(u.pathname==='/api/authentication/form')
+      return json({token:{access_token:'fictional-secret-token',expires_in:3600}});
+    if(u.pathname==='/api/station/monitor/detail/meter/list')
+      return json({code:200,rows:[{deviceId:'M_TEST',stationId:ENV.SPC_STATION_ID}],total:1});
+    if(u.pathname==='/api/meter/monitor/detail/history/data')
+      throw Error('Blocked https?token=fictional-secret-token');
+    throw Error('Unexpected request');
+  });
+  const response=await worker.fetch(request(),ENV);
+  assert.equal(response.status,503);
+  const body=await response.json();
+  assert.equal(body.code,'SPC_NETWORK');
+  assert.equal(body.etapa,'historico_medidor');
+  assert.equal(body.detalleRed,'fallo_de_transporte');
+  assert.equal(JSON.stringify(body).includes('fictional-secret-token'),false);
+  assert.equal(upstream.mock.callCount(),3);
+});
+
+test('redirige manualmente y no filtra location del login',async t=>{
+  const upstream=t.mock.method(globalThis,'fetch',async(url,init)=>{
+    assert.equal(init.redirect,'manual');
+    return new Response(null,{status:302,headers:{location:'https://other.invalid?password='+ENV.SPC_PASS}});
+  });
+  const r=await worker.fetch(request(),ENV);
+  assert.equal(r.status,502);
+  const body=await r.json();
+  assert.equal(body.code,'SPC_REDIRECT');
+  assert.equal(body.etapa,'autenticacion');
+  assert.equal(JSON.stringify(body).includes(ENV.SPC_PASS),false);
+  assert.equal(upstream.mock.callCount(),1);
+});

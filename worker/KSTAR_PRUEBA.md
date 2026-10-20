@@ -37,6 +37,16 @@ El formulario solo enseña valores resumidos o errores saneados. No guarda el hi
 
 Si sale `SPC_SCHEMA` o `SPC_PROVIDER_ERROR`, no inventar campos: inspeccionar el formato de respuesta mediante una vía segura y ajustar el conector. Si sale `SPC_AUTH`, confirmar permisos/credenciales, sin compartirlas por chat.
 
+## Diagnóstico cuando aparece `SPC_NETWORK`
+
+El error `SPC_NETWORK` no prueba que la contraseña esté mal: puede ser un fallo de conexión en cualquiera de las llamadas. El Worker ahora muestra `etapa` (autenticación, lista de medidores, histórico o resumen diario) y `detalleRed` (`fallo_de_transporte` o `tiempo_agotado`), pero **nunca el mensaje de error bruto**, porque puede incluir usuario, contraseña o token en la URL.
+
+Antes de intentar otro login por HTTP, pulsa **Comprobar red sin credenciales KSTAR**. Solo precisa la clave `KSTAR_TEST_KEY` y realiza tres peticiones públicas: `GET /`, `GET /api/station/monitor/detail/self` sin token y `POST /api/authentication/form` sin usuario ni contraseña. Informa exclusivamente de código HTTP, tipo de contenido o tipo genérico de fallo. No utiliza `SPC_USER` ni `SPC_PASS`.
+
+Si el POST sin credenciales falla en transporte mientras los GET devuelven HTTP, probablemente el problema esté relacionado con el método POST, el endpoint o el tratamiento de Cloudflare/KSTAR; **no seguir intentando login con la cuenta de control**. Si el POST responde HTTP pero el intento autenticado falla, revisar la petición de autenticación mediante un canal seguro (sin reproducir la contraseña en logs).
+
+Este sondeo no cambia configuración de planta, no valida el usuario y no confirma la API de lectura. La primera conexión autenticada continúa pendiente. Si se usó una cuenta con permisos de control durante HTTP, considerar cambiar su contraseña, porque pudo haber quedado expuesta durante la petición, incluso si terminó con error.
+
 ## 4. Cierre
 
 Borrar los secretos y desactivar el Worker temporal una vez validado el formato. El dashboard principal y la PR #36 permanecen sin desplegar a producción; el cron SPC continúa desactivado.

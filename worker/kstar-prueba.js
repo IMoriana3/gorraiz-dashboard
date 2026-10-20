@@ -26,9 +26,10 @@ const HTML = [
   '<form id="form"><label for="key">Clave de prueba del Worker (NO la contraseña KSTAR)</label>',
   '<input id="key" type="password" autocomplete="off" minlength="24" required>',
   '<label for="day">Día cerrado para consultar</label><input id="day" type="date" required>',
+  '<button id="probe" type="button">Comprobar red sin credenciales KSTAR</button>',
   '<button id="go" type="submit">Comprobar lectura KSTAR</button></form>',
   '<h2>Resultado</h2><pre id="result">Sin consulta realizada.</pre>',
-  '<p>Los datos no se guardan aquí ni se envían a GitHub. El acceso a KSTAR se produce solo al pulsar el botón.</p>',
+  '<p>La comprobación de red no utiliza SPC_USER, SPC_PASS ni ningún token. Los resultados no se guardan ni se envían a GitHub.</p>',
   '</main><script>',
   'document.getElementById("form").addEventListener("submit", async function(e){',
   'e.preventDefault();const out=document.getElementById("result");const b=document.getElementById("go");',
@@ -37,6 +38,14 @@ const HTML = [
   'body:JSON.stringify({dia:document.getElementById("day").value})});',
   'const data=await response.json();out.textContent=JSON.stringify(data,null,2);}',
   'catch(e){out.textContent="No se pudo completar la consulta al Worker de pruebas.";}finally{b.disabled=false;}',
+  '});',
+  'document.getElementById("probe").addEventListener("click",async function(){',
+  'const key=document.getElementById("key").value;const out=document.getElementById("result");const btn=document.getElementById("probe");',
+  'if(key.length<24){out.textContent="Introduce la clave de prueba del Worker (no la contraseña KSTAR).";return;}',
+  'btn.disabled=true;out.textContent="Comprobando conectividad sin credenciales KSTAR...";',
+  'try{const r=await fetch("/sondeo",{method:"POST",headers:{"X-KSTAR-Test-Key":key}});',
+  'const body=await r.json();out.textContent=JSON.stringify(body,null,2);}',
+  'catch{out.textContent="No se pudo completar el sondeo del Worker.";}finally{btn.disabled=false;}',
   '});</script></body></html>',
 ].join('\n');
 
@@ -62,17 +71,61 @@ function validPastDate(s) {
   return s < p.year+'-'+p.month+'-'+p.day;
 }
 
+
+const DIAGNOSTIC_PATHS = Object.freeze({
+  '/api/authentication/form': 'autenticacion',
+  '/api/station/monitor/detail/meter/list': 'lista_medidores',
+  '/api/meter/monitor/detail/history/data': 'historico_medidor',
+  '/api/station/monitor/detail/self': 'resumen_diario',
+});
+function stageOf(url) {
+  try { return DIAGNOSTIC_PATHS[new URL(url).pathname] || 'otra_ruta'; }
+  catch { return 'no_identificada'; }
+}
+
+// Sonda sin secreto de KSTAR. No se siguen redirecciones y no se consultan
+// cuerpos: solo código HTTP o tipo genérico de fallo, nunca URL privadas.
+async function probeOnce(name, pathname, method = 'GET') {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    const response = await fetch('http://spc.ksdatacloud.com' + pathname, {
+      method,
+      headers: {Accept: 'application/json'},
+      redirect: 'manual',
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    return {prueba: name, metodo: method, http: response.status,
+      contenido: (response.headers.get('content-type') || '').split(';')[0] || null};
+  } catch (error) {
+    const kind = controller.signal.aborted || error?.name === 'AbortError' ? 'tiempo_agotado' : 'fallo_de_transporte';
+    return {prueba: name, metodo: method, error: kind};
+  } finally { clearTimeout(timeout); }
+}
+async function probeNetwork() {
+  const checks = [
+    ['portal', '/', 'GET'],
+    ['api_sin_sesion', '/api/station/monitor/detail/self', 'GET'],
+    ['login_post_sin_credenciales', '/api/authentication/form', 'POST'],
+  ];
+  const resultados = [];
+  for (const [name,path,method] of checks) resultados.push(await probeOnce(name,path,method));
+  return {ok: true, sinCredencialesKstar: true, resultados};
+}
+
 export default {
   async fetch(req, env) {
     const path = new URL(req.url).pathname;
     if (req.method === 'GET' && path === '/')
       return new Response(HTML, {headers: {...HEADERS, 'content-type': 'text/html; charset=utf-8'}});
-    if (path !== '/comprobar') return output({error: 'Ruta no disponible.'}, 404);
+    if (path !== '/comprobar' && path !== '/sondeo') return output({error: 'Ruta no disponible.'}, 404);
     if (req.method !== 'POST') return output({error: 'Se requiere POST.'}, 405);
     if (!env.KSTAR_TEST_KEY || String(env.KSTAR_TEST_KEY).length < 24)
       return output({error: 'Configura KSTAR_TEST_KEY como secreto de al menos 24 caracteres.'}, 503);
     if (!await equalSecret(req.headers.get('X-KSTAR-Test-Key'), env.KSTAR_TEST_KEY))
       return output({error: 'Clave de prueba incorrecta.'}, 401);
+    if (path === '/sondeo') return output(await probeNetwork());
     if (env.SPC_TRANSPORT !== 'http' || env.SPC_HTTP_RISK_ACK !== 'I_ACCEPT_UNENCRYPTED_CREDENTIALS')
       return output({error: 'La prueba HTTP no está habilitada. Revisa ambas variables de aceptación.'}, 501);
     if (!env.SPC_USER || !env.SPC_PASS || !env.SPC_STATION_ID)
@@ -85,8 +138,21 @@ export default {
     try { body = JSON.parse(text); }
     catch { return output({error: 'Formato de consulta incorrecto.'}, 400); }
     if (!validPastDate(body?.dia)) return output({error: 'Selecciona un día cerrado válido.'}, 400);
+    let etapa = 'preparacion', detalleRed = null;
+    // En la prueba aislada usamos redirección manual: nunca seguir un 302
+    // con la contraseña o el Bearer a otro destino. No registrar URLs ni headers.
+    const fetchDiagnostic = async (url, init) => {
+      etapa = stageOf(url);
+      try { return await fetch(url, {...init, redirect: 'manual'}); }
+      catch (error) {
+        detalleRed = init.signal?.aborted || error?.name === 'AbortError'
+          ? 'tiempo_agotado' : 'fallo_de_transporte';
+        throw error;
+      }
+    };
     try {
-      const r = await spcDiagnostico(env, body.dia);
+      // Sesión efímera por solicitud para no retener tokens KSTAR en el Worker de ensayo.
+      const r = await spcDiagnostico(env, body.dia, {fetch: fetchDiagnostic, sessionCache: new Map()});
       // Solo campos y kWh; nunca se envían el token, el login ni el histórico crudo.
       return output({ok: true, dia: r.dia, stationId: r.stationId,
         meterId: r.meterId, registros: r.registros,
@@ -96,7 +162,8 @@ export default {
         nota: r.complete ? 'Compara estos datos con el portal KSTAR.' : 'Lecturas parciales. No utilizarlas como cierre validado.'});
     } catch (error) {
       const safe = safeSpcError(error);
-      return output({ok: false, code: safe.code, error: safe.message}, safe.status);
+      return output({ok: false, code: safe.code, error: safe.message,
+        etapa, ...(detalleRed ? {detalleRed} : {})}, safe.status);
     }
   },
 };
