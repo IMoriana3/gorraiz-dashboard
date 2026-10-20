@@ -249,7 +249,7 @@ input[type=file]{display:none}
       <div class="cc"><h4>Balance diario — consumo, importación, autoconsumo y vertido</h4><canvas id="c3daily" height="200"></canvas></div>
       <div class="row">
         <div class="cc" style="flex:1.2"><h4>Consumo medio por día de la semana</h4><canvas id="c3week" height="180"></canvas></div>
-        <div class="cc" style="flex:1.2"><h4>Importación horaria media · i-DE / Datadis</h4><canvas id="c3hourly" height="180"></canvas></div>
+        <div class="cc" style="flex:1.2"><h4>Importación horaria KSTAR · pendiente de validar intervalos</h4><canvas id="c3hourly" height="180"></canvas></div>
         <div class="cc" style="flex:0 0 240px;max-width:240px"><h4>Cobertura FV</h4><canvas id="c3donut" height="180"></canvas></div>
       </div>
       <div style="font-size:10px;color:var(--muted);margin-top:6px;padding:0 4px">
@@ -317,7 +317,7 @@ input[type=file]{display:none}
         <div class="slbl">Indicadores clave: Periodo A vs Periodo B</div>
         <div class="hint" id="compCobertura"></div>
         <table class="tbl" id="tblComp"></table>
-        <div class="cc"><h4>Importación por periodo · i-DE / Datadis</h4><canvas id="ccFranja" height="180"></canvas></div>
+        <div class="cc"><h4>Importación por P1–P6 · pendiente de validación horaria</h4><canvas id="ccFranja" height="180"></canvas></div>
       </div>
       <!-- C-PAGE 2: Production daily + hourly profiles -->
       <div class="pcon" id="cp2">
@@ -327,7 +327,7 @@ input[type=file]{display:none}
         </div>
         <div class="row">
           <div class="cc"><h4>Perfil horario medio: producción FV</h4><canvas id="ccPerfilPV" height="180"></canvas></div>
-          <div class="cc"><h4>Perfil horario medio: importación de red</h4><canvas id="ccPerfilCons" height="180"></canvas></div>
+          <div class="cc"><h4>Importación horaria KSTAR · sin datos validados</h4><canvas id="ccPerfilCons" height="180"></canvas></div>
         </div>
       </div>
       <!-- C-PAGE 3: Economic balance + daily consumption -->
@@ -344,7 +344,7 @@ input[type=file]{display:none}
     </div>
   </div>
 </div>
-<div class="footer">Amixalan Business Group — Fuentes: inversores · i-DE / Datadis · SPC · precios mensuales cargados</div>
+<div class="footer">Amixalan Business Group — Fuentes operativas: Solarman y KSTAR SPC · precios medios de factura, estimativos</div>
 
 <script>
 const $=id=>document.getElementById(id);
@@ -856,6 +856,7 @@ async function olvidaTodo(){
 // el botón. Subir también eso sería mantener dos verdades de lo mismo.
 let RESTAURANDO=false,subida=null;
 async function bajaDatos(){
+  if(KSTAR_ONLY)return;
   if(!API_ESTADO||!API_ESTADO.almacen)return;
   try{
     const d=await apiCall('/datos');
@@ -873,6 +874,7 @@ async function bajaDatos(){
   }catch(e){log('⚠ Almacén compartido: '+e.message)}
 }
 function subeDatos(){
+  if(KSTAR_ONLY)return;
   if(RESTAURANDO||!API_ESTADO||!API_ESTADO.almacen)return;
   // Se espera un momento para no escribir una vez por cada fichero de una tanda.
   clearTimeout(subida);
@@ -915,7 +917,7 @@ function pintaCfg(){
     <label>Worker:</label><input type="text" id="aUrl" placeholder="https://gorraiz-datos.tu-cuenta.workers.dev" value="${esc(c.url||'')}">
     <label>Clave:</label><input type="password" id="aKey" placeholder="clave de panel" value="${esc(c.key||'')}">
     <button class="btn btn2" onclick="apiSave()" style="padding:5px 12px;font-size:11px">Guardar</button>
-  </div><div class="hint">La dirección y la clave del panel se guardan en este navegador. Las credenciales de Datadis, Solarman y SPC se configuran en el servidor.</div>`;
+  </div><div class="hint">Esta conexión es únicamente para el Worker habitual de Solarman. KSTAR se configura en su sección independiente.</div>`;
 }
 // Cloudflare limita a 50 subpeticiones por invocación del Worker. Cada día de
 // producción son dos llamadas (una por inversor) y cada mes de consumo una, así
@@ -1332,7 +1334,7 @@ function renderP5(){
   const pb=an.pb;
   $('paybackBox').innerHTML=`<div style="padding:10px;font-size:11px;line-height:1.8"><b>Ahorro valorado con IE, sin IVA</b><div style="font-size:24px;color:var(--accent)">${euros(pb.ahAcum)}</div><div>${pb.dias} días valorados del histórico.</div><div>Inversión de referencia: ${euros(pb.inv)}</div><div>Relación ahorro / inversión: ${Number.isFinite(pb.pct)?fd(pb.pct)+' %':'—'}</div><div class="hint">${esc(textoCobertura(an.energia))} Sin proyección de plazo de retorno ni ingresos por excedentes.</div></div>`;
   CHARTS.c5p=new Chart($('c5perfil'),{type:'line',data:{labels:Array.from({length:24},(_,i)=>i+'h'),datasets:[
-    {label:'Importación · i-DE/Datadis',data:an.perfil.map(p=>p.red),borderColor:'#2a6b5a'},
+    {label:'Importación horaria KSTAR pendiente de verificar',data:an.perfil.map(p=>p.red),borderColor:'#2a6b5a'},
     {label:'Producción FV · inversores',data:an.perfil.map(p=>p.pv),borderColor:'#d4a039'}].map(d=>({...d,borderWidth:1.5,fill:false,pointRadius:0,tension:.2,spanGaps:false}))},options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'Perfil horario medio'}}}}});
   const cm=an.exchangeM;
   CHARTS.c5c=new Chart($('c5curt'),{type:'bar',data:{labels:cm.map(m=>m.month),datasets:[
@@ -1363,7 +1365,7 @@ function creaPdf(){
     doc.setFontSize(7);doc.setFont(undefined,'normal');doc.text(s,M+20,25);doc.setTextColor(0);
   }
   function cerrar(){const n=doc.getNumberOfPages();for(let i=1;i<=n;i++){doc.setPage(i);doc.setFontSize(6);doc.setTextColor(130);
-    doc.text('Gorraiz · Inversores / i-DE-Datadis / SPC · Importes estimados con precios mensuales cargados',M,H-8);
+    doc.text('Gorraiz · Solarman y KSTAR SPC · Importes estimados con precios medios de factura',M,H-8);
     doc.text(`${i} / ${n}`,W-M,H-8,{align:'right'})}}
   return{doc,W,H,M,pagina,cerrar};
 }
