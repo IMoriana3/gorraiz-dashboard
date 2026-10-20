@@ -1,0 +1,62 @@
+name: Gorraiz · SPC y balance FV
+
+on:
+  pull_request:
+    paths:
+      - "index.html"
+      - "energia.js"
+      - "worker/**"
+      - "tests/**"
+      - ".github/workflows/gorraiz-ci.yml"
+  push:
+    branches:
+      - "codex/spc-automatizacion-gorraiz"
+    paths:
+      - "index.html"
+      - "energia.js"
+      - "worker/**"
+      - "tests/**"
+      - ".github/workflows/gorraiz-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests de energía, SPC y dashboard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Obtener código
+        uses: actions/checkout@v4
+      - name: Preparar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Ejecutar pruebas sin credenciales
+        run: node --test tests/*.test.mjs
+      - name: Reconstruir Worker para editor web
+        run: node worker/construir.mjs
+      - name: Comprobar sintaxis JavaScript
+        run: |
+          node --check energia.js
+          node --check worker/index.js
+          node --check worker/spc.js
+          node --check worker/bundle.js
+      - name: Confirmar que bundle.js está actualizado
+        run: git diff --exit-code -- worker/bundle.js
+
+  cloudflare-dry-run:
+    name: Wrangler dry-run · sin desplegar
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Obtener código
+        uses: actions/checkout@v4
+      - name: Preparar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Compilar Worker sin credenciales ni despliegue
+        run: npx --yes wrangler@4.45.0 deploy --dry-run --config worker/wrangler.toml
