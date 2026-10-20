@@ -954,6 +954,15 @@ async function estadoApi(){
 // Con los datos ya recordados, pedir de nuevo lo que se tiene es gastar
 // llamadas para nada: se propone arrancar el día siguiente al último cubierto.
 function sugiereRango(){
+  if(kstarCfg().url){
+    const ayer=spcSumaDias(spcHoy('Europe/Madrid'),-1);
+    const ultima=SPC_FUENTES.map(f=>f.date).filter(d=>d<=ayer).sort().pop();
+    let inicio=ultima?spcSumaDias(ultima,1):spcSumaDias(ayer,-6);
+    if(inicio>ayer)inicio=ayer;
+    $('aDesde').value=inicio;$('aHasta').value=ayer;
+    $('hueco').textContent='KSTAR: se propone completar hasta ayer ('+fdmy(ayer)+'). Máximo 14 días por consulta. La generación Solarman se descargará en el mismo rango.';
+    pintaSpc();return;
+  }
   const dias=[...new Set([].concat(RAW.A,RAW.B).map(r=>dk(r.ts)))].sort();
   const hoy=dk(new Date());
   if(!dias.length){$('hueco').textContent='';pintaSpc();return}
