@@ -19,7 +19,8 @@ function dashboard() {
   const context = vm.createContext({Intl, Date, URL, localStorage:store(local), sessionStorage:store(session)});
   vm.runInContext(energy, context, {filename: 'energia.js'});
   const source = `
-    const CFG={kwp:100,inv:10000,vertidoDesde:'2026-10-01'};
+    const CFG={kwp:100,inv:10000,vertidoDesde:'2026-10-01',
+      kwpInv:{A:61.92,B:61.92},inversoresMismaOrientacion:false};
     let PRECIOS=null,PRECIO_FUTURO=false,METEO=null,RAW={A:[],B:[],I:[]};
     function guardaFuentes(){}
     ${section('function fn(x,d=0)', '// ── Parse Excel date ──')}
@@ -36,6 +37,7 @@ function dashboard() {
       ideDiario,contrasteRed,gridDiario,horasDia,contrasteTexto,contrastePdfTexto,idePeriodos,idePeriodosNota,
       contrasteFactura,contrasteFacturaTexto,contrasteFacturaPdfTexto,diasEntre,ideHorario,
       vertidoExcluido,vertidoExcluidoTexto,cortaVertido,fiabilidadTexto,ratioTexto,rangoDias,
+      especificaInversores,especificaTexto,orientacionTexto,
       setFetch(fn){globalThis.fetch=fn},
       setKstarAccess(url,key){localStorage.setItem(KSTAR_URL_KEY,url);localStorage.setItem(KSTAR_CLAVE_KEY,key)},
       setKstarAccessSesion(url,key){localStorage.setItem(KSTAR_URL_KEY,url);sessionStorage.setItem(KSTAR_SESSION_KEY,key)},
@@ -797,4 +799,35 @@ test('el ratio de ahorro dice sobre cuántos días y qué fechas se calcula', ()
   assert.match(t,/acumulado en 292 día\(s\) valorados/);
   assert.match(t,/16\/12\/2025 → 20\/10\/2026/);
   assert.equal(d.ratioTexto({pct:null}),'—');
+});
+
+// ── Producción específica por inversor ────────────────────────────────────
+test('la específica por inversor usa solo los días en que han medido los dos', () => {
+  const d=dashboard();
+  // Día 1: los dos. Día 2: solo A. Si el día suelto entrara, A saldría inflada.
+  const prod=d.procProd(
+    [reading('2026-10-01',300),reading('2026-10-02',500)],
+    [reading('2026-10-01',200)]);
+  const e=d.especificaInversores({prod});
+  assert.equal(e.dias,1,'solo cuenta el día con ambos');
+  close(e.kwhA,300);close(e.kwhB,200);
+  // 61,92 kWp cada uno: 300/61,92 y 200/61,92.
+  close(e.a,300/61.92);close(e.b,200/61.92);
+  // La diferencia se mide contra el mayor: (4,845-3,230)/4,845.
+  close(e.dif,(300/61.92-200/61.92)/(300/61.92));
+  const t=d.especificaTexto({prod});
+  assert.match(t,/sobre los 1 día\(s\) con ambos inversores/);
+  assert.match(t,/61\.92 y 61\.92 kWp/);
+  // El cómo se lee NO va aquí: va a las notas técnicas.
+  assert.ok(!/orientación/.test(t),'la interpretación no se cuela junto a la gráfica');
+  assert.match(d.orientacionTexto(),/vertiente distinta de la cubierta/);
+  assert.match(d.orientacionTexto(),/no lleva recta de igualdad por kWp/);
+
+});
+
+test('sin días con ambos inversores no se inventa una específica', () => {
+  const d=dashboard();
+  const prod=d.procProd([reading('2026-10-01',300)],[]);
+  assert.equal(d.especificaInversores({prod}),null);
+  assert.equal(d.especificaTexto({prod}),'');
 });

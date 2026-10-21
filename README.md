@@ -43,6 +43,14 @@ Donde el vertido es una parte más del mismo reparto va dentro; donde cambiaría
 
 Consecuencia que conviene tener presente al leer el informe: esos kWh **salieron de verdad a la red**, así que al no restarlos el autoconsumo y el consumo de esos meses quedan por encima de lo que midió la distribuidora. Por eso el informe dice en una línea cuántos kWh ha dejado fuera en el periodo: quien lo cruce con los ficheros de i-DE tiene que poder explicar la diferencia sin pensar que hay un error.
 
+### Los dos inversores: misma potencia, distinta vertiente
+
+`CFG.kwpInv` reparte el generador entre los dos equipos (61,92 + 61,92 = 123,84 kWp, 144 módulos cada uno) y `CFG.inversoresMismaOrientacion` dice si recogen la misma orientación. Hoy es `false`: cada uno cubre una vertiente distinta de la cubierta a dos aguas.
+
+Eso cambia cómo se lee la gráfica de equilibrio. Con **igual kWp y distinta orientación**, una diferencia estable en kWh/kWp es de orientación, no un desequilibrio: lo que informa es que esa relación **cambie** con el tiempo (sombra nueva, string caído, suciedad), no su nivel. Por eso no se dibuja ninguna recta de igualdad por kWp — invitaría justo a la lectura equivocada, la de que el objetivo es que los dos midan lo mismo. Si algún día los dos subcampos pasan a compartir orientación, basta poner el flag a `true` y la nota técnica cambia sola.
+
+`especificaInversores()` calcula los kWh/kWp **solo sobre los días en que han medido los dos**. Si uno tiene días que al otro le faltan, comparar sus kWh/kWp es comparar periodos distintos, y la cifra se lee como una avería que no existe.
+
 ### Notas técnicas y líneas de cobertura
 
 El texto de operador —qué puede fallar al cargar los ficheros, con qué se valora, qué no incluyen los importes— salía repetido palabra por palabra en las páginas 1, 5 y 7. Ahora va una sola vez, en el bloque **Notas técnicas** al final del informe (`notasTecnicas()`), y en cada página se queda únicamente la línea de cobertura, que sí es del periodo que esa página mira (`textoCobertura`).
