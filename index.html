@@ -1876,6 +1876,19 @@ function creaPdf(){
 // El mapa de calor no es una gráfica de Chart.js y se queda en PNG: su fondo
 // oscuro con celdas de color sí mostraría el bandeado del JPEG.
 const PDF_PPP=200,PDF_CALIDAD=.92,PDF_DENSIDAD_MAX=4;
+// JPEG no guarda transparencia. Los lienzos de Chart.js no pintan fondo —en el
+// panel se ve el verde oscuro de la tarjeta a través— y al codificar en JPEG el
+// navegador compone lo transparente sobre NEGRO, no sobre el blanco de la
+// página: las gráficas del informe salían metidas en un recuadro negro. Se
+// compone aquí sobre blanco antes de codificar.
+function pdfLienzoBlanco(cv){
+  const off=document.createElement('canvas');
+  off.width=cv.width;off.height=cv.height;
+  const ctx=off.getContext('2d');
+  ctx.fillStyle='#ffffff';ctx.fillRect(0,0,off.width,off.height);
+  ctx.drawImage(cv,0,0);
+  return off.toDataURL('image/jpeg',PDF_CALIDAD);
+}
 async function pdfChart(doc,id,x,y,w,h){
   const cv=$(id);if(!cv||cv.tagName!=='CANVAS'||cv.width<=10)return;
   const ch=Chart.getChart?Chart.getChart(cv):null,caja=cv.parentElement&&cv.parentElement.classList.contains('cw')?cv.parentElement:null;
@@ -1897,7 +1910,7 @@ async function pdfChart(doc,id,x,y,w,h){
       ch.resize();ch.stop();ch.update('none');
       await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
     }
-    if(ch)doc.addImage(cv.toDataURL('image/jpeg',PDF_CALIDAD),'JPEG',x,y,w,h);
+    if(ch)doc.addImage(pdfLienzoBlanco(cv),'JPEG',x,y,w,h);
     else doc.addImage(cv.toDataURL('image/png'),'PNG',x,y,w,h);
   }finally{
     if(ch&&dprPrevio!==null)ch.options.devicePixelRatio=dprPrevio;
