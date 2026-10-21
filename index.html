@@ -886,9 +886,12 @@ function idePeriodos(desde,hasta){
   const d0=desde?new Date(desde+'T00:00:00'):null,d1=hasta?new Date(hasta+'T23:59:59'):null;
   const filas=filt(RAW.I,d0,d1);
   if(!filas.length)return null;
+  const prod=procProd(filt(RAW.A,d0,d1),filt(RAW.B,d0,d1));
   const prodH={};
-  procProd(filt(RAW.A,d0,d1),filt(RAW.B,d0,d1)).hourly
-    .forEach(h=>{if(Number.isFinite(h.total))prodH[h.hour]=h.total});
+  prod.hourly.forEach(h=>{if(Number.isFinite(h.total))prodH[h.hour]=h.total});
+  // Referencia para medir la cobertura del reparto: el total diario del
+  // inversor, que es el dato cerrado, frente a lo que suman sus horas.
+  const prodDiaria=prod.daily.reduce((t,d)=>t+(Number.isFinite(d.total)?d.total:0),0);
   const vacio=()=>({importKWh:0,exportKWh:0,autoKWh:0,horas:0,horasConProd:0,
     ahorroEUR:0,autoValoradoKWh:0});
   const periodos=Object.fromEntries(FRANJAS.map(p=>[p,vacio()]));
@@ -916,7 +919,8 @@ function idePeriodos(desde,hasta){
   });
   const suma=k=>FRANJAS.reduce((t,p)=>t+periodos[p][k],0);
   const autoValorado=suma('autoValoradoKWh');
-  return{periodos,dias:dias.size,
+  return{periodos,dias:dias.size,prodDiaria,
+    prodRepartida:suma('autoKWh')+suma('exportKWh'),
     horas:suma('horas'),horasConProd:suma('horasConProd'),
     importKWh:suma('importKWh'),exportKWh:suma('exportKWh'),autoKWh:suma('autoKWh'),
     ahorroEUR:autoValorado>0?suma('ahorroEUR'):null,autoValoradoKWh:autoValorado,
@@ -925,12 +929,18 @@ function idePeriodos(desde,hasta){
     franjas:FRANJAS.filter(p=>periodos[p].horas>0)};
 }
 function idePeriodosNota(rep){
-  const faltan=rep.horas-rep.horasConProd;
   const sinValorar=rep.autoKWh-rep.autoValoradoKWh;
+  // Decir «le faltan N horas» engañaba: casi todas las horas sin producción son
+  // noches, no datos perdidos. Lo que de verdad mide la cobertura del reparto
+  // es cuánta de la producción diaria ha podido repartirse por horas.
+  const cobertura=rep.prodDiaria>0?rep.prodRepartida/rep.prodDiaria:null;
   return 'Importación y vertido por periodo: medida horaria de i-DE, con el periodo tarifario que asigna la distribuidora. '
-    +fn(rep.dias)+' día(s) y '+fn(rep.horas)+' horas en el rango. '
-    +'El autoconsumo por periodo se deriva restando el vertido de cada hora a la producción de las muestras del inversor'
-    +(faltan>0?', y le faltan '+fn(faltan)+' horas sin producción registrada':'')
+    +fn(rep.dias)+' día(s) y '+fn(rep.horas)+' horas en el rango, '+fn(rep.horasConProd)+' de ellas con producción. '
+    +'El autoconsumo por periodo se deriva restando el vertido de cada hora a la producción de las muestras del inversor: '
+    +'reparte '+fn(rep.prodRepartida,1)+' kWh'
+    +(Number.isFinite(cobertura)
+      ?' de los '+fn(rep.prodDiaria,1)+' kWh que suman los totales diarios del inversor ('+fn(cobertura*100,1)+' %)'
+      :'')
     +'. '
     // Decir de dónde sale cada precio es lo que separa un ahorro medido de una
     // cifra sin respaldo: el lector tiene que poder ir a la factura y cotejarla.
@@ -1325,14 +1335,28 @@ function procProd(A,B){
   const daily=Object.values(dm).map(d=>({...d,total:d.hasA&&d.hasB?d.A+d.B:null})).sort((a,b)=>a.date.localeCompare(b.date));
   // Perfil de producción a partir de las muestras del inversor, independiente de SPC.
   const hm={};
+  // La energía de una hora es lo que marcó el contador al cerrarla menos lo que
+  // marcaba al cerrar la anterior. Midiendo de la PRIMERA a la última muestra
+  // de la hora se perdían los minutos entre la última de una hora y la primera
+  // de la siguiente: con muestras cada 5 minutos, un 8 % de la producción, que
+  // es justo lo que separaba el autoconsumo horario del diario.
+  // El acumulado es del día, así que la hora anterior solo sirve de arranque si
+  // es del mismo día: cruzar medianoche daría un salto negativo.
   const procH=(arr,k)=>{const bh={};
     [...arr].sort((a,b)=>a.ts-b.ts).forEach(r=>{const h=hk(r.ts);if(!hm[h])hm[h]={hour:h,h:r.ts.getHours(),date:dk(r.ts),A:null,B:null};
       (bh[h]=bh[h]||[]).push(r)});
-    for(const [h,recs] of Object.entries(bh)){
-      const primero=recs[0],ultimo=recs[recs.length-1];
-      const delta=Number.isFinite(primero.acum)&&Number.isFinite(ultimo.acum)?ultimo.acum-primero.acum:null;
+    const cierre={};
+    for(const h of Object.keys(bh).sort()){
+      const recs=bh[h],ultimo=recs[recs.length-1],dia=h.slice(0,10);
+      const previo=cierre[dia];
+      // Arranque: el cierre de la hora anterior del mismo día; si no lo hay
+      // (primera hora con muestras), la primera muestra de esta hora.
+      const base=Number.isFinite(previo)?previo:(Number.isFinite(recs[0].acum)?recs[0].acum:null);
+      const delta=Number.isFinite(base)&&Number.isFinite(ultimo.acum)?ultimo.acum-base:null;
       const pot=recs.map(r=>r.pot).filter(Number.isFinite);
-      hm[h][k]=recs.length>1&&delta>0?delta:(pot.length?pot.reduce((v,p)=>v+p,0)/pot.length/1000:null);
+      const porAcumulado=Number.isFinite(delta)&&delta>0&&(recs.length>1||Number.isFinite(previo));
+      hm[h][k]=porAcumulado?delta:(pot.length?pot.reduce((v,p)=>v+p,0)/pot.length/1000:null);
+      if(Number.isFinite(ultimo.acum))cierre[dia]=ultimo.acum;
     }};
   procH(A,'A');procH(B,'B');
   const hourly=Object.values(hm).map(h=>({...h,total:Number.isFinite(h.A)&&Number.isFinite(h.B)?h.A+h.B:null})).sort((a,b)=>a.hour.localeCompare(b.hour));
@@ -1644,24 +1668,36 @@ function creaPdf(){
     doc.setFontSize(7);doc.setFont(undefined,'normal');doc.text(s,M+20,25);doc.setTextColor(0);
   }
   function cerrar(){const n=doc.getNumberOfPages();for(let i=1;i<=n;i++){doc.setPage(i);doc.setFontSize(6);doc.setTextColor(130);
-    doc.text('Gorraiz · Solarman y KSTAR SPC · Importes estimados con precios medios de factura',M,H-8);
+    doc.text(pieInforme(),M,H-8);
     doc.text(`${i} / ${n}`,W-M,H-8,{align:'right'})}}
   return{doc,W,H,M,pagina,cerrar};
 }
+// Las gráficas entran en el PDF como imagen del lienzo. A la resolución de
+// pantalla, un lienzo de ~1.200 px estirado a 267 mm da unos 114 ppp y los ejes
+// y las leyendas salen borrosos junto al texto vectorial del informe. Se
+// multiplica la densidad solo durante la captura y se devuelve después.
+const PDF_DENSIDAD=3;
 async function pdfChart(doc,id,x,y,w,h){
   const cv=$(id);if(!cv||cv.tagName!=='CANVAS'||cv.width<=10)return;
   const ch=Chart.getChart?Chart.getChart(cv):null,caja=cv.parentElement&&cv.parentElement.classList.contains('cw')?cv.parentElement:null;
-  let previo=null;
+  let previo=null,dprPrevio=null;
   try{
+    if(ch){dprPrevio=ch.options.devicePixelRatio;ch.options.devicePixelRatio=PDF_DENSIDAD}
     const tipo=ch&&ch.config.type;
     if(tipo==='doughnut'||tipo==='pie'){const lado=Math.min(w,h);x+=(w-lado)/2;y+=(h-lado)/2;w=h=lado}
     if(ch&&caja){previo={ar:caja.style.aspectRatio,mx:caja.style.maxHeight,mn:caja.style.minHeight};
       caja.style.aspectRatio=(w/h).toFixed(3);caja.style.maxHeight='none';caja.style.minHeight='0';ch.resize();ch.stop();ch.update('none');
       await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
     }else if(!ch){const factor=Math.min(w/cv.width,h/cv.height),nw=cv.width*factor,nh=cv.height*factor;x+=(w-nw)/2;y+=(h-nh)/2;w=nw;h=nh}
-    if(ch){ch.stop();ch.update('none')}
+    if(ch){ch.resize();ch.stop();ch.update('none');
+      await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));}
     doc.addImage(cv.toDataURL('image/png'),'PNG',x,y,w,h);
-  }finally{if(previo){caja.style.aspectRatio=previo.ar;caja.style.maxHeight=previo.mx;caja.style.minHeight=previo.mn;ch.resize()}}
+  }finally{
+    if(ch&&dprPrevio!==null)ch.options.devicePixelRatio=dprPrevio;
+    else if(ch)delete ch.options.devicePixelRatio;
+    if(previo){caja.style.aspectRatio=previo.ar;caja.style.maxHeight=previo.mx;caja.style.minHeight=previo.mn}
+    if(ch)ch.resize();
+  }
 }
 function pdfKpis(doc,rows,x,y,w){
   const ancho=w/rows.length;
@@ -1670,6 +1706,13 @@ function pdfKpis(doc,rows,x,y,w){
     doc.setTextColor(0);doc.setFontSize(10);doc.setFont(undefined,'bold');doc.text(pdfSano(v),xx+ancho/2-1,y+11,{align:'center'});
     doc.setFont(undefined,'normal');doc.setFontSize(4.8);doc.setTextColor(110);doc.text(pdfSano(s),xx+ancho/2-1,y+16,{align:'center'});
   });
+}
+// El pie nombraba siempre «KSTAR SPC» aunque la importación y el vertido
+// salgan de i-DE. Se arma con las fuentes que de verdad han aportado datos.
+function pieInforme(){
+  const red=R&&R.energia?fuenteRedTexto(R.energia):'';
+  const fuentes=['Solarman'].concat(red&&red!=='sin días completos'?[red]:[]);
+  return 'Gorraiz · '+fuentes.join(' y ')+' · Importes estimados con precios medios de factura';
 }
 function pdfTitulo(doc,t,x,y){doc.setTextColor(35);doc.setFontSize(8);doc.setFont(undefined,'bold');doc.text(t,x,y)}
 async function genPDF(){
@@ -1696,7 +1739,7 @@ async function genPDF(){
     const w1=ancho*.35-2,w2=ancho*.35-2,w3=ancho*.30-4;
     pdfTitulo(doc,'Media por día de semana',M,135);pdfTitulo(doc,'KSTAR horario · pendiente de validar',M+w1+4,135);pdfTitulo(doc,'Cobertura FV',M+w1+w2+8,135);
     await pdfChart(doc,'c3week',M,139,w1,47);await pdfChart(doc,'c3hourly',M+w1+4,139,w2,47);await pdfChart(doc,'c3donut',M+w1+w2+8,139,w3,47);
-    pdfTexto(doc,'Autoconsumo = FV - vertido. Consumo = importación + autoconsumo. Los acumulados de ambos inversores deben cubrir el cierre del día. No se inventa consumo horario donde faltan intervalos SPC.'+contrastePdfTexto(),M,193,ancho,6);
+    pdfTexto(doc,'Autoconsumo = FV - vertido. Consumo = importación + autoconsumo. Los acumulados de ambos inversores deben cubrir el cierre del día. El balance usa solo días con producción de los dos inversores y medida de red completa.'+contrastePdfTexto(),M,193,ancho,6);
 
     // Una página separada evita confundir el reparto de energía por periodo
     // con el ahorro económico de la factura indexada.
