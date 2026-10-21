@@ -43,6 +43,16 @@ Donde el vertido es una parte más del mismo reparto va dentro; donde cambiaría
 
 Consecuencia que conviene tener presente al leer el informe: esos kWh **salieron de verdad a la red**, así que al no restarlos el autoconsumo y el consumo de esos meses quedan por encima de lo que midió la distribuidora. Por eso el informe dice en una línea cuántos kWh ha dejado fuera en el periodo: quien lo cruce con los ficheros de i-DE tiene que poder explicar la diferencia sin pensar que hay un error.
 
+### Qué cuenta como histórico
+
+El rango del histórico salía de la primera y la última marca de tiempo de cualquier fichero cargado. Un registro suelto de un solo inversor, meses antes de que empezara la monitorización de verdad, arrastraba dos efectos: estiraba el eje de las cuatro gráficas del histórico con meses en blanco, y convertía todo ese arranque en «días abiertos», como si fueran lagunas de cobertura.
+
+En los datos de Gorraiz eran **177 de los 210 días abiertos** sobre 502: la cobertura real dentro del periodo con datos es muchísimo mejor de lo que decía el informe.
+
+Ahora el histórico va del primer al último día **utilizable**: con producción de los dos inversores, o con medida de red. Un día sin ninguna de las dos cosas no puede dar balance, así que antes del primero no hay cobertura que medir.
+
+Se recortan **solo los extremos**. Los huecos de dentro siguen contando como días abiertos — eso sí es cobertura que falta, y el informe tiene que enseñarlo.
+
 ### Los dos inversores: misma potencia, distinta vertiente
 
 `CFG.kwpInv` reparte el generador entre los dos equipos (61,92 + 61,92 = 123,84 kWp, 144 módulos cada uno) y `CFG.inversoresMismaOrientacion` dice si recogen la misma orientación. Hoy es `false`: cada uno cubre una vertiente distinta de la cubierta a dos aguas.
