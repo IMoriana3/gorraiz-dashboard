@@ -1252,12 +1252,15 @@ function iniciaPrecios(){
     pintaPrecios();refrescaValoracion();
   });
 }
+// Con un solo día salía «1 días abiertos», que en un informe para dirección
+// canta. La 's' se decide por el número que acompaña.
+function plural(n,singular,plural_){return n===1?singular:plural_}
 function textoCobertura(v){
   const c=v.coverage;
   return `${fn(c.completeDays)} de ${fn(c.expectedDays)} días con balance completo; ${fn(c.pricedDays)} con precio. `+
-    (c.missingEnergyDays?`${fn(c.missingEnergyDays)} días abiertos o sin datos suficientes. `:'')+
-    (c.missingPriceDays?`${fn(c.missingPriceDays)} días de balance sin precio. `:'')+
-    (c.forwardEstimatedDays?`${fn(c.forwardEstimatedDays)} días valorados con el último precio disponible. `:'')+
+    (c.missingEnergyDays?`${fn(c.missingEnergyDays)} ${plural(c.missingEnergyDays,'día abierto','días abiertos')} o sin datos suficientes. `:'')+
+    (c.missingPriceDays?`${fn(c.missingPriceDays)} ${plural(c.missingPriceDays,'día','días')} de balance sin precio. `:'')+
+    (c.forwardEstimatedDays?`${fn(c.forwardEstimatedDays)} ${plural(c.forwardEstimatedDays,'día valorado','días valorados')} con el último precio disponible. `:'')+
     'Los totales incluyen solo los días cubiertos.';
 }
 // Esto es texto de operador: le dice al que carga los ficheros qué puede
