@@ -448,3 +448,54 @@ test('un rango que cruza dos facturas valora cada día con la suya', () => {
   assert.match(d.idePeriodosNota(rep),/Septiembre/);
   assert.match(d.idePeriodosNota(rep),/Octubre/);
 });
+
+// ── Energía horaria sin perder el cambio de hora ──────────────────────────
+// El contador del inversor es acumulado del día. Midiendo de la primera a la
+// última muestra de cada hora se perdían los minutos entre horas.
+test('la energía de una hora arranca donde cerró la anterior del mismo día', () => {
+  const d=dashboard();
+  // Muestras cada 30 min de 10:00 a 12:30, acumulado creciendo 10 kWh cada una.
+  const acum=[[10,0,0],[10,30,10],[11,0,20],[11,30,30],[12,0,40],[12,30,50]];
+  const arr=acum.map(([h,m,a])=>({ts:new Date(`2026-10-05T${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`),
+    dia:50,pot:0,acum:a}));
+  const h=d.procProd(arr,arr).hourly;
+  const porHora=Object.fromEntries(h.map(x=>[x.hour.slice(11),x.A]));
+  // Hora 10: primera del día, arranca en su propia muestra -> 10-30 = 10.
+  close(porHora['10'],10);
+  // Hora 11: cierra en 30 y la 10 cerró en 10 -> 20, no 10. Antes daba 10 y
+  // se perdía el tramo 10:30-11:00.
+  close(porHora['11'],20);
+  close(porHora['12'],20);
+  // El total horario cubre ya todo el acumulado salvo el arranque del día.
+  close(h.reduce((s,x)=>s+x.A,0),50);
+});
+
+test('el acumulado diario no se arrastra de un día al siguiente', () => {
+  const d=dashboard();
+  const muestra=(f,h,a)=>({ts:new Date(`${f}T${String(h).padStart(2,'0')}:30:00`),dia:40,pot:0,acum:a});
+  // Dos días: el acumulado vuelve a empezar. Cruzar medianoche daría negativo.
+  const arr=[muestra('2026-10-05',10,0),muestra('2026-10-05',11,40),
+             muestra('2026-10-06',10,0),muestra('2026-10-06',11,40)];
+  const h=d.procProd(arr,arr).hourly;
+  assert.ok(h.every(x=>x.A===null||x.A>=0),'ninguna hora sale con energía negativa');
+  const dia6=h.filter(x=>x.date==='2026-10-06');
+  close(dia6.reduce((s,x)=>s+(x.A||0),0),40,'el día 6 cuenta sus 40 kWh, no los del 5');
+});
+
+test('la nota del reparto mide la cobertura con la producción diaria, no con horas vacías', () => {
+  const d=dashboard(),date='2026-10-05';
+  // Muestras cada media hora de 10:00 a 12:00: el total diario es 60 por inversor.
+  const muestras=[[10,0,0],[10,30,15],[11,0,30],[11,30,45],[12,0,60]]
+    .map(([h,m,a])=>({ts:new Date(`${date}T${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`),
+      dia:60,pot:0,acum:a}));
+  d.setRaw({A:muestras,B:muestras,I:horasP(date,[[10,0,0,'P1'],[11,0,0,'P1'],[12,0,0,'P1'],[23,5,0,'P6']])});
+  const rep=d.idePeriodos(date,date);
+  close(rep.prodDiaria,120);
+  assert.equal(rep.horas,4);
+  assert.equal(rep.horasConProd,3,'la hora nocturna no tiene producción');
+  const nota=d.idePeriodosNota(rep);
+  // La nota habla de kWh repartidos sobre el total diario, no de «horas que faltan».
+  assert.match(nota,/3 de ellas con producción/);
+  assert.match(nota,/de los 120,0 kWh que suman los totales diarios/);
+  assert.ok(!/le faltan/.test(nota),'ya no se insinúan datos perdidos donde solo hay noche');
+});
