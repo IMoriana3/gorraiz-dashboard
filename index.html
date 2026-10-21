@@ -894,46 +894,84 @@ function contrastePdfTexto(){
 // producción de las muestras del inversor menos el vertido medido de esa
 // hora. Se informa de cuántas horas tienen producción para no dar por
 // completo lo que no lo está.
-function idePeriodos(desde,hasta){
+function idePeriodos(desde,hasta,balance){
   if(!RAW.I.length)return null;
   const d0=desde?new Date(desde+'T00:00:00'):null,d1=hasta?new Date(hasta+'T23:59:59'):null;
   const filas=filt(RAW.I,d0,d1);
   if(!filas.length)return null;
+  // El reparto se ciñe a los MISMOS días que el balance da por completos. Si
+  // no, la tabla sumaba días que los recuadros no cuentan —una hora suelta del
+  // último día bastaba— y las dos cifras del mismo concepto no cuadraban.
+  const dias=new Map();
+  (balance||[]).forEach(d=>{if(d.complete)dias.set(d.date,d)});
+  if(!dias.size)return null;
   const prod=procProd(filt(RAW.A,d0,d1),filt(RAW.B,d0,d1));
   const prodH={};
   prod.hourly.forEach(h=>{if(Number.isFinite(h.total))prodH[h.hour]=h.total});
-  // Referencia para medir la cobertura del reparto: el total diario del
-  // inversor, que es el dato cerrado, frente a lo que suman sus horas.
-  const prodDiaria=prod.daily.reduce((t,d)=>t+(Number.isFinite(d.total)?d.total:0),0);
+
+  // Primera pasada: agrupar las horas de cada día válido con tres pesos, uno
+  // por magnitud. La forma horaria de i-DE dice CÓMO se reparte cada total;
+  // el CUÁNTO lo pone siempre el balance, que es la medida.
+  const porDia=new Map();
+  filas.forEach(r=>{
+    const fecha=dk(r.ts);
+    if(!dias.has(fecha))return;
+    const p=FRANJAS.includes(r.periodo)?r.periodo:'Sin periodo';
+    const imp=Number.isFinite(r.consumo)?Math.max(0,r.consumo):0;
+    const exp=Number.isFinite(r.gen)?Math.max(0,r.gen):0;
+    const pv=prodH[hk(r.ts)];
+    const auto=Number.isFinite(pv)?Math.max(0,pv-exp):0;
+    if(!porDia.has(fecha))porDia.set(fecha,{horas:[],pImp:0,pExp:0,pAuto:0,pProd:0});
+    const d=porDia.get(fecha);
+    const prodHora=Number.isFinite(pv)?Math.max(0,pv):0;
+    d.horas.push({p,pImp:imp,pExp:exp,pAuto:auto,pProd:prodHora,conProd:Number.isFinite(pv)});
+    d.pImp+=imp;d.pExp+=exp;d.pAuto+=auto;d.pProd+=prodHora;
+  });
+
   const vacio=()=>({importKWh:0,exportKWh:0,autoKWh:0,horas:0,horasConProd:0,
     ahorroEUR:0,autoValoradoKWh:0});
   const periodos=Object.fromEntries(FRANJAS.map(p=>[p,vacio()]));
-  const dias=new Set(),fuentes=new Set();
-  filas.forEach(r=>{
-    const p=FRANJAS.includes(r.periodo)?r.periodo:'Sin periodo';
-    const c=periodos[p],fecha=dk(r.ts);
-    if(Number.isFinite(r.consumo))c.importKWh+=r.consumo;
-    const vertido=Number.isFinite(r.gen)?r.gen:0;
-    c.exportKWh+=vertido;
-    const pv=prodH[hk(r.ts)];
-    if(Number.isFinite(pv)){
-      const auto=Math.max(0,pv-vertido);
-      c.autoKWh+=auto;c.horasConProd++;
-      // Se valora con la factura que cubre ESE día: un rango puede abarcar
-      // dos facturas con precios distintos, y promediarlas sería inventar.
-      const fac=PRECIOS?GorraizEnergia.periodAt(PRECIOS,fecha,PRECIO_FUTURO):null;
-      const precio=fac&&fac.pricesByPeriod?fac.pricesByPeriod[p]:null;
-      if(Number.isFinite(precio)){
-        c.ahorroEUR+=auto*precio;c.autoValoradoKWh+=auto;
-        fuentes.add(fac.source+' ('+fac.from+' a '+fac.to+')'+(fac.forwardEstimate?' · extrapolada':''));
+  const fuentes=new Set();
+  const sinRepartir={importKWh:0,exportKWh:0,autoKWh:0};
+  let diasSinReparto=0;
+  porDia.forEach((d,fecha)=>{
+    const dia=dias.get(fecha);
+    const medido=k=>Number.isFinite(dia[k])?dia[k]:0;
+    const total={importKWh:medido('importKWh'),exportKWh:medido('exportKWh'),
+      autoKWh:medido('selfConsumptionKWh')};
+    // Para el vertido, si i-DE no trae su forma horaria se usa la de la
+    // producción: solo sale energía a la red mientras se produce.
+    const usaProdParaExp=d.pExp<=0&&d.pProd>0;
+    const peso={importKWh:d.pImp,exportKWh:usaProdParaExp?d.pProd:d.pExp,autoKWh:d.pAuto};
+    let perdido=false;
+    ['importKWh','exportKWh','autoKWh'].forEach(k=>{
+      // Un total medido sin forma horaria con la que repartirlo no se tira ni
+      // se reparte a ciegas: se cuenta aparte y la nota lo dice.
+      if(total[k]>0&&peso[k]<=0){sinRepartir[k]+=total[k];perdido=true}
+    });
+    if(perdido)diasSinReparto++;
+    const fac=PRECIOS?GorraizEnergia.periodAt(PRECIOS,fecha,PRECIO_FUTURO):null;
+    d.horas.forEach(h=>{
+      const c=periodos[h.p];
+      c.horas++;if(h.conProd)c.horasConProd++;
+      if(peso.importKWh>0)c.importKWh+=total.importKWh*(h.pImp/peso.importKWh);
+      if(peso.exportKWh>0)c.exportKWh+=total.exportKWh*((usaProdParaExp?h.pProd:h.pExp)/peso.exportKWh);
+      if(peso.autoKWh>0)c.autoKWh+=total.autoKWh*(h.pAuto/peso.autoKWh);
+      if(peso.autoKWh>0&&total.autoKWh>0){
+        const parte=total.autoKWh*(h.pAuto/peso.autoKWh);
+        const precio=fac&&fac.pricesByPeriod?fac.pricesByPeriod[h.p]:null;
+        if(Number.isFinite(precio)){
+          c.ahorroEUR+=parte*precio;c.autoValoradoKWh+=parte;
+          fuentes.add(fac.source+' ('+fac.from+' a '+fac.to+')'+(fac.forwardEstimate?' · extrapolada':''));
+        }
       }
-    }
-    c.horas++;dias.add(fecha);
+    });
   });
+
   const suma=k=>FRANJAS.reduce((t,p)=>t+periodos[p][k],0);
   const autoValorado=suma('autoValoradoKWh');
-  return{periodos,dias:dias.size,prodDiaria,
-    prodRepartida:suma('autoKWh')+suma('exportKWh'),
+  return{periodos,dias:porDia.size,
+    diasBalance:dias.size,diasSinReparto,sinRepartir,
     horas:suma('horas'),horasConProd:suma('horasConProd'),
     importKWh:suma('importKWh'),exportKWh:suma('exportKWh'),autoKWh:suma('autoKWh'),
     ahorroEUR:autoValorado>0?suma('ahorroEUR'):null,autoValoradoKWh:autoValorado,
@@ -943,17 +981,11 @@ function idePeriodos(desde,hasta){
 }
 function idePeriodosNota(rep){
   const sinValorar=rep.autoKWh-rep.autoValoradoKWh;
-  // Decir «le faltan N horas» engañaba: casi todas las horas sin producción son
-  // noches, no datos perdidos. Lo que de verdad mide la cobertura del reparto
-  // es cuánta de la producción diaria ha podido repartirse por horas.
-  const cobertura=rep.prodDiaria>0?rep.prodRepartida/rep.prodDiaria:null;
-  return 'Importación y vertido por periodo: medida horaria de i-DE, con el periodo tarifario que asigna la distribuidora. '
-    +fn(rep.dias)+' día(s) y '+fn(rep.horas)+' horas en el rango, '+fn(rep.horasConProd)+' de ellas con producción. '
-    +'El autoconsumo por periodo se deriva restando el vertido de cada hora a la producción de las muestras del inversor: '
-    +'reparte '+fn(rep.prodRepartida,1)+' kWh'
-    +(Number.isFinite(cobertura)
-      ?' de los '+fn(rep.prodDiaria,1)+' kWh que suman los totales diarios del inversor ('+fn(cobertura*100,1)+' %)'
-      :'')
+  return 'Los totales de cada columna son los MEDIDOS del balance, sobre los mismos '+fn(rep.diasBalance)
+    +' día(s) completos que los recuadros: las dos cifras cuadran. Lo que aporta la curva horaria de i-DE es el '
+    +'reparto entre periodos tarifarios, con el periodo que asigna la distribuidora a cada hora'
+    +(rep.diasSinReparto>0?'. Quedan '+fn(rep.diasSinReparto)
+      +' día(s) cuyo total medido no tiene forma horaria con la que repartirse':'')
     +'. '
     // Decir de dónde sale cada precio es lo que separa un ahorro medido de una
     // cifra sin respaldo: el lector tiene que poder ir a la factura y cotejarla.
@@ -1645,7 +1677,7 @@ function renderP3(){
       detalle=GorraizSpcHorario.agruparDias(SPC_FUENTES,R.from,R.to);
   }catch(e){log('⚠ Reparto horario KSTAR: '+e.message)}
   R.spcPeriodos=detalle;
-  R.idePeriodos=idePeriodos(R.from,R.to);
+  R.idePeriodos=idePeriodos(R.from,R.to,R.balance);
   // i-DE cubre el mes entero y es medida de la distribuidora; el reparto de
   // KSTAR solo alcanza los días con intervalos válidos. Enseñar los dos sería
   // repetir lo mismo con distinta cobertura, así que manda el primero.
@@ -1768,25 +1800,39 @@ function creaPdf(){
   return{doc,W,H,M,pagina,cerrar};
 }
 // Las gráficas entran en el PDF como imagen del lienzo. A la resolución de
-// pantalla, un lienzo de ~1.200 px estirado a 267 mm da unos 114 ppp y los ejes
-// y las leyendas salen borrosos junto al texto vectorial del informe. Se
-// multiplica la densidad solo durante la captura y se devuelve después.
-const PDF_DENSIDAD=3;
+// pantalla, un lienzo de ~1.200 px estirado a 267 mm da unos 123 ppp y los ejes
+// y las leyendas salen borrosos junto al texto vectorial del informe.
+// Multiplicar la densidad por tres a secas engordaba el PDF a 107 MB: nueve
+// veces los píxeles de cada imagen, y en PNG, que no comprime fotografía. Se
+// calcula en su lugar los píxeles que PIDE su tamaño impreso —una gráfica
+// pequeña necesita menos que una a página completa— y se guardan en JPEG, que
+// para trazos sobre fondo blanco es indistinguible y pesa una fracción.
+// El mapa de calor no es una gráfica de Chart.js y se queda en PNG: su fondo
+// oscuro con celdas de color sí mostraría el bandeado del JPEG.
+const PDF_PPP=200,PDF_CALIDAD=.92,PDF_DENSIDAD_MAX=4;
 async function pdfChart(doc,id,x,y,w,h){
   const cv=$(id);if(!cv||cv.tagName!=='CANVAS'||cv.width<=10)return;
   const ch=Chart.getChart?Chart.getChart(cv):null,caja=cv.parentElement&&cv.parentElement.classList.contains('cw')?cv.parentElement:null;
   let previo=null,dprPrevio=null;
   try{
-    if(ch){dprPrevio=ch.options.devicePixelRatio;ch.options.devicePixelRatio=PDF_DENSIDAD}
+    if(ch){dprPrevio=ch.options.devicePixelRatio}
     const tipo=ch&&ch.config.type;
     if(tipo==='doughnut'||tipo==='pie'){const lado=Math.min(w,h);x+=(w-lado)/2;y+=(h-lado)/2;w=h=lado}
     if(ch&&caja){previo={ar:caja.style.aspectRatio,mx:caja.style.maxHeight,mn:caja.style.minHeight};
       caja.style.aspectRatio=(w/h).toFixed(3);caja.style.maxHeight='none';caja.style.minHeight='0';ch.resize();ch.stop();ch.update('none');
       await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
     }else if(!ch){const factor=Math.min(w/cv.width,h/cv.height),nw=cv.width*factor,nh=cv.height*factor;x+=(w-nw)/2;y+=(h-nh)/2;w=nw;h=nh}
-    if(ch){ch.resize();ch.stop();ch.update('none');
-      await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));}
-    doc.addImage(cv.toDataURL('image/png'),'PNG',x,y,w,h);
+    if(ch){
+      // Píxeles que pide el ancho impreso a PDF_PPP, traducidos a densidad
+      // sobre el ancho que el lienzo ocupa en pantalla.
+      const anchoCss=cv.getBoundingClientRect().width||cv.width||1;
+      const pxObjetivo=w/25.4*PDF_PPP;
+      ch.options.devicePixelRatio=Math.min(PDF_DENSIDAD_MAX,Math.max(1,pxObjetivo/anchoCss));
+      ch.resize();ch.stop();ch.update('none');
+      await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+    }
+    if(ch)doc.addImage(cv.toDataURL('image/jpeg',PDF_CALIDAD),'JPEG',x,y,w,h);
+    else doc.addImage(cv.toDataURL('image/png'),'PNG',x,y,w,h);
   }finally{
     if(ch&&dprPrevio!==null)ch.options.devicePixelRatio=dprPrevio;
     else if(ch)delete ch.options.devicePixelRatio;
