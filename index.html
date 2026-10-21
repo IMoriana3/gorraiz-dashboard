@@ -1774,7 +1774,20 @@ function calculaInforme(desde,hasta){
   // Páginas 4–5 conservan el histórico completo y muestran su propia cobertura.
   const fechas=[...new Set([].concat(RAW.A,RAW.B,RAW.I).map(r=>dk(r.ts)))].sort();
   const prodAll=procProd(RAW.A,RAW.B),consAll=procCons(RAW.I);
-  const historico=calcKPIs(prodAll,consAll,{from:fechas[0],to:fechas[fechas.length-1]});
+  // El rango del histórico salía de la primera y la última marca de tiempo de
+  // cualquier fichero. Un día sin producción de los dos inversores y sin medida
+  // de red no puede dar balance, así que contarlo como «día abierto» convierte
+  // el arranque de la monitorización en una laguna de cobertura: un registro
+  // suelto de junio añadía seis meses en blanco al eje de las cuatro gráficas
+  // del histórico y 177 falsos «días abiertos» al recuento.
+  // Solo se recortan los extremos. Los huecos de dentro siguen contando como
+  // días abiertos, que es lo que el informe tiene que enseñar.
+  const utiles=[...new Set([
+    ...prodAll.daily.filter(d=>Number.isFinite(d.total)).map(d=>d.date),
+    ...gridDiario().map(d=>d.date)])].sort();
+  const desdeH=utiles.length?utiles[0]:fechas[0];
+  const hastaH=utiles.length?utiles[utiles.length-1]:fechas[fechas.length-1];
+  const historico=calcKPIs(prodAll,consAll,{from:desdeH,to:hastaH});
   const ihAll=ideHorario(fechas[0],fechas[fechas.length-1])||{};
   return{...kpis,historico,evol:calcEvol(prodAll.daily,historico.energia),analysis:calcAnalysis(prodAll.hourly,consAll.hourly,historico.energia,ihAll.LV,ihAll.vLV),meteo:METEO};
 }
@@ -1956,7 +1969,7 @@ function renderP4(){
     borderWidth:ejeMeses.map((_,i)=>marca(i)?2:0)});
   const leyendaParcial={label:'mes parcial',data:[],backgroundColor:'rgba(0,0,0,0)',
     borderColor:'#e67e22',borderWidth:2};
-  $('evolCobertura').textContent=`Histórico: ${R.historico.from||'—'} → ${R.historico.to||'—'}. `+textoCobertura(ev.energia);
+  $('evolCobertura').textContent=`Datos utilizables: ${R.historico.from||'—'} → ${R.historico.to||'—'}. `+textoCobertura(ev.energia);
   CHARTS.c4p=new Chart($('c4prod'),{type:'bar',data:{labels:ejeMeses,datasets:[
     {label:'Producción registrada',data:pm.map(m=>campo(m,'kwh')),backgroundColor:'#2a6b5a',
       ...borde(i=>parcialProd(pm[i]))},leyendaParcial]},
@@ -2186,7 +2199,7 @@ async function genPDF(){
         '. La asignación de intervalos entre horas es proporcional al tiempo; la zona horaria del portal no está certificada. No se aplican precios indexados ni compensación de excedentes.',M,153,ancho,8);
     }
 
-    pagina('Histórico acumulado','Todos los datos cargados: '+R.historico.from+' a '+R.historico.to);
+    pagina('Histórico acumulado','Días con datos utilizables: '+R.historico.from+' a '+R.historico.to);
     pdfTexto(doc,textoCobertura(R.historico.energia),M,34,ancho,6);
     pdfTitulo(doc,'Producción mensual registrada (kWh)',M,50);pdfTitulo(doc,'Balance mensual · días completos (kWh)',M+mitad+6,50);
     await pdfChart(doc,'c4prod',M,54,mitad,61);await pdfChart(doc,'c4cons',M+mitad+6,54,mitad,61);

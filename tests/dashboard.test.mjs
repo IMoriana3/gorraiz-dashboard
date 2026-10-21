@@ -831,3 +831,33 @@ test('sin días con ambos inversores no se inventa una específica', () => {
   assert.equal(d.especificaInversores({prod}),null);
   assert.equal(d.especificaTexto({prod}),'');
 });
+
+test('el histórico arranca en el primer día utilizable, no en el primer registro suelto', () => {
+  const d=dashboard();
+  // Un registro de un solo inversor en junio, y datos de verdad desde octubre.
+  d.setRaw({A:[reading('2025-06-07',120),reading('2026-10-01',200),reading('2026-10-02',200)],
+            B:[reading('2026-10-01',200),reading('2026-10-02',200)],I:[]});
+  d.setGrid([grid('2026-10-01',150,0),grid('2026-10-02',150,0)]);
+  const r=d.calculaInforme('2026-10-01','2026-10-02');
+  // Antes el histórico iba de 2025-06-07 a 2026-10-02: 484 días, 482 «abiertos».
+  assert.equal(r.historico.from,'2026-10-01');
+  assert.equal(r.historico.to,'2026-10-02');
+  assert.equal(r.historico.energia.coverage.expectedDays,2);
+  assert.equal(r.historico.energia.coverage.missingEnergyDays,0);
+  // Y el eje mensual de la página del histórico deja de traer meses en blanco.
+  assert.deepStrictEqual([...r.evol.consM.map(m=>m.month)],['2026-10']);
+});
+
+test('un hueco de dentro del histórico sigue contando como día abierto', () => {
+  const d=dashboard();
+  // 01 y 03 con balance; el 02 no tiene nada. No se puede recortar: va dentro.
+  d.setRaw({A:[reading('2026-10-01',200),reading('2026-10-03',200)],
+            B:[reading('2026-10-01',200),reading('2026-10-03',200)],I:[]});
+  d.setGrid([grid('2026-10-01',150,0),grid('2026-10-03',150,0)]);
+  const r=d.calculaInforme('2026-10-01','2026-10-03');
+  assert.equal(r.historico.from,'2026-10-01');
+  assert.equal(r.historico.to,'2026-10-03');
+  assert.equal(r.historico.energia.coverage.expectedDays,3);
+  assert.equal(r.historico.energia.coverage.completeDays,2);
+  assert.equal(r.historico.energia.coverage.missingEnergyDays,1,'el hueco de dentro se sigue viendo');
+});
