@@ -26,3 +26,20 @@ test('UI KSTAR contiene conexión aislada y previene mostrar i-DE como fuente ac
   assert.match(html,/if\(KSTAR_ONLY\)return \{hourly:\[\],daily:\[\]\}/);
   assert.match(html,/spcPeriodos=detalle/);
 });
+test('las graficas entran en el PDF compuestas sobre blanco, no sobre el negro del JPEG',()=>{
+  // JPEG no guarda transparencia y el navegador compone lo transparente sobre
+  // negro. Los lienzos de Chart.js no pintan fondo, asi que codificarlos
+  // directamente metia cada grafica del informe en un recuadro negro.
+  assert.match(html,/function pdfLienzoBlanco\(cv\)/);
+  const fn=html.match(/function pdfLienzoBlanco\(cv\)\{[\s\S]*?\n\}/)[0];
+  assert.match(fn,/fillStyle='#ffffff'/);
+  assert.match(fn,/fillRect\(0,0,off\.width,off\.height\)/);
+  assert.ok(fn.indexOf('fillRect')<fn.indexOf('drawImage'),
+    'hay que pintar el blanco antes de volcar el lienzo encima');
+  assert.match(html,/doc\.addImage\(pdfLienzoBlanco\(cv\),'JPEG'/);
+  // Nadie mas puede codificar un lienzo en JPEG sin pasar por ahi.
+  assert.equal((html.match(/toDataURL\('image\/jpeg'/g)||[]).length,1,
+    'el unico toDataURL JPEG debe ser el de pdfLienzoBlanco');
+  // El mapa de calor si pinta su propio fondo oscuro y se queda en PNG.
+  assert.match(html,/doc\.addImage\(cv\.toDataURL\('image\/png'\),'PNG'/);
+});
