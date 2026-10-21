@@ -11,7 +11,8 @@ Dashboard de producción, intercambio con la red y valoración económica del Ed
 | Generación de los dos inversores | Solarman | API del Worker o ficheros XLSX |
 | Importación/exportación diaria e histórico del contador | KSTAR SPC01 | Worker independiente en Cloudflare, conectado al dashboard |
 | Importación diaria facturada, para contrastar | i-DE | Ficheros XLSX horarios subidos a mano |
-| Reparto provisional P1-P6 de energía | Acumulados KSTAR | Solo fechas con intervalos compatibles; sin precios horarios |
+| Reparto P1-P6 de importación y vertido | i-DE | Periodo tarifario que la distribuidora marca en cada hora |
+| Reparto provisional P1-P6 de energía | Acumulados KSTAR | Respaldo cuando no hay ficheros de i-DE; solo fechas con intervalos compatibles |
 | Precios medios por periodo de factura | Configuración privada | Archivo JSON importado en el navegador |
 
 El botón **Traer datos** consulta Solarman y KSTAR por conexiones independientes. La **descarga automática** de i-DE y Datadis sigue archivada en el código, sin consultas. El 19/10/2026 se validó una descarga real de KSTAR: 658,92 kWh importados, 0 kWh exportados, 74 kWh de autoconsumo comunicado y 287 registros del contador.
@@ -24,6 +25,14 @@ Los ficheros horarios de i-DE **sí** se suben a mano, pero solo se usan por su 
 - Se avisa cuando la diferencia supera **a la vez** 1 kWh y el 2 %. Exigir ambos umbrales evita la alarma por un día de consumo mínimo, donde cualquier décima es un gran porcentaje, y por uno de mucho consumo, donde unos kWh son ruido de redondeo.
 - En el balance manda i-DE donde haya día completo, por ser la medida que factura; KSTAR cubre lo que la distribuidora todavía no ha publicado. Cada día deja constancia de su origen en `meta.contador`.
 - Si hay discrepancia, se dice en el panel **y en la página 3 del PDF**: quien lee el informe no ve la pantalla.
+
+### Reparto P1-P6
+
+La importación y el vertido por periodo tarifario salen del fichero de i-DE, que marca el periodo de cada hora: es medida de la distribuidora y cubre todo el rango. El autoconsumo por periodo **sí es derivado** —producción de las muestras del inversor menos el vertido medido de cada hora— y la nota al pie dice cuántas horas se han quedado sin producción registrada.
+
+El reparto de los acumulados KSTAR queda como respaldo para cuando no hay ficheros de i-DE: solo alcanza los días con intervalos compatibles. No se enseñan los dos a la vez, porque serían lo mismo con distinta cobertura.
+
+Ninguno de los dos aplica precios. Para el ahorro en euros hacen falta los €/kWh de factura.
 
 ## Informes y cálculo
 

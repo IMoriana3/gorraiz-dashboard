@@ -33,7 +33,7 @@ function dashboard() {
     globalThis.api={
       procProd,procCons,calcKPIs,calcEvol,calcAnalysis,calculaInforme,calcCompPeriod,
       ponFuenteSpc,incorporaSpc,getSpcDaily,getSpcRows,bloquesSpc,fn,kstarCfg,kstarCall,
-      ideDiario,contrasteRed,gridDiario,horasDia,contrasteTexto,contrastePdfTexto,
+      ideDiario,contrasteRed,gridDiario,horasDia,contrasteTexto,contrastePdfTexto,idePeriodos,
       setFetch(fn){globalThis.fetch=fn},
       setKstarAccess(url,key){localStorage.setItem(KSTAR_URL_KEY,url);localStorage.setItem(KSTAR_CLAVE_KEY,key)},
       setKstarAccessSesion(url,key){localStorage.setItem(KSTAR_URL_KEY,url);sessionStorage.setItem(KSTAR_SESSION_KEY,key)},
@@ -335,4 +335,59 @@ test('la clave de KSTAR se conserva en el equipo y la antigua de sesión se sigu
 
   // Cada dashboard del arnés parte de almacenes vacíos: sin clave, no hay clave.
   assert.equal(dashboard().kstarCfg().key,'');
+});
+
+// ── Reparto P1–P6 desde i-DE ──────────────────────────────────────────────
+// i-DE trae el periodo tarifario de cada hora: la importación y el vertido por
+// periodo son medida suya, no un reparto nuestro.
+const horasP = (date, filas) => filas.map(([h, consumo, gen, periodo]) =>
+  ({ts:new Date(`${date}T${String(h).padStart(2,'0')}:30:00`), consumo, gen, periodo}));
+
+test('el reparto por periodo suma la medida de i-DE y deriva el autoconsumo del inversor', () => {
+  const d=dashboard(),date='2026-10-05';
+  d.setRaw({A:[{ts:new Date(date+'T10:30:00'),dia:60,pot:1000,acum:0}],
+            B:[{ts:new Date(date+'T10:30:00'),dia:60,pot:1000,acum:0}],
+            I:horasP(date,[[10,5,2,'P1'],[11,7,0,'P1'],[12,9,0,'P4'],[13,4,0,'Sin periodo']])});
+  const rep=d.idePeriodos(date,date);
+  close(rep.periodos.P1.importKWh,12);
+  close(rep.periodos.P1.exportKWh,2);
+  close(rep.periodos.P4.importKWh,9);
+  close(rep.importKWh,25);
+  close(rep.exportKWh,2);
+  assert.equal(rep.dias,1);
+  assert.equal(rep.horas,4);
+  // Una fila sin periodo reconocible no se pierde ni se cuela en P6.
+  close(rep.periodos['Sin periodo'].importKWh,4);
+  assert.equal(rep.periodos.P6.horas,0);
+  assert.ok(!rep.franjas.includes('P6'),'un periodo sin horas no se enseña');
+  assert.ok(rep.franjas.includes('Sin periodo'));
+});
+
+test('el autoconsumo por periodo descuenta el vertido y no cuenta horas sin producción', () => {
+  const d=dashboard(),date='2026-10-05';
+  // Produccion horaria a partir de acumulados: 40 kWh por inversor a las 10h.
+  const muestras=k=>[{ts:new Date(date+'T10:00:00'),dia:40,pot:0,acum:0},
+                     {ts:new Date(date+'T10:50:00'),dia:40,pot:0,acum:40}];
+  d.setRaw({A:muestras('A'),B:muestras('B'),
+            I:horasP(date,[[10,0,15,'P1'],[14,3,0,'P4']])});
+  const rep=d.idePeriodos(date,date);
+  // 80 kWh producidos a las 10h menos 15 vertidos = 65 autoconsumidos.
+  close(rep.periodos.P1.autoKWh,65);
+  assert.equal(rep.periodos.P1.horasConProd,1);
+  // A las 14h no hay muestras: no se inventa autoconsumo.
+  assert.equal(rep.periodos.P4.autoKWh,0);
+  assert.equal(rep.periodos.P4.horasConProd,0);
+  assert.equal(rep.horasConProd,1);
+  assert.equal(rep.horas,2);
+});
+
+test('el reparto respeta el rango pedido y desaparece sin ficheros de i-DE', () => {
+  const d=dashboard();
+  d.setRaw({A:[],B:[],I:[...horasP('2026-10-05',[[10,10,0,'P1']]),
+                         ...horasP('2026-10-09',[[10,20,0,'P1']])]});
+  close(d.idePeriodos('2026-10-05','2026-10-05').importKWh,10);
+  close(d.idePeriodos('2026-10-01','2026-10-31').importKWh,30);
+  assert.equal(d.idePeriodos('2026-10-20','2026-10-25'),null,'rango sin filas no devuelve reparto');
+  d.setRaw({A:[],B:[],I:[]});
+  assert.equal(d.idePeriodos('2026-10-01','2026-10-31'),null);
 });

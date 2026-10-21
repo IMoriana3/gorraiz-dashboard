@@ -872,6 +872,52 @@ function contrastePdfTexto(){
     +` el mayor desvío es el ${fdmy(peor.date)}, ${fn(Math.abs(peor.dif),1)} kWh.`;
 }
 
+// ═══ REPARTO P1–P6 DESDE i-DE ═══
+// El fichero de i-DE trae el periodo tarifario de cada hora, puesto por la
+// distribuidora. Así que la importación y el vertido por periodo son MEDIDA,
+// no un reparto nuestro, y cubren todo el mes en lugar de los pocos días con
+// intervalos del contador KSTAR.
+// El autoconsumo por periodo sí es derivado: por cada hora se toma la
+// producción de las muestras del inversor menos el vertido medido de esa
+// hora. Se informa de cuántas horas tienen producción para no dar por
+// completo lo que no lo está.
+function idePeriodos(desde,hasta){
+  if(!RAW.I.length)return null;
+  const d0=desde?new Date(desde+'T00:00:00'):null,d1=hasta?new Date(hasta+'T23:59:59'):null;
+  const filas=filt(RAW.I,d0,d1);
+  if(!filas.length)return null;
+  const prodH={};
+  procProd(filt(RAW.A,d0,d1),filt(RAW.B,d0,d1)).hourly
+    .forEach(h=>{if(Number.isFinite(h.total))prodH[h.hour]=h.total});
+  const vacio=()=>({importKWh:0,exportKWh:0,autoKWh:0,horas:0,horasConProd:0});
+  const periodos=Object.fromEntries(FRANJAS.map(p=>[p,vacio()]));
+  const dias=new Set();
+  filas.forEach(r=>{
+    const p=FRANJAS.includes(r.periodo)?r.periodo:'Sin periodo';
+    const c=periodos[p];
+    if(Number.isFinite(r.consumo))c.importKWh+=r.consumo;
+    const vertido=Number.isFinite(r.gen)?r.gen:0;
+    c.exportKWh+=vertido;
+    const pv=prodH[hk(r.ts)];
+    if(Number.isFinite(pv)){c.autoKWh+=Math.max(0,pv-vertido);c.horasConProd++}
+    c.horas++;dias.add(dk(r.ts));
+  });
+  const suma=k=>FRANJAS.reduce((t,p)=>t+periodos[p][k],0);
+  return{periodos,dias:dias.size,
+    horas:suma('horas'),horasConProd:suma('horasConProd'),
+    importKWh:suma('importKWh'),exportKWh:suma('exportKWh'),autoKWh:suma('autoKWh'),
+    // 'Sin periodo' solo se enseña si de verdad ha caído algo ahí.
+    franjas:FRANJAS.filter(p=>periodos[p].horas>0)};
+}
+function idePeriodosNota(rep){
+  const faltan=rep.horas-rep.horasConProd;
+  return 'Importación y vertido por periodo: medida horaria de i-DE, con el periodo tarifario que asigna la distribuidora. '
+    +fn(rep.dias)+' día(s) y '+fn(rep.horas)+' horas en el rango. '
+    +'El autoconsumo por periodo se deriva restando el vertido de cada hora a la producción de las muestras del inversor'
+    +(faltan>0?', y le faltan '+fn(faltan)+' horas sin producción registrada':'')
+    +'. No se aplican precios: para el ahorro hacen falta los €/kWh de factura.';
+}
+
 // ═══ PRECIOS PRIVADOS: SOLO EN ESTE NAVEGADOR ═══
 const PRECIOS_KEY='gorraiz_precios_mensuales_v1',PRECIOS_FUTURO_KEY='gorraiz_precios_futuro';
 let PRECIOS=null,PRECIO_FUTURO=false;
@@ -1458,7 +1504,26 @@ function renderP3(){
       detalle=GorraizSpcHorario.agruparDias(SPC_FUENTES,R.from,R.to);
   }catch(e){log('⚠ Reparto horario KSTAR: '+e.message)}
   R.spcPeriodos=detalle;
-  if(detalle&&detalle.diasCompatibles){
+  R.idePeriodos=idePeriodos(R.from,R.to);
+  // i-DE cubre el mes entero y es medida de la distribuidora; el reparto de
+  // KSTAR solo alcanza los días con intervalos válidos. Enseñar los dos sería
+  // repetir lo mismo con distinta cobertura, así que manda el primero.
+  if(R.idePeriodos){
+    const rep=R.idePeriodos;
+    let html='<strong>Importación, vertido y autoconsumo por periodo · medida horaria de i-DE</strong>';
+    html+='<table><tr><th>Periodo</th><th>Importación</th><th>Vertido</th><th>Autoconsumo FV</th></tr>';
+    for(const p of rep.franjas){
+      const x=rep.periodos[p];
+      html+='<tr><td>'+esc(p)+'</td><td>'+fn(x.importKWh,1)+' kWh</td><td>'+fn(x.exportKWh,1)+
+        ' kWh</td><td>'+(x.horasConProd?fn(x.autoKWh,1)+' kWh':'—')+'</td></tr>';
+    }
+    html+='<tr><td><b>TOTAL</b></td><td><b>'+fn(rep.importKWh,1)+' kWh</b></td><td><b>'+
+      fn(rep.exportKWh,1)+' kWh</b></td><td><b>'+fn(rep.autoKWh,1)+' kWh</b></td></tr>';
+    html+='</table><div class="hint">'+esc(idePeriodosNota(rep))+
+      (detalle&&detalle.diasCompatibles?' El contador KSTAR cubre '+fn(detalle.diasCompatibles)+
+        ' día(s) de este rango y sirve para contrastarlo.':'')+'</div>';
+    $('spcPeriodosKwh').innerHTML=html;
+  }else if(detalle&&detalle.diasCompatibles){
     let html='<strong>Importación/exportación KSTAR por periodo (kWh provisionales, NO importes)</strong>';
     html+='<table><tr><th>Periodo</th><th>Importación aproximada</th><th>Exportación aproximada</th></tr>';
     for(const p of GorraizSpcHorario.PERIODS){
@@ -1469,7 +1534,7 @@ function renderP3(){
       '; '+detalle.rechazados.length+' días excluidos por falta de cobertura. Distribución temporal aproximada, precios indexados no aplicados.</div>';
     $('spcPeriodosKwh').innerHTML=html;
   }else{
-    $('spcPeriodosKwh').textContent='Reparto P1–P6 pendiente: faltan intervalos KSTAR completos y validados. El balance energético diario sigue disponible.';
+    $('spcPeriodosKwh').textContent='Reparto P1–P6 pendiente: sube los ficheros horarios de i-DE, o consigue intervalos KSTAR completos. El balance energético diario sigue disponible.';
   }
   const cd=R.cons.daily;
   CHARTS.c3d=new Chart($('c3daily'),{type:'line',data:{labels:cd.map(d=>d.date.slice(5)),datasets:[
@@ -1605,9 +1670,33 @@ async function genPDF(){
     await pdfChart(doc,'c3week',M,139,w1,47);await pdfChart(doc,'c3hourly',M+w1+4,139,w2,47);await pdfChart(doc,'c3donut',M+w1+w2+8,139,w3,47);
     pdfTexto(doc,'Autoconsumo = FV - vertido. Consumo = importación + autoconsumo. Los acumulados de ambos inversores deben cubrir el cierre del día. No se inventa consumo horario donde faltan intervalos SPC.'+contrastePdfTexto(),M,193,ancho,6);
 
-    // Una página separada evita confundir el reparto provisional de los
-    // acumulados con el ahorro económico de la factura indexada.
-    if(R.spcPeriodos&&R.spcPeriodos.diasCompatibles>0){
+    // Una página separada evita confundir el reparto de energía por periodo
+    // con el ahorro económico de la factura indexada.
+    if(R.idePeriodos){
+      const rep=R.idePeriodos;
+      pagina('Reparto energético P1-P6 · medida horaria de i-DE','Periodo elegido: '+per);
+      pdfTexto(doc,'Importación y vertido por periodo tarifario CNMC, medidos por i-DE. El autoconsumo se deriva de las muestras del inversor. No son importes de facturación.',M,37,ancho,8);
+      doc.setFillColor(26,60,52);doc.rect(M,46,ancho,8,'F');
+      doc.setTextColor(255);doc.setFontSize(8);doc.setFont(undefined,'bold');
+      const col=[M+5,M+60,M+120,M+180];
+      doc.text('Periodo',col[0],51.5);doc.text('Importación (kWh)',col[1],51.5);
+      doc.text('Vertido (kWh)',col[2],51.5);doc.text('Autoconsumo FV (kWh)',col[3],51.5);
+      let ypos=60;
+      for(const p of rep.franjas){
+        const d=rep.periodos[p];doc.setFontSize(8.5);doc.setTextColor(30);doc.setFont(undefined,'normal');
+        doc.text(p,col[0],ypos);doc.text(fn(d.importKWh,1),col[1],ypos);
+        doc.text(fn(d.exportKWh,1),col[2],ypos);
+        doc.text(d.horasConProd?fn(d.autoKWh,1):'-',col[3],ypos);
+        ypos+=9;
+      }
+      doc.setDrawColor(150);doc.line(M,ypos-5,M+ancho,ypos-5);
+      doc.setFont(undefined,'bold');doc.setFontSize(8.5);doc.setTextColor(0);
+      doc.text('TOTAL',col[0],ypos+1);doc.text(fn(rep.importKWh,1),col[1],ypos+1);
+      doc.text(fn(rep.exportKWh,1),col[2],ypos+1);doc.text(fn(rep.autoKWh,1),col[3],ypos+1);
+      pdfTexto(doc,idePeriodosNota(rep)+(R.spcPeriodos&&R.spcPeriodos.diasCompatibles>0
+        ?' El contador KSTAR cubre '+fn(R.spcPeriodos.diasCompatibles)+' dia(s) de este rango y sirve para contrastarlo.':''),
+        M,ypos+12,ancho,7.5);
+    }else if(R.spcPeriodos&&R.spcPeriodos.diasCompatibles>0){
       const reparto=R.spcPeriodos;
       pagina('KSTAR SPC - Reparto energético P1-P6 (provisional)','Periodo elegido: '+per);
       pdfTexto(doc,'Distribución aproximada de kWh por periodo CNMC obtenida de intervalos acumulados KSTAR. No son precios ni importes de facturación.',M,37,ancho,8);
