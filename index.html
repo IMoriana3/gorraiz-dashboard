@@ -562,20 +562,26 @@ function encajaGraficas(){
 // no se convierten aquí en energía horaria ni se mezclan con RAW.I.
 let SPC_FUENTES=[],SPC_PRUEBA=null,SPC_OCUPADO=false;
 const KSTAR_ONLY=true;
-const KSTAR_URL_KEY='gorraiz_kstar_url_v1',KSTAR_SESSION_KEY='gorraiz_kstar_key_sesion_v1';
+// La clave del Worker de KSTAR se guarda igual que la del principal. Vivía
+// solo en sessionStorage por lo del HTTP sin cifrar, pero obligaba a teclearla
+// en cada sesión y PANEL_KEY —que además puede SOBRESCRIBIR el almacén
+// compartido— ya estaba en localStorage: la asimetría no protegía nada.
+// Se sigue leyendo la antigua de sesión para no perderla a media sesión.
+const KSTAR_URL_KEY='gorraiz_kstar_url_v1',KSTAR_CLAVE_KEY='gorraiz_kstar_clave_v1',
+  KSTAR_SESSION_KEY='gorraiz_kstar_key_sesion_v1';
 const KSTAR_STATION='2026032317114373',KSTAR_METER='210261430F3060020000661';
 function kstarCfg(){
   try{return {url:(localStorage.getItem(KSTAR_URL_KEY)||'').trim(),
-    key:sessionStorage.getItem(KSTAR_SESSION_KEY)||''}}catch{return{url:'',key:''}}
+    key:localStorage.getItem(KSTAR_CLAVE_KEY)||sessionStorage.getItem(KSTAR_SESSION_KEY)||''}}catch{return{url:'',key:''}}
 }
 function pintaKstarCfg(){
   const cfg=kstarCfg();
   $('cfgKstar').innerHTML=`<div class="row">
     <label>Worker KSTAR independiente:</label><input type="url" id="kstarUrl" placeholder="https://gorraiz-kstar-prueba.tu-subdominio.workers.dev" value="${esc(cfg.url)}">
     <label>Clave de prueba:</label><input type="password" id="kstarKey" autocomplete="off" placeholder="KSTAR_TEST_KEY (no contraseña del proveedor)" value="" minlength="24">
-    <button class="btn btn2" type="button" onclick="guardarKstarCfg()">Guardar sesión KSTAR</button>
+    <button class="btn btn2" type="button" onclick="guardarKstarCfg()">Guardar conexión KSTAR</button>
     <button class="btn btn2" type="button" onclick="borrarKstarCfg()">Desconectar KSTAR</button></div>
-    <div class="hint" role="status"><strong>Clave KSTAR: ${cfg.key.length>=24?'guardada en esta sesión':'pendiente de guardar en esta sesión'}.</strong> La clave temporal no se guarda de forma permanente; las credenciales del proveedor siguen en Cloudflare. El tramo Cloudflare → KSTAR por HTTP carece de cifrado.</div>`;
+    <div class="hint" role="status"><strong>Clave KSTAR: ${cfg.key.length>=24?'guardada en este navegador':'pendiente de guardar'}.</strong> Queda en este equipo, como la del Worker principal; las credenciales del proveedor siguen en Cloudflare. El tramo Cloudflare → KSTAR por HTTP carece de cifrado: cámbiala si el equipo deja de ser de confianza.</div>`;
 }
 function guardarKstarCfg(){
   try{
@@ -587,18 +593,19 @@ function guardarKstarCfg(){
     const clave=$('kstarKey').value;
     if(clave.length<24&&!kstarCfg().key)throw new Error('Introduce KSTAR_TEST_KEY (mínimo 24 caracteres).');
     localStorage.setItem(KSTAR_URL_KEY,raw);
-    if(clave.length>=24)sessionStorage.setItem(KSTAR_SESSION_KEY,clave);
+    if(clave.length>=24){localStorage.setItem(KSTAR_CLAVE_KEY,clave);sessionStorage.removeItem(KSTAR_SESSION_KEY)}
     SPC_PRUEBA=null;pintaKstarCfg();pintaSpc();estadoApi();
     $('spcAccion').textContent='Worker KSTAR configurado. Elige un día cerrado y pulsa «Comprobar SPC».';
   }catch(e){$('spcAccion').textContent=e.message}
 }
 function borrarKstarCfg(){
-  localStorage.removeItem(KSTAR_URL_KEY);sessionStorage.removeItem(KSTAR_SESSION_KEY);
+  localStorage.removeItem(KSTAR_URL_KEY);localStorage.removeItem(KSTAR_CLAVE_KEY);
+  sessionStorage.removeItem(KSTAR_SESSION_KEY);
   SPC_PRUEBA=null;pintaKstarCfg();pintaSpc();estadoApi();
 }
 async function kstarCall(desde,hasta){
   const cfg=kstarCfg();
-  if(!cfg.url||cfg.key.length<24)throw new Error('Guarda la URL y la clave temporal de KSTAR.');
+  if(!cfg.url||cfg.key.length<24)throw new Error('Guarda la URL y la clave de KSTAR.');
   if(desde!==hasta||!spcFecha(desde)||desde>=spcHoy('Europe/Madrid'))
     throw new Error('KSTAR solo admite un día cerrado por consulta.');
   const r=await fetch(cfg.url+'/spc/intercambio',{method:'POST',cache:'no-store',
@@ -686,7 +693,7 @@ function pintaSpc(){
   if(SPC_PRUEBA){
     mensaje.innerHTML=SPC_PRUEBA.ok?`Conexión comprobada${est.spcUnencryptedTransport?' (HTTP SIN CIFRAR)':''} · ${esc(spcMomento(SPC_PRUEBA.actualizado))}`:`<span class="err">${esc(SPC_PRUEBA.error)}</span>`;
   }else if(!config)mensaje.textContent='Configura el Worker KSTAR independiente para consultar SPC.';
-  else if(kc.url&&!kstarListo)mensaje.textContent='KSTAR guardado; falta la clave temporal de esta sesión.';
+  else if(kc.url&&!kstarListo)mensaje.textContent='KSTAR guardado; falta su clave de acceso.';
   else if(kstarListo)mensaje.textContent='KSTAR independiente configurado · pendiente de comprobar la lectura.';
   else if(!API_ESTADO)mensaje.textContent='Estado de SPC sin comprobar.';
   else if(!est.spc)mensaje.textContent='Conexión SPC pendiente de configurar en el servidor.';
@@ -863,6 +870,74 @@ function contrastePdfTexto(){
   const peor=c.discrepantes.reduce((m,f)=>!m||Math.abs(f.dif)>Math.abs(m.dif)?f:m,null);
   return ` ATENCIÓN: i-DE y KSTAR no cuadran en ${fn(c.discrepantes.length)} día(s);`
     +` el mayor desvío es el ${fdmy(peor.date)}, ${fn(Math.abs(peor.dif),1)} kWh.`;
+}
+
+// ═══ REPARTO P1–P6 DESDE i-DE ═══
+// El fichero de i-DE trae el periodo tarifario de cada hora, puesto por la
+// distribuidora. Así que la importación y el vertido por periodo son MEDIDA,
+// no un reparto nuestro, y cubren todo el mes en lugar de los pocos días con
+// intervalos del contador KSTAR.
+// El autoconsumo por periodo sí es derivado: por cada hora se toma la
+// producción de las muestras del inversor menos el vertido medido de esa
+// hora. Se informa de cuántas horas tienen producción para no dar por
+// completo lo que no lo está.
+function idePeriodos(desde,hasta){
+  if(!RAW.I.length)return null;
+  const d0=desde?new Date(desde+'T00:00:00'):null,d1=hasta?new Date(hasta+'T23:59:59'):null;
+  const filas=filt(RAW.I,d0,d1);
+  if(!filas.length)return null;
+  const prodH={};
+  procProd(filt(RAW.A,d0,d1),filt(RAW.B,d0,d1)).hourly
+    .forEach(h=>{if(Number.isFinite(h.total))prodH[h.hour]=h.total});
+  const vacio=()=>({importKWh:0,exportKWh:0,autoKWh:0,horas:0,horasConProd:0,
+    ahorroEUR:0,autoValoradoKWh:0});
+  const periodos=Object.fromEntries(FRANJAS.map(p=>[p,vacio()]));
+  const dias=new Set(),fuentes=new Set();
+  filas.forEach(r=>{
+    const p=FRANJAS.includes(r.periodo)?r.periodo:'Sin periodo';
+    const c=periodos[p],fecha=dk(r.ts);
+    if(Number.isFinite(r.consumo))c.importKWh+=r.consumo;
+    const vertido=Number.isFinite(r.gen)?r.gen:0;
+    c.exportKWh+=vertido;
+    const pv=prodH[hk(r.ts)];
+    if(Number.isFinite(pv)){
+      const auto=Math.max(0,pv-vertido);
+      c.autoKWh+=auto;c.horasConProd++;
+      // Se valora con la factura que cubre ESE día: un rango puede abarcar
+      // dos facturas con precios distintos, y promediarlas sería inventar.
+      const fac=PRECIOS?GorraizEnergia.periodAt(PRECIOS,fecha,PRECIO_FUTURO):null;
+      const precio=fac&&fac.pricesByPeriod?fac.pricesByPeriod[p]:null;
+      if(Number.isFinite(precio)){
+        c.ahorroEUR+=auto*precio;c.autoValoradoKWh+=auto;
+        fuentes.add(fac.source+' ('+fac.from+' a '+fac.to+')'+(fac.forwardEstimate?' · extrapolada':''));
+      }
+    }
+    c.horas++;dias.add(fecha);
+  });
+  const suma=k=>FRANJAS.reduce((t,p)=>t+periodos[p][k],0);
+  const autoValorado=suma('autoValoradoKWh');
+  return{periodos,dias:dias.size,
+    horas:suma('horas'),horasConProd:suma('horasConProd'),
+    importKWh:suma('importKWh'),exportKWh:suma('exportKWh'),autoKWh:suma('autoKWh'),
+    ahorroEUR:autoValorado>0?suma('ahorroEUR'):null,autoValoradoKWh:autoValorado,
+    fuentes:[...fuentes].sort(),
+    // 'Sin periodo' solo se enseña si de verdad ha caído algo ahí.
+    franjas:FRANJAS.filter(p=>periodos[p].horas>0)};
+}
+function idePeriodosNota(rep){
+  const faltan=rep.horas-rep.horasConProd;
+  const sinValorar=rep.autoKWh-rep.autoValoradoKWh;
+  return 'Importación y vertido por periodo: medida horaria de i-DE, con el periodo tarifario que asigna la distribuidora. '
+    +fn(rep.dias)+' día(s) y '+fn(rep.horas)+' horas en el rango. '
+    +'El autoconsumo por periodo se deriva restando el vertido de cada hora a la producción de las muestras del inversor'
+    +(faltan>0?', y le faltan '+fn(faltan)+' horas sin producción registrada':'')
+    +'. '
+    // Decir de dónde sale cada precio es lo que separa un ahorro medido de una
+    // cifra sin respaldo: el lector tiene que poder ir a la factura y cotejarla.
+    +(rep.fuentes.length
+      ?'Precios por periodo de: '+rep.fuentes.join(' · ')+'.'
+        +(sinValorar>0.05?' Quedan '+fn(sinValorar,1)+' kWh autoconsumidos sin precio que los cubra.':'')
+      :'Sin precios por periodo cargados: para el ahorro hacen falta los €/kWh de cada periodo de tus facturas.');
 }
 
 // ═══ PRECIOS PRIVADOS: SOLO EN ESTE NAVEGADOR ═══
@@ -1181,8 +1256,8 @@ async function traerDatos(){
   if(separado&&kstarCfg().key.length<24){
     const previos=SPC_FUENTES.filter(f=>f.date>=desde&&f.date<=hasta&&f.meta?.completo===true).length;
     if(previos)algo=true;
-    partes.push('<span class="warn">KSTAR: no se ha repetido la conexión porque la clave temporal falta en esta sesión. '+
-      'Se conservan '+fn(previos)+' día(s) completos ya guardados. Vuelve a introducir KSTAR_TEST_KEY y pulsa «Guardar sesión KSTAR» para consultar días nuevos.</span>');
+    partes.push('<span class="warn">KSTAR: no se ha consultado porque falta su clave de acceso. '+
+      'Se conservan '+fn(previos)+' día(s) completos ya guardados. Introduce KSTAR_TEST_KEY y pulsa «Guardar conexión KSTAR» para consultar días nuevos.</span>');
   }else if(separado||est.spc){
     SPC_PRUEBA=null;const fallos=[];let guardados=0,parciales=0,reutilizados=0;
     try{
@@ -1397,13 +1472,28 @@ function kpisProduccion(r){return[
   ['Producción registrada',kwh(r.tP),`${r.dPV} días con ambos inversores`],['Rendimiento',Number.isFinite(r.yld)?fd(r.yld)+' kWh/kWp':'—',`${CFG.kwp} kWp`],
   ['Ahorro de energía',euros(r.tAE),'Base, sin impuestos'],['Ahorro con IE',euros(r.tAF),'Sin IVA'],
   ['Efecto en caja con IVA',euros(r.tCash),'Separado del ahorro sin IVA'],['Días valorados',`${r.energia.coverage.pricedDays} / ${r.energia.coverage.expectedDays}`,'Balance completo y precio disponible']];}
-function kpisBalance(r){return[
-  ['Consumo del edificio',kwh(r.tC),'Importación + autoconsumo'],['Importación de red',kwh(r.tR),'SPC · días completos'],
-  ['Autoconsumo FV',kwh(r.tPV),'Producción − vertido'],['Vertido a red',kwh(r.tExport),'SPC · sin valoración económica'],
+// Desde que i-DE puede alimentar el balance, poner «SPC» a secas era falso en
+// cuanto un solo día saliera de los ficheros de la distribuidora. La etiqueta
+// nombra los contadores que han aportado los días que se están sumando.
+function fuenteRedTexto(energia){
+  const dias=((energia&&energia.daily)||[]).filter(d=>d.complete);
+  if(!dias.length)return 'sin días completos';
+  return [...new Set(dias.map(d=>(d.meta&&d.meta.contador)||'KSTAR'))].sort().join(' + ');
+}
+function kpisBalance(r){const red=fuenteRedTexto(r.energia);return[
+  ['Consumo del edificio',kwh(r.tC),'Importación + autoconsumo'],['Importación de red',kwh(r.tR),red+' · días completos'],
+  ['Autoconsumo FV',kwh(r.tPV),'Producción - vertido'],['Vertido a red',kwh(r.tExport),red+' · sin valoración económica'],
   ['Cobertura FV',Number.isFinite(r.pct)?fd(r.pct*100)+' %':'—',`${r.energia.coverage.completeDays} días con balance`]];}
 function renderP1(){
   $('k1').innerHTML=cajasKpi(kpisProduccion(R));
-  const pd=R.prod.daily,ds=[{label:'Producción registrada (kWh)',data:pd.map(d=>d.total),borderColor:'#2a6b5a',backgroundColor:'rgba(42,107,90,.3)',borderWidth:1.5,fill:true,tension:.3,pointRadius:pd.length>20?0:3,yAxisID:'y',spanGaps:false}];
+  // La serie del balance recorre TODOS los días del periodo, con null donde
+  // falta el dato; la de producción solo trae los días que existen. Con esta
+  // última, el eje saltaba del 24/09 al 02/10 y la línea los unía como si
+  // fueran consecutivos: el informe escondía el hueco en lugar de enseñarlo.
+  const pd=(R.energia&&R.energia.daily&&R.energia.daily.length)
+    ?R.energia.daily.map(d=>({date:d.date,total:d.generatedKWh}))
+    :R.prod.daily;
+  const ds=[{label:'Producción registrada (kWh)',data:pd.map(d=>d.total),borderColor:'#2a6b5a',backgroundColor:'rgba(42,107,90,.3)',borderWidth:1.5,fill:true,tension:.3,pointRadius:pd.length>20?0:3,yAxisID:'y',spanGaps:false}];
   const sc={y:{beginAtZero:true,position:'left',title:{display:true,text:'kWh/día'}}};
   if(METEO){const gm={};METEO.forEach(m=>gm[m.date]=m.ghi);const ghi=pd.map(d=>Number.isFinite(gm[d.date])?gm[d.date]:null);
     if(ghi.some(Number.isFinite)){ds.push({label:'GHI (kWh/m²)',data:ghi,type:'line',borderColor:'#d4a039',borderDash:[5,3],borderWidth:1.5,fill:false,pointRadius:0,yAxisID:'y1'});
@@ -1436,7 +1526,32 @@ function renderP3(){
       detalle=GorraizSpcHorario.agruparDias(SPC_FUENTES,R.from,R.to);
   }catch(e){log('⚠ Reparto horario KSTAR: '+e.message)}
   R.spcPeriodos=detalle;
-  if(detalle&&detalle.diasCompatibles){
+  R.idePeriodos=idePeriodos(R.from,R.to);
+  // i-DE cubre el mes entero y es medida de la distribuidora; el reparto de
+  // KSTAR solo alcanza los días con intervalos válidos. Enseñar los dos sería
+  // repetir lo mismo con distinta cobertura, así que manda el primero.
+  if(R.idePeriodos){
+    const rep=R.idePeriodos;
+    let html='<strong>Importación, vertido y autoconsumo por periodo · medida horaria de i-DE</strong>';
+    const conEuros=rep.ahorroEUR!==null;
+    html+='<table><tr><th>Periodo</th><th>Importación</th><th>Vertido</th><th>Autoconsumo FV</th>'
+      +(conEuros?'<th>€/kWh</th><th>Ahorro</th>':'')+'</tr>';
+    for(const p of rep.franjas){
+      const x=rep.periodos[p];
+      const medio=x.autoValoradoKWh>0?x.ahorroEUR/x.autoValoradoKWh:null;
+      html+='<tr><td>'+esc(p)+'</td><td>'+fn(x.importKWh,1)+' kWh</td><td>'+fn(x.exportKWh,1)+
+        ' kWh</td><td>'+(x.horasConProd?fn(x.autoKWh,1)+' kWh':'—')+'</td>'
+        +(conEuros?'<td>'+(Number.isFinite(medio)?fn(medio,4):'—')+'</td><td>'+
+          (x.autoValoradoKWh>0?euros(x.ahorroEUR):'—')+'</td>':'')+'</tr>';
+    }
+    html+='<tr><td><b>TOTAL</b></td><td><b>'+fn(rep.importKWh,1)+' kWh</b></td><td><b>'+
+      fn(rep.exportKWh,1)+' kWh</b></td><td><b>'+fn(rep.autoKWh,1)+' kWh</b></td>'
+      +(conEuros?'<td></td><td><b>'+euros(rep.ahorroEUR)+'</b></td>':'')+'</tr>';
+    html+='</table><div class="hint">'+esc(idePeriodosNota(rep))+
+      (detalle&&detalle.diasCompatibles?' El contador KSTAR cubre '+fn(detalle.diasCompatibles)+
+        ' día(s) de este rango y sirve para contrastarlo.':'')+'</div>';
+    $('spcPeriodosKwh').innerHTML=html;
+  }else if(detalle&&detalle.diasCompatibles){
     let html='<strong>Importación/exportación KSTAR por periodo (kWh provisionales, NO importes)</strong>';
     html+='<table><tr><th>Periodo</th><th>Importación aproximada</th><th>Exportación aproximada</th></tr>';
     for(const p of GorraizSpcHorario.PERIODS){
@@ -1447,7 +1562,7 @@ function renderP3(){
       '; '+detalle.rechazados.length+' días excluidos por falta de cobertura. Distribución temporal aproximada, precios indexados no aplicados.</div>';
     $('spcPeriodosKwh').innerHTML=html;
   }else{
-    $('spcPeriodosKwh').textContent='Reparto P1–P6 pendiente: faltan intervalos KSTAR completos y validados. El balance energético diario sigue disponible.';
+    $('spcPeriodosKwh').textContent='Reparto P1–P6 pendiente: sube los ficheros horarios de i-DE, o consigue intervalos KSTAR completos. El balance energético diario sigue disponible.';
   }
   const cd=R.cons.daily;
   CHARTS.c3d=new Chart($('c3daily'),{type:'line',data:{labels:cd.map(d=>d.date.slice(5)),datasets:[
@@ -1508,9 +1623,15 @@ document.querySelectorAll('.ptab').forEach(b=>{b.onclick=()=>{
 }});
 
 // ═══ PDF: MISMO MODELO Y COBERTURA QUE LAS VISTAS ═══
+// jsPDF escribe en WinAnsi: lo que no está en esa tabla sale como basura.
+// «Producción − vertido» se imprimía «Producción " vertido».
+function pdfSano(t){
+  return String(t).replace(/[\u2212\u2013\u2014]/g,'-').replace(/\u2192/g,'a')
+    .replace(/\u2194/g,'<->').replace(/\u2026/g,'...').replace(/[\u00ab\u00bb]/g,'"');
+}
 function pdfTexto(doc,text,x,y,w,size=7){
   doc.setFontSize(size);doc.setFont(undefined,'normal');doc.setTextColor(65);
-  const limpio=String(text).replace(/→/g,'a');
+  const limpio=pdfSano(text);
   const lines=doc.splitTextToSize(limpio,w);doc.text(lines,x,y);return y+lines.length*size*.38;
 }
 function creaPdf(){
@@ -1545,9 +1666,9 @@ async function pdfChart(doc,id,x,y,w,h){
 function pdfKpis(doc,rows,x,y,w){
   const ancho=w/rows.length;
   rows.forEach(([l,v,s],i)=>{const xx=x+i*ancho;doc.setDrawColor(185);doc.setFillColor(255);doc.roundedRect(xx,y,ancho-2,19,1,1,'FD');
-    doc.setTextColor(90);doc.setFontSize(5.8);doc.setFont(undefined,'normal');doc.text(l,xx+ancho/2-1,y+4,{align:'center'});
-    doc.setTextColor(0);doc.setFontSize(10);doc.setFont(undefined,'bold');doc.text(v,xx+ancho/2-1,y+11,{align:'center'});
-    doc.setFont(undefined,'normal');doc.setFontSize(4.8);doc.setTextColor(110);doc.text(s,xx+ancho/2-1,y+16,{align:'center'});
+    doc.setTextColor(90);doc.setFontSize(5.8);doc.setFont(undefined,'normal');doc.text(pdfSano(l),xx+ancho/2-1,y+4,{align:'center'});
+    doc.setTextColor(0);doc.setFontSize(10);doc.setFont(undefined,'bold');doc.text(pdfSano(v),xx+ancho/2-1,y+11,{align:'center'});
+    doc.setFont(undefined,'normal');doc.setFontSize(4.8);doc.setTextColor(110);doc.text(pdfSano(s),xx+ancho/2-1,y+16,{align:'center'});
   });
 }
 function pdfTitulo(doc,t,x,y){doc.setTextColor(35);doc.setFontSize(8);doc.setFont(undefined,'bold');doc.text(t,x,y)}
@@ -1577,9 +1698,41 @@ async function genPDF(){
     await pdfChart(doc,'c3week',M,139,w1,47);await pdfChart(doc,'c3hourly',M+w1+4,139,w2,47);await pdfChart(doc,'c3donut',M+w1+w2+8,139,w3,47);
     pdfTexto(doc,'Autoconsumo = FV - vertido. Consumo = importación + autoconsumo. Los acumulados de ambos inversores deben cubrir el cierre del día. No se inventa consumo horario donde faltan intervalos SPC.'+contrastePdfTexto(),M,193,ancho,6);
 
-    // Una página separada evita confundir el reparto provisional de los
-    // acumulados con el ahorro económico de la factura indexada.
-    if(R.spcPeriodos&&R.spcPeriodos.diasCompatibles>0){
+    // Una página separada evita confundir el reparto de energía por periodo
+    // con el ahorro económico de la factura indexada.
+    if(R.idePeriodos){
+      const rep=R.idePeriodos;
+      pagina('Reparto energético P1-P6 · medida horaria de i-DE','Periodo elegido: '+per);
+      pdfTexto(doc,'Importación y vertido por periodo tarifario CNMC, medidos por i-DE. El autoconsumo se deriva de las muestras del inversor. No son importes de facturación.',M,37,ancho,8);
+      doc.setFillColor(26,60,52);doc.rect(M,46,ancho,8,'F');
+      doc.setTextColor(255);doc.setFontSize(8);doc.setFont(undefined,'bold');
+      const conEuros=rep.ahorroEUR!==null;
+      const col=conEuros?[M+5,M+42,M+88,M+130,M+180,M+215]:[M+5,M+60,M+120,M+180];
+      doc.text('Periodo',col[0],51.5);doc.text('Importación (kWh)',col[1],51.5);
+      doc.text('Vertido (kWh)',col[2],51.5);doc.text('Autoconsumo FV (kWh)',col[3],51.5);
+      if(conEuros){doc.text('EUR/kWh',col[4],51.5);doc.text('Ahorro (EUR)',col[5],51.5)}
+      let ypos=60;
+      for(const p of rep.franjas){
+        const d=rep.periodos[p];doc.setFontSize(8.5);doc.setTextColor(30);doc.setFont(undefined,'normal');
+        doc.text(p,col[0],ypos);doc.text(fn(d.importKWh,1),col[1],ypos);
+        doc.text(fn(d.exportKWh,1),col[2],ypos);
+        doc.text(d.horasConProd?fn(d.autoKWh,1):'-',col[3],ypos);
+        if(conEuros){
+          const medio=d.autoValoradoKWh>0?d.ahorroEUR/d.autoValoradoKWh:null;
+          doc.text(Number.isFinite(medio)?fn(medio,4):'-',col[4],ypos);
+          doc.text(d.autoValoradoKWh>0?fn(d.ahorroEUR,2):'-',col[5],ypos);
+        }
+        ypos+=9;
+      }
+      doc.setDrawColor(150);doc.line(M,ypos-5,M+ancho,ypos-5);
+      doc.setFont(undefined,'bold');doc.setFontSize(8.5);doc.setTextColor(0);
+      doc.text('TOTAL',col[0],ypos+1);doc.text(fn(rep.importKWh,1),col[1],ypos+1);
+      doc.text(fn(rep.exportKWh,1),col[2],ypos+1);doc.text(fn(rep.autoKWh,1),col[3],ypos+1);
+      if(conEuros)doc.text(fn(rep.ahorroEUR,2),col[5],ypos+1);
+      pdfTexto(doc,idePeriodosNota(rep)+(R.spcPeriodos&&R.spcPeriodos.diasCompatibles>0
+        ?' El contador KSTAR cubre '+fn(R.spcPeriodos.diasCompatibles)+' dia(s) de este rango y sirve para contrastarlo.':''),
+        M,ypos+12,ancho,7.5);
+    }else if(R.spcPeriodos&&R.spcPeriodos.diasCompatibles>0){
       const reparto=R.spcPeriodos;
       pagina('KSTAR SPC - Reparto energético P1-P6 (provisional)','Periodo elegido: '+per);
       pdfTexto(doc,'Distribución aproximada de kWh por periodo CNMC obtenida de intervalos acumulados KSTAR. No son precios ni importes de facturación.',M,37,ancho,8);

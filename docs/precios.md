@@ -46,6 +46,23 @@ El JSON se importa y conserva en el navegador. No se manda al Worker, al almacé
 }
 ```
 
+### Precio por periodo tarifario (opcional)
+
+Cada periodo de factura admite además `pricesByPeriod`, con el **precio completo de energía** de cada periodo tarifario:
+
+```json
+"pricesByPeriod": {
+  "P1": 0.21, "P2": 0.18, "P3": 0.18,
+  "P4": 0.15, "P5": 0.15, "P6": 0.15
+}
+```
+
+Si se declara, **tienen que estar los seis**: con cinco, el que faltase valoraría su energía a cero sin avisar, que es peor que no valorar nada. Cada valor debe ser positivo; un cero o un texto se rechazan.
+
+Esto **no sustituye** a `energyEUR` / `importKWh`, que siguen siendo obligatorios: el precio medio de la factura valora el balance diario y el mensual, y el precio por periodo valora el reparto P1-P6 del autoconsumo, hora a hora, con la factura que cubre cada día. Un rango que cruce dos facturas aplica la suya a cada día, sin promediarlas.
+
+Vale lo dicho arriba: un desglose que solo recoja **peajes y cargos** no es el precio completo de la energía y no debe ponerse aquí. El informe nombra la factura de la que sale cada precio, y dice cuántos kWh autoconsumidos se han quedado sin precio que los cubra.
+
 `from` y `to` son inclusivos. Los periodos no pueden solaparse. Los impuestos son fracciones (`0.21`, no `21`). El programa calcula el precio a partir de los importes originales, conserva la precisión interna y redondea al mostrarlo.
 
 Por defecto no aplica precios a fechas fuera de la factura. La opción de usar el último precio para fechas posteriores requiere marcarla expresamente y muestra cuántos días se han valorado así. No rellena huecos intermedios ni periodos anteriores.

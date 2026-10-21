@@ -29,6 +29,25 @@
     if (!finite(value) || value < min || value > max) throw new Error(name + ': número no válido.');
     return value;
   }
+  // Precio por periodo tarifario, opcional. Si se declara, tienen que estar los
+  // seis: con cinco, el que faltara valoraría su energía a cero sin avisar, que
+  // es peor que no valorar nada. El precio medio de la factura se sigue
+  // exigiendo aparte, porque es el que valora el balance diario.
+  function validatePeriodPrices(input, index) {
+    if (input == null) return null;
+    if (typeof input !== 'object' || Array.isArray(input))
+      throw new Error('pricesByPeriod del periodo ' + index + ' debe ser un objeto P1-P6.');
+    const keys = Object.keys(input);
+    const expected = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6'];
+    for (const k of keys) {
+      if (!expected.includes(k)) throw new Error('Periodo tarifario desconocido: ' + k + '.');
+    }
+    for (const k of expected) {
+      if (!finite(input[k]) || input[k] <= 0)
+        throw new Error('Falta un precio positivo para ' + k + ' en el periodo ' + index + '. Deben estar los seis.');
+    }
+    return Object.freeze(Object.fromEntries(expected.map(k => [k, input[k]])));
+  }
   function validatePricingConfig(input) {
     if (!input || input.version !== 1 || input.currency !== 'EUR' || input.method !== 'invoice-average')
       throw new Error('Usa una configuración de precios medios de factura, versión 1 y moneda EUR.');
@@ -44,6 +63,7 @@
       const price = energyEUR / importKWh;
       if (!Number.isFinite(price)) throw new Error('El precio medio no es finito.');
       return {from: p.from, to: p.to, importKWh, energyEUR, ie, vat, price,
+        pricesByPeriod: validatePeriodPrices(p.pricesByPeriod, i + 1),
         source: typeof p.source === 'string' ? p.source.slice(0, 200) : 'Factura'};
     }).sort((a, b) => a.from.localeCompare(b.from));
     for (let i = 1; i < periods.length; i++) {
@@ -156,5 +176,8 @@
     return {daily, monthly: [...months].sort(([a], [b]) => a.localeCompare(b))
       .map(([month, rows]) => ({month, ...aggregate(rows)})), totals, coverage};
   }
-  root.GorraizEnergia = Object.freeze({validatePricingConfig, buildDailyBalance, valueBalance, validDate});
+  // periodAt se expone para poder valorar la energía por periodo tarifario con
+  // la factura que cubre cada día, sin duplicar aquí la búsqueda.
+  root.GorraizEnergia = Object.freeze({validatePricingConfig, buildDailyBalance, valueBalance,
+    validDate, periodAt});
 })(globalThis);

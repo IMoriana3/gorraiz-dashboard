@@ -19,7 +19,10 @@ test('UI KSTAR contiene conexión aislada y previene mostrar i-DE como fuente ac
   assert.match(html,/KSTAR_ONLY=true/);
   assert.match(html,/kstarCall\(bl\[i\]\.desde,bl\[i\]\.hasta\)/);
   assert.match(html,/!KSTAR_ONLY&&est\.datadis/);
-  assert.match(html,/sessionStorage\.setItem\(KSTAR_SESSION_KEY/);
+  // La clave de KSTAR se guarda en este equipo, como la del Worker principal,
+  // y se sigue leyendo la antigua de sesión para no perderla a media sesión.
+  assert.match(html,/localStorage\.setItem\(KSTAR_CLAVE_KEY,clave\)/);
+  assert.match(html,/localStorage\.getItem\(KSTAR_CLAVE_KEY\)\|\|sessionStorage\.getItem\(KSTAR_SESSION_KEY\)/);
   assert.match(html,/if\(KSTAR_ONLY\)return \{hourly:\[\],daily:\[\]\}/);
   assert.match(html,/spcPeriodos=detalle/);
 });
