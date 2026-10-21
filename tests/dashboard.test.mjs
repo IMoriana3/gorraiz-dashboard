@@ -34,6 +34,7 @@ function dashboard() {
       procProd,procCons,calcKPIs,calcEvol,calcAnalysis,calculaInforme,calcCompPeriod,
       ponFuenteSpc,incorporaSpc,getSpcDaily,getSpcRows,bloquesSpc,fn,kstarCfg,kstarCall,
       ideDiario,contrasteRed,gridDiario,horasDia,contrasteTexto,contrastePdfTexto,idePeriodos,idePeriodosNota,
+      contrasteFactura,contrasteFacturaTexto,contrasteFacturaPdfTexto,diasEntre,ideHorario,
       setFetch(fn){globalThis.fetch=fn},
       setKstarAccess(url,key){localStorage.setItem(KSTAR_URL_KEY,url);localStorage.setItem(KSTAR_CLAVE_KEY,key)},
       setKstarAccessSesion(url,key){localStorage.setItem(KSTAR_URL_KEY,url);sessionStorage.setItem(KSTAR_SESSION_KEY,key)},
@@ -498,4 +499,132 @@ test('la nota del reparto mide la cobertura con la producción diaria, no con ho
   assert.match(nota,/3 de ellas con producción/);
   assert.match(nota,/de los 120,0 kWh que suman los totales diarios/);
   assert.ok(!/le faltan/.test(nota),'ya no se insinúan datos perdidos donde solo hay noche');
+});
+
+// ── Contraste factura ↔ medida ────────────────────────────────────────────
+// La factura y la curva horaria de i-DE salen del mismo contador: tienen que
+// cuadrar. Es el contraste que cierra el circulo contra lo que se paga.
+const facturaDe = (from,to,importKWh,source) => ({version:1,currency:'EUR',
+  method:'invoice-average',label:'FICTICIO QA',
+  periods:[{from,to,importKWh,energyEUR:importKWh*0.2,ie:.05,vat:.21,source}]});
+// Dias completos de red: produccion de los dos inversores + medida i-DE.
+function mesDeRed(d, desde, dias, kWhDia) {
+  const fechas=Array.from({length:dias},(_,i)=>{
+    const t=new Date(desde+'T12:00:00Z');t.setUTCDate(t.getUTCDate()+i);
+    return t.toISOString().slice(0,10);
+  });
+  d.setRaw({A:[],B:[],I:fechas.flatMap(f=>horasP(f,[[12,kWhDia,0,'P4']]).concat(
+    Array.from({length:23},(_,h)=>({ts:new Date(`${f}T${String(h<12?h:h+1).padStart(2,'0')}:30:00`),
+      consumo:0,gen:0,periodo:'P4'}))))});
+  return fechas;
+}
+
+test('un mes cubierto por entero se compara con su factura y se avisa del desvío', () => {
+  const d=dashboard();
+  mesDeRed(d,'2026-09-01',30,100);            // 30 dias x 100 kWh = 3.000 medidos
+  d.setPricing(facturaDe('2026-09-01','2026-09-30',3000,'Factura septiembre'));
+  let c=d.contrasteFactura();
+  assert.equal(c.filas.length,1);
+  assert.equal(c.filas[0].completo,true);
+  close(c.filas[0].medida,3000);
+  assert.equal(c.discrepantes.length,0,'cuadrando no se avisa');
+  assert.match(d.contrasteFacturaTexto(c),/1 periodo\(s\) cubiertos por entero, 1 cuadran/);
+  assert.equal(d.contrasteFacturaPdfTexto(),'');
+
+  // Misma medida contra una factura de 3.500: faltan 500 kWh, un 14%.
+  d.setPricing(facturaDe('2026-09-01','2026-09-30',3500,'Factura septiembre'));
+  c=d.contrasteFactura();
+  assert.equal(c.discrepantes.length,1);
+  close(c.discrepantes[0].dif,-500);
+  // El separador de millares depende del ICU del entorno: en el navegador sale
+  // «3.500,0» y en el vm de las pruebas «3500,0». La aserción no lo exige.
+  assert.match(d.contrasteFacturaTexto(c),/facturado 3\.?500,0 kWh, medido 3\.?000,0/);
+  assert.match(d.contrasteFacturaPdfTexto(),/ATENCIÓN/);
+  assert.match(d.contrasteFacturaPdfTexto(),/500,0 kWh/);
+});
+
+test('un mes a medio cubrir no se declara discrepante: faltan días, no kWh', () => {
+  const d=dashboard();
+  mesDeRed(d,'2026-09-01',10,100);            // solo 10 de los 30 dias
+  d.setPricing(facturaDe('2026-09-01','2026-09-30',3000,'Factura septiembre'));
+  const c=d.contrasteFactura();
+  assert.equal(c.filas[0].cubiertos,10);
+  assert.equal(c.filas[0].esperados,30);
+  assert.equal(c.filas[0].completo,false);
+  assert.equal(c.discrepantes.length,0,'un mes incompleto siempre sale corto; no es un desvío');
+  assert.equal(c.parciales.length,1);
+  assert.match(d.contrasteFacturaTexto(c),/ningún periodo de factura está cubierto por entero/);
+});
+
+test('el redondeo de la factura no dispara la alarma', () => {
+  const d=dashboard();
+  mesDeRed(d,'2026-09-01',30,100);
+  // 5 kWh de diferencia sobre 3.000: pasa el relativo pero no el absoluto.
+  d.setPricing(facturaDe('2026-09-01','2026-09-30',3005,'Factura septiembre'));
+  assert.equal(d.contrasteFactura().discrepantes.length,0);
+  // 20 kWh ya pasa los dos umbrales (0,67% > 1%? no) -> sigue sin avisar.
+  d.setPricing(facturaDe('2026-09-01','2026-09-30',3020,'Factura septiembre'));
+  assert.equal(d.contrasteFactura().discrepantes.length,0,'0,66% no llega al umbral relativo');
+  // 100 kWh: 3,3% y 100 kWh, los dos umbrales superados.
+  d.setPricing(facturaDe('2026-09-01','2026-09-30',3100,'Factura septiembre'));
+  assert.equal(d.contrasteFactura().discrepantes.length,1);
+});
+
+test('sin precios o sin datos de red no hay contraste que hacer', () => {
+  const d=dashboard();
+  assert.equal(d.contrasteFactura(),null,'sin precios, nada');
+  d.setPricing(facturaDe('2026-09-01','2026-09-30',3000,'Factura septiembre'));
+  assert.equal(d.contrasteFactura(),null,'sin datos de red, tampoco');
+  assert.equal(d.contrasteFacturaTexto(null),'');
+});
+
+test('diasEntre cuenta ambos extremos y rechaza fechas no válidas', () => {
+  const d=dashboard();
+  assert.equal(d.diasEntre('2026-09-01','2026-09-30'),30);
+  assert.equal(d.diasEntre('2026-10-01','2026-10-31'),31);
+  assert.equal(d.diasEntre('2026-09-01','2026-09-01'),1);
+  assert.equal(d.diasEntre('2026-02-01','2026-02-28'),28);
+  assert.equal(d.diasEntre('mal','2026-09-30'),0);
+});
+
+// ── Perfil horario de importación desde i-DE ──────────────────────────────
+test('el perfil horario separa laborables, sábado y domingo', () => {
+  const d=dashboard();
+  // 2026-10-05 es lunes; el 10 sábado y el 11 domingo.
+  d.setRaw({A:[],B:[],I:[
+    ...horasP('2026-10-05',[[10,30,0,'P4'],[11,40,0,'P4']]),
+    ...horasP('2026-10-10',[[10,10,0,'P6']]),
+    ...horasP('2026-10-11',[[10,6,0,'P6']])]});
+  const p=d.ideHorario('2026-10-01','2026-10-31');
+  close(p.LV[10],30);close(p.LV[11],40);
+  close(p.S[10],10);
+  close(p.D[10],6);
+  assert.equal(p.LV[3],null,'una hora sin dato no se convierte en cero');
+  // La media mezcla los tres tipos de día: (30+10+6)/3 a las 10h.
+  close(p.media[10],46/3);
+});
+
+test('el perfil horario respeta el rango y desaparece sin ficheros', () => {
+  const d=dashboard();
+  d.setRaw({A:[],B:[],I:[...horasP('2026-10-05',[[10,30,0,'P4']]),
+                         ...horasP('2026-11-02',[[10,90,0,'P4']])]});
+  close(d.ideHorario('2026-10-01','2026-10-31').LV[10],30);
+  close(d.ideHorario('2026-11-01','2026-11-30').LV[10],90);
+  // Promedia los dos lunes cuando el rango los abarca.
+  close(d.ideHorario('2026-10-01','2026-11-30').LV[10],60);
+  assert.equal(d.ideHorario('2026-12-01','2026-12-31'),null);
+  d.setRaw({A:[],B:[],I:[]});
+  assert.equal(d.ideHorario('2026-10-01','2026-10-31'),null);
+});
+
+test('con ficheros de i-DE el perfil horario del informe deja de venir vacío', () => {
+  const d=dashboard(),date='2026-10-05';
+  d.setGrid([grid(date,240,0)]);
+  d.setRaw({A:[],B:[],I:horasP(date,[[10,20,0,'P4'],[11,25,0,'P4']])});
+  const r=d.calcKPIs(production(d,date),d.procCons([]),{from:date,to:date});
+  // Antes todas las horas salían null y la gráfica quedaba en blanco.
+  assert.ok(r.hpCons.LV.some(v=>Number.isFinite(v)),'el perfil ya trae datos');
+  close(r.hpCons.LV[10],20);close(r.hpCons.LV[11],25);
+  // Y procCons sigue sin presentar su curva como medida del contador KSTAR.
+  assert.equal(d.procCons([{ts:new Date(date+'T12:00:00'),consumo:8,periodo:'P2'}]).hourly.length,0);
 });
