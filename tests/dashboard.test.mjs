@@ -35,7 +35,8 @@ function dashboard() {
       ponFuenteSpc,incorporaSpc,getSpcDaily,getSpcRows,bloquesSpc,fn,kstarCfg,kstarCall,
       ideDiario,contrasteRed,gridDiario,horasDia,contrasteTexto,contrastePdfTexto,
       setFetch(fn){globalThis.fetch=fn},
-      setKstarAccess(url,key){localStorage.setItem(KSTAR_URL_KEY,url);sessionStorage.setItem(KSTAR_SESSION_KEY,key)},
+      setKstarAccess(url,key){localStorage.setItem(KSTAR_URL_KEY,url);localStorage.setItem(KSTAR_CLAVE_KEY,key)},
+      setKstarAccessSesion(url,key){localStorage.setItem(KSTAR_URL_KEY,url);sessionStorage.setItem(KSTAR_SESSION_KEY,key)},
       setRaw(value){RAW=value},
       setGrid(rows){SPC_FUENTES=[];rows.forEach(d=>ponFuenteSpc(d.date,{rows:[],daily:[d],meta:d.meta||{}}))},
       setPricing(value,forward=false){PRECIOS=value?GorraizEnergia.validatePricingConfig(value):null;PRECIO_FUTURO=forward}
@@ -319,4 +320,19 @@ test('el PDF avisa del mayor desvío y no dice nada cuando los dos cuadran', () 
   assert.match(txt,/el mayor desvío es el 07\/10\/2026, 40,0 kWh/,'se nombra el desvío mayor, no el primero');
   d.setRaw({A:[],B:[],I:[...horas('2026-10-05',240),...horas('2026-10-06',100),...horas('2026-10-07',300)]});
   assert.equal(d.contrastePdfTexto(),'');
+});
+
+test('la clave de KSTAR se conserva en el equipo y la antigua de sesión se sigue leyendo', () => {
+  const clave='clave-de-prueba-de-veinticuatro';
+  const guardada=dashboard();
+  guardada.setKstarAccess('https://ejemplo.workers.dev',clave);
+  assert.equal(guardada.kstarCfg().key,clave,'la clave guardada en el equipo se lee');
+
+  // Una sesión abierta con la clave antigua no debe perderla al actualizar.
+  const vieja=dashboard();
+  vieja.setKstarAccessSesion('https://ejemplo.workers.dev',clave);
+  assert.equal(vieja.kstarCfg().key,clave,'se sigue leyendo la clave de sesión anterior');
+
+  // Cada dashboard del arnés parte de almacenes vacíos: sin clave, no hay clave.
+  assert.equal(dashboard().kstarCfg().key,'');
 });

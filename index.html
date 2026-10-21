@@ -562,20 +562,26 @@ function encajaGraficas(){
 // no se convierten aquí en energía horaria ni se mezclan con RAW.I.
 let SPC_FUENTES=[],SPC_PRUEBA=null,SPC_OCUPADO=false;
 const KSTAR_ONLY=true;
-const KSTAR_URL_KEY='gorraiz_kstar_url_v1',KSTAR_SESSION_KEY='gorraiz_kstar_key_sesion_v1';
+// La clave del Worker de KSTAR se guarda igual que la del principal. Vivía
+// solo en sessionStorage por lo del HTTP sin cifrar, pero obligaba a teclearla
+// en cada sesión y PANEL_KEY —que además puede SOBRESCRIBIR el almacén
+// compartido— ya estaba en localStorage: la asimetría no protegía nada.
+// Se sigue leyendo la antigua de sesión para no perderla a media sesión.
+const KSTAR_URL_KEY='gorraiz_kstar_url_v1',KSTAR_CLAVE_KEY='gorraiz_kstar_clave_v1',
+  KSTAR_SESSION_KEY='gorraiz_kstar_key_sesion_v1';
 const KSTAR_STATION='2026032317114373',KSTAR_METER='210261430F3060020000661';
 function kstarCfg(){
   try{return {url:(localStorage.getItem(KSTAR_URL_KEY)||'').trim(),
-    key:sessionStorage.getItem(KSTAR_SESSION_KEY)||''}}catch{return{url:'',key:''}}
+    key:localStorage.getItem(KSTAR_CLAVE_KEY)||sessionStorage.getItem(KSTAR_SESSION_KEY)||''}}catch{return{url:'',key:''}}
 }
 function pintaKstarCfg(){
   const cfg=kstarCfg();
   $('cfgKstar').innerHTML=`<div class="row">
     <label>Worker KSTAR independiente:</label><input type="url" id="kstarUrl" placeholder="https://gorraiz-kstar-prueba.tu-subdominio.workers.dev" value="${esc(cfg.url)}">
     <label>Clave de prueba:</label><input type="password" id="kstarKey" autocomplete="off" placeholder="KSTAR_TEST_KEY (no contraseña del proveedor)" value="" minlength="24">
-    <button class="btn btn2" type="button" onclick="guardarKstarCfg()">Guardar sesión KSTAR</button>
+    <button class="btn btn2" type="button" onclick="guardarKstarCfg()">Guardar conexión KSTAR</button>
     <button class="btn btn2" type="button" onclick="borrarKstarCfg()">Desconectar KSTAR</button></div>
-    <div class="hint" role="status"><strong>Clave KSTAR: ${cfg.key.length>=24?'guardada en esta sesión':'pendiente de guardar en esta sesión'}.</strong> La clave temporal no se guarda de forma permanente; las credenciales del proveedor siguen en Cloudflare. El tramo Cloudflare → KSTAR por HTTP carece de cifrado.</div>`;
+    <div class="hint" role="status"><strong>Clave KSTAR: ${cfg.key.length>=24?'guardada en este navegador':'pendiente de guardar'}.</strong> Queda en este equipo, como la del Worker principal; las credenciales del proveedor siguen en Cloudflare. El tramo Cloudflare → KSTAR por HTTP carece de cifrado: cámbiala si el equipo deja de ser de confianza.</div>`;
 }
 function guardarKstarCfg(){
   try{
@@ -587,18 +593,19 @@ function guardarKstarCfg(){
     const clave=$('kstarKey').value;
     if(clave.length<24&&!kstarCfg().key)throw new Error('Introduce KSTAR_TEST_KEY (mínimo 24 caracteres).');
     localStorage.setItem(KSTAR_URL_KEY,raw);
-    if(clave.length>=24)sessionStorage.setItem(KSTAR_SESSION_KEY,clave);
+    if(clave.length>=24){localStorage.setItem(KSTAR_CLAVE_KEY,clave);sessionStorage.removeItem(KSTAR_SESSION_KEY)}
     SPC_PRUEBA=null;pintaKstarCfg();pintaSpc();estadoApi();
     $('spcAccion').textContent='Worker KSTAR configurado. Elige un día cerrado y pulsa «Comprobar SPC».';
   }catch(e){$('spcAccion').textContent=e.message}
 }
 function borrarKstarCfg(){
-  localStorage.removeItem(KSTAR_URL_KEY);sessionStorage.removeItem(KSTAR_SESSION_KEY);
+  localStorage.removeItem(KSTAR_URL_KEY);localStorage.removeItem(KSTAR_CLAVE_KEY);
+  sessionStorage.removeItem(KSTAR_SESSION_KEY);
   SPC_PRUEBA=null;pintaKstarCfg();pintaSpc();estadoApi();
 }
 async function kstarCall(desde,hasta){
   const cfg=kstarCfg();
-  if(!cfg.url||cfg.key.length<24)throw new Error('Guarda la URL y la clave temporal de KSTAR.');
+  if(!cfg.url||cfg.key.length<24)throw new Error('Guarda la URL y la clave de KSTAR.');
   if(desde!==hasta||!spcFecha(desde)||desde>=spcHoy('Europe/Madrid'))
     throw new Error('KSTAR solo admite un día cerrado por consulta.');
   const r=await fetch(cfg.url+'/spc/intercambio',{method:'POST',cache:'no-store',
@@ -686,7 +693,7 @@ function pintaSpc(){
   if(SPC_PRUEBA){
     mensaje.innerHTML=SPC_PRUEBA.ok?`Conexión comprobada${est.spcUnencryptedTransport?' (HTTP SIN CIFRAR)':''} · ${esc(spcMomento(SPC_PRUEBA.actualizado))}`:`<span class="err">${esc(SPC_PRUEBA.error)}</span>`;
   }else if(!config)mensaje.textContent='Configura el Worker KSTAR independiente para consultar SPC.';
-  else if(kc.url&&!kstarListo)mensaje.textContent='KSTAR guardado; falta la clave temporal de esta sesión.';
+  else if(kc.url&&!kstarListo)mensaje.textContent='KSTAR guardado; falta su clave de acceso.';
   else if(kstarListo)mensaje.textContent='KSTAR independiente configurado · pendiente de comprobar la lectura.';
   else if(!API_ESTADO)mensaje.textContent='Estado de SPC sin comprobar.';
   else if(!est.spc)mensaje.textContent='Conexión SPC pendiente de configurar en el servidor.';
@@ -1181,8 +1188,8 @@ async function traerDatos(){
   if(separado&&kstarCfg().key.length<24){
     const previos=SPC_FUENTES.filter(f=>f.date>=desde&&f.date<=hasta&&f.meta?.completo===true).length;
     if(previos)algo=true;
-    partes.push('<span class="warn">KSTAR: no se ha repetido la conexión porque la clave temporal falta en esta sesión. '+
-      'Se conservan '+fn(previos)+' día(s) completos ya guardados. Vuelve a introducir KSTAR_TEST_KEY y pulsa «Guardar sesión KSTAR» para consultar días nuevos.</span>');
+    partes.push('<span class="warn">KSTAR: no se ha consultado porque falta su clave de acceso. '+
+      'Se conservan '+fn(previos)+' día(s) completos ya guardados. Introduce KSTAR_TEST_KEY y pulsa «Guardar conexión KSTAR» para consultar días nuevos.</span>');
   }else if(separado||est.spc){
     SPC_PRUEBA=null;const fallos=[];let guardados=0,parciales=0,reutilizados=0;
     try{
