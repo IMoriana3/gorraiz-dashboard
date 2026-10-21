@@ -17,6 +17,14 @@ Dashboard de producción, intercambio con la red y valoración económica del Ed
 
 El botón **Traer datos** consulta Solarman y KSTAR por conexiones independientes. La **descarga automática** de i-DE y Datadis sigue archivada en el código, sin consultas. El 19/10/2026 se validó una descarga real de KSTAR: 658,92 kWh importados, 0 kWh exportados, 74 kWh de autoconsumo comunicado y 287 registros del contador.
 
+### Vertido anterior al arreglo del antivertido
+
+`CFG.vertidoDesde` marca desde cuándo se contabiliza el vertido. El anterior a esa fecha procede de un fallo del antivertido, ya corregido, y **por decisión de la propiedad no se cuenta**: queda fuera de las gráficas y del balance. Vaciar el campo vuelve a contarlo todo.
+
+El corte se aplica en `gridDiario()` y solo ahí, que es la serie de la que beben el balance, los recuadros, las gráficas, la tabla por periodo y el anexo: así ninguna vista se queda contando lo que otra descarta.
+
+Consecuencia que conviene tener presente al leer el informe: esos kWh **salieron de verdad a la red**, así que al no restarlos el autoconsumo y el consumo de esos meses quedan por encima de lo que midió la distribuidora. Por eso el informe dice en una línea cuántos kWh ha dejado fuera en el periodo: quien lo cruce con los ficheros de i-DE tiene que poder explicar la diferencia sin pensar que hay un error.
+
 ### Contraste con la factura
 
 La factura trae los kWh que la distribuidora ha facturado en cada periodo, y salen del **mismo contador** que la curva horaria de i-DE: tienen que cuadrar. Como el `importKWh` de cada periodo ya está en la configuración de precios, el panel compara lo facturado con lo medido y avisa en pantalla y en el anexo del PDF, que es donde se valora.

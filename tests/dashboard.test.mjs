@@ -19,7 +19,7 @@ function dashboard() {
   const context = vm.createContext({Intl, Date, URL, localStorage:store(local), sessionStorage:store(session)});
   vm.runInContext(energy, context, {filename: 'energia.js'});
   const source = `
-    const CFG={kwp:100,inv:10000};
+    const CFG={kwp:100,inv:10000,vertidoDesde:'2026-10-01'};
     let PRECIOS=null,PRECIO_FUTURO=false,METEO=null,RAW={A:[],B:[],I:[]};
     function guardaFuentes(){}
     ${section('function fn(x,d=0)', '// ── Parse Excel date ──')}
@@ -35,6 +35,7 @@ function dashboard() {
       ponFuenteSpc,incorporaSpc,getSpcDaily,getSpcRows,bloquesSpc,fn,kstarCfg,kstarCall,
       ideDiario,contrasteRed,gridDiario,horasDia,contrasteTexto,contrastePdfTexto,idePeriodos,idePeriodosNota,
       contrasteFactura,contrasteFacturaTexto,contrasteFacturaPdfTexto,diasEntre,ideHorario,
+      vertidoExcluido,vertidoExcluidoTexto,cortaVertido,
       setFetch(fn){globalThis.fetch=fn},
       setKstarAccess(url,key){localStorage.setItem(KSTAR_URL_KEY,url);localStorage.setItem(KSTAR_CLAVE_KEY,key)},
       setKstarAccessSesion(url,key){localStorage.setItem(KSTAR_URL_KEY,url);sessionStorage.setItem(KSTAR_SESSION_KEY,key)},
@@ -596,4 +597,53 @@ test('con ficheros de i-DE el perfil horario del informe deja de venir vacío', 
   close(r.hpCons.LV[10],20);close(r.hpCons.LV[11],25);
   // Y procCons sigue sin presentar su curva como medida del contador KSTAR.
   assert.equal(d.procCons([{ts:new Date(date+'T12:00:00'),consumo:8,periodo:'P2'}]).hourly.length,0);
+});
+
+// ── Vertido anterior a la fecha de corte ──────────────────────────────────
+// Por decisión de la propiedad no se contabiliza el vertido previo al arreglo
+// del antivertido. Se aplica en gridDiario, que es de donde beben el balance,
+// las gráficas, la tabla por periodo y el anexo.
+test('el vertido anterior al corte sale del balance y el posterior se mantiene', () => {
+  const d=dashboard();
+  d.setGrid([grid('2026-09-20',100,40),grid('2026-10-02',100,30)]);
+  const red=d.gridDiario();
+  const porFecha=Object.fromEntries(red.map(r=>[r.date,r]));
+  assert.equal(porFecha['2026-09-20'].exportKWh,0,'septiembre queda a cero');
+  assert.equal(porFecha['2026-09-20'].meta.vertidoExcluidoKWh,40,'pero queda constancia de cuánto');
+  assert.equal(porFecha['2026-10-02'].exportKWh,30,'octubre se mantiene intacto');
+  assert.equal(porFecha['2026-10-02'].meta.vertidoExcluidoKWh,undefined);
+});
+
+test('al quitar el vertido, el autoconsumo del balance sube por esa misma energía', () => {
+  const d=dashboard(),date='2026-09-20';
+  d.setGrid([grid(date,100,40)]);
+  const r=d.calcKPIs(production(d,date),d.procCons([]),{from:date,to:date});
+  // 400 kWh producidos. Con el vertido contado serían 360 de autoconsumo.
+  assert.equal(r.tPV,400,'todo se declara autoconsumido');
+  assert.equal(r.tExport,0);
+  assert.equal(r.tC,500,'y el consumo sube en esos 40 kWh: 100 de red + 400');
+});
+
+test('el informe dice cuánto vertido ha dejado fuera, para poder cuadrarlo con i-DE', () => {
+  const d=dashboard();
+  d.setGrid([grid('2026-09-20',100,40),grid('2026-09-21',100,12),grid('2026-10-02',100,30)]);
+  close(d.vertidoExcluido('2026-09-01','2026-10-31'),52);
+  close(d.vertidoExcluido('2026-10-01','2026-10-31'),0);
+  const t=d.vertidoExcluidoTexto('2026-09-01','2026-10-31');
+  assert.match(t,/No se contabiliza el vertido anterior al 01\/10\/2026/);
+  assert.match(t,/52,0 kWh en este periodo/);
+  assert.match(t,/fallo del antivertido ya corregido/);
+  // Sin nada que excluir, ni se menciona.
+  assert.equal(d.vertidoExcluidoTexto('2026-10-01','2026-10-31'),'');
+});
+
+test('cortaVertido respeta un día sin fecha de corte y uno sin vertido medido', () => {
+  const d=dashboard();
+  // Un día posterior al corte pasa tal cual, con su objeto intacto.
+  const dia={date:'2026-10-05',importKWh:10,exportKWh:5,meta:{contador:'i-DE'}};
+  assert.equal(d.cortaVertido(dia),dia);
+  // Uno anterior sin vertido numérico no inventa un excluido falso.
+  const sin={date:'2026-09-05',importKWh:10,exportKWh:null,meta:{}};
+  assert.equal(d.cortaVertido(sin).exportKWh,0);
+  assert.equal(d.cortaVertido(sin).meta.vertidoExcluidoKWh,0);
 });
