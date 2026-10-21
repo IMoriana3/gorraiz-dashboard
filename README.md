@@ -17,6 +17,10 @@ Dashboard de producción, intercambio con la red y valoración económica del Ed
 
 El botón **Traer datos** consulta Solarman y KSTAR por conexiones independientes. La **descarga automática** de i-DE y Datadis sigue archivada en el código, sin consultas. El 19/10/2026 se validó una descarga real de KSTAR: 658,92 kWh importados, 0 kWh exportados, 74 kWh de autoconsumo comunicado y 287 registros del contador.
 
+### Fiabilidad de los datos
+
+La página 1 cierra con una línea que reúne las tres validaciones y la cobertura: sobre cuántos días se ha calculado el balance, cuántos tienen precio, si i-DE y KSTAR cuadran en los días comparables, si lo medido cuadra con lo facturado, y cuántos kWh de vertido se han dejado fuera. Vivían repartidas en tres páginas distintas; quien recibe el informe tiene que poder juzgarlo de un vistazo, porque un informe que se entrega se defiende por esto y no por sus totales.
+
 ### Vertido anterior al arreglo del antivertido
 
 `CFG.vertidoDesde` marca desde cuándo se contabiliza el vertido. El anterior a esa fecha procede de un fallo del antivertido, ya corregido, y **por decisión de la propiedad no se cuenta**: queda fuera de las gráficas y del balance. Vaciar el campo vuelve a contarlo todo.

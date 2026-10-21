@@ -35,7 +35,7 @@ function dashboard() {
       ponFuenteSpc,incorporaSpc,getSpcDaily,getSpcRows,bloquesSpc,fn,kstarCfg,kstarCall,
       ideDiario,contrasteRed,gridDiario,horasDia,contrasteTexto,contrastePdfTexto,idePeriodos,idePeriodosNota,
       contrasteFactura,contrasteFacturaTexto,contrasteFacturaPdfTexto,diasEntre,ideHorario,
-      vertidoExcluido,vertidoExcluidoTexto,cortaVertido,
+      vertidoExcluido,vertidoExcluidoTexto,cortaVertido,fiabilidadTexto,
       setFetch(fn){globalThis.fetch=fn},
       setKstarAccess(url,key){localStorage.setItem(KSTAR_URL_KEY,url);localStorage.setItem(KSTAR_CLAVE_KEY,key)},
       setKstarAccessSesion(url,key){localStorage.setItem(KSTAR_URL_KEY,url);sessionStorage.setItem(KSTAR_SESSION_KEY,key)},
@@ -646,4 +646,44 @@ test('cortaVertido respeta un día sin fecha de corte y uno sin vertido medido',
   const sin={date:'2026-09-05',importKWh:10,exportKWh:null,meta:{}};
   assert.equal(d.cortaVertido(sin).exportKWh,0);
   assert.equal(d.cortaVertido(sin).meta.vertidoExcluidoKWh,0);
+});
+
+// ── Resumen de fiabilidad ─────────────────────────────────────────────────
+// Lo que permite a quien recibe el informe juzgar sus cifras: sobre cuántos
+// días se han calculado y si los contadores y la factura cuadran.
+test('el resumen de fiabilidad reúne cobertura y los dos contrastes', () => {
+  const d=dashboard(),date='2026-10-05';
+  d.setGrid([grid(date,240,0)]);
+  d.setRaw({A:[],B:[],I:horasP(date,[[10,240,0,'P4']])});
+  const r=d.calcKPIs(production(d,date),d.procCons([]),{from:date,to:date});
+  const t=d.fiabilidadTexto(date,date,r.energia);
+  assert.match(t,/^Fiabilidad de los datos:/);
+  assert.match(t,/cobertura 1 de 1 día\(s\) con balance completo, 0 con precio/);
+  assert.match(t,/i-DE ↔ KSTAR sin días comparables/,'un día de i-DE incompleto no se compara');
+  assert.match(t,/factura sin precios cargados/);
+});
+
+test('con precios y contrastes cuadrando, el resumen lo dice', () => {
+  const d=dashboard();
+  mesDeRed(d,'2026-11-01',30,100);
+  d.setPricing(facturaDe('2026-11-01','2026-11-30',3000,'Factura noviembre'));
+  const t=d.fiabilidadTexto('2026-11-01','2026-11-30',
+    {coverage:{completeDays:30,expectedDays:30,pricedDays:30}});
+  assert.match(t,/cobertura 30 de 30/);
+  assert.match(t,/factura 1 periodo\(s\) cubiertos, todos cuadran/);
+});
+
+test('el resumen avisa de la discrepancia y del vertido apartado', () => {
+  const d=dashboard();
+  mesDeRed(d,'2026-11-01',30,100);
+  d.setPricing(facturaDe('2026-11-01','2026-11-30',3400,'Factura noviembre'));
+  const t=d.fiabilidadTexto('2026-11-01','2026-11-30',
+    {coverage:{completeDays:30,expectedDays:30,pricedDays:30}});
+  assert.match(t,/factura 1 periodo\(s\) cubiertos, 1 con discrepancia/);
+
+  // Un vertido anterior al corte aparece en el resumen con sus kWh.
+  const e=dashboard();
+  e.setGrid([grid('2026-09-20',100,40)]);
+  const t2=e.fiabilidadTexto('2026-09-01','2026-09-30',{coverage:{completeDays:1,expectedDays:30,pricedDays:0}});
+  assert.match(t2,/vertido no contabilizado 40,0 kWh/);
 });

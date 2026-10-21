@@ -1094,6 +1094,36 @@ function ideHorario(desde,hasta){
     media:perfilHoras(filas,'red')};
 }
 
+// ═══ FIABILIDAD DE LOS DATOS ═══
+// Las tres validaciones del informe vivían repartidas en tres páginas, y quien
+// lo recibe tiene que poder juzgar de un vistazo sobre cuántos días se ha
+// calculado y si los contadores y la factura cuadran. Un informe que se
+// entrega a dirección se defiende por esto, no por sus totales.
+function fiabilidadTexto(desde,hasta,energia){
+  const partes=[];
+  const c=energia&&energia.coverage;
+  if(c)partes.push('cobertura '+fn(c.completeDays)+' de '+fn(c.expectedDays)
+    +' día(s) con balance completo, '+fn(c.pricedDays)+' con precio');
+
+  const red=contrasteRed();
+  partes.push(red.filas.length
+    ?'i-DE ↔ KSTAR '+fn(red.filas.length)+' día(s) comparados, '
+      +(red.discrepantes.length?fn(red.discrepantes.length)+' con discrepancia':'todos cuadran')
+    :'i-DE ↔ KSTAR sin días comparables');
+
+  const fac=contrasteFactura();
+  partes.push(!fac?'factura sin precios cargados'
+    :fac.completos.length
+      ?'factura '+fn(fac.completos.length)+' periodo(s) cubiertos, '
+        +(fac.discrepantes.length?fn(fac.discrepantes.length)+' con discrepancia':'todos cuadran')
+      :'factura sin periodos cubiertos por entero');
+
+  const fuera=vertidoExcluido(desde,hasta);
+  if(fuera>0.05)partes.push('vertido no contabilizado '+fn(fuera,1)+' kWh');
+
+  return 'Fiabilidad de los datos: '+partes.join('; ')+'.';
+}
+
 // ═══ PRECIOS PRIVADOS: SOLO EN ESTE NAVEGADOR ═══
 const PRECIOS_KEY='gorraiz_precios_mensuales_v1',PRECIOS_FUTURO_KEY='gorraiz_precios_futuro';
 let PRECIOS=null,PRECIO_FUTURO=false;
@@ -1680,7 +1710,8 @@ function renderP1(){
     if(ghi.some(Number.isFinite)){ds.push({label:'GHI (kWh/m²)',data:ghi,type:'line',borderColor:'#d4a039',borderDash:[5,3],borderWidth:1.5,fill:false,pointRadius:0,yAxisID:'y1'});
       sc.y1={beginAtZero:true,position:'right',title:{display:true,text:'GHI (kWh/m²)'},grid:{drawOnChartArea:false}}}}
   CHARTS.c1=new Chart($('c1daily'),{type:pd.length<=5?'bar':'line',data:{labels:pd.map(d=>d.date.slice(5)),datasets:ds},options:{responsive:true,scales:{...sc,x:{ticks:{maxRotation:45,autoSkip:true,maxTicksLimit:15}}}}});
-  $('conclusionText').textContent=`Producción registrada: ${kwh(R.tP)}. Media de los días con datos de ambos inversores: ${fd(R.avg)} kWh/día. `+notaValoracion(R.energia);
+  $('conclusionText').textContent=`Producción registrada: ${kwh(R.tP)}. Media de los días con datos de ambos inversores: ${fd(R.avg)} kWh/día. `
+    +notaValoracion(R.energia)+' '+fiabilidadTexto(R.from,R.to,R.energia);
   $('meteoBox').innerHTML='';
   if(METEO&&METEO.length){const ghi=sumaValores(METEO.map(m=>m.ghi))/METEO.length;
     $('meteoBox').innerHTML=`<div class="metbox">Open-Meteo · GHI medio: ${fn(ghi,2)} kWh/m²/día. Referencia de proyecto: ${fn(CFG.prodAnual)} kWh/año, de memoria y sin descontar el antivertido.</div>`}
@@ -1895,7 +1926,8 @@ async function genPDF(){
     pagina('Producción fotovoltaica — Edificio Gorraiz','Periodo elegido: '+per);
     pdfKpis(doc,kpisProduccion(R),M,32,ancho);pdfTexto(doc,notaValoracion(R.energia),M,57,ancho,6.5);
     await pdfChart(doc,'c1daily',M,77,ancho,96);
-    pdfTexto(doc,`Producción registrada: ${kwh(R.tP)}. Media de días con ambos inversores: ${fd(R.avg)} kWh/día. Mejor día registrado: ${R.best.date} (${kwh(R.best.total)}). Referencia de proyecto: ${fn(CFG.prodAnual)} kWh/año, de memoria y sin descontar el antivertido.`,M,180,ancho,7);
+    pdfTexto(doc,`Producción registrada: ${kwh(R.tP)}. Media de días con ambos inversores: ${fd(R.avg)} kWh/día. Mejor día registrado: ${R.best.date} (${kwh(R.best.total)}). Referencia de proyecto: ${fn(CFG.prodAnual)} kWh/año, de memoria y sin descontar el antivertido.`,M,176,ancho,6.5);
+    pdfTexto(doc,fiabilidadTexto(R.from,R.to,R.energia),M,184,ancho,6.5);
 
     pagina('Instalación e inversores','Periodo elegido: '+per);
     pdfTitulo(doc,'Perfil horario de producción · muestras de inversores',M,36);await pdfChart(doc,'c2hourly',M,40,ancho,48);
