@@ -23,7 +23,9 @@ La página 1 cierra con una línea que reúne las tres validaciones y la cobertu
 
 ### Vertido anterior al arreglo del antivertido
 
-`CFG.vertidoDesde` marca desde cuándo se contabiliza el vertido. El anterior a esa fecha procede de un fallo del antivertido, ya corregido, y **por decisión de la propiedad no se cuenta**: queda fuera de las gráficas y del balance. Vaciar el campo vuelve a contarlo todo.
+`CFG.vertidoDesde` marca desde cuándo se contabiliza el vertido: **07/10/2026**, la fecha del permiso de vertido. Desde ahí la instalación está acogida a compensación simplificada y su vertido es operación normal. El anterior procede de un fallo del antivertido y, **por decisión de la propiedad, no se cuenta**: queda fuera de las gráficas y del balance. Vaciar el campo vuelve a contarlo todo.
+
+La fecha es la del **permiso**, no la del día en que se deshabilitó el antivertido (20/10/2026). Entre ambas no hubo vertido, pero si lo hubiera habido habría sido igual de legal, y marcarlo como avería sería falso.
 
 El corte se aplica en `gridDiario()` y solo ahí, que es la serie de la que beben el balance, los recuadros, las gráficas, la tabla por periodo y el anexo: así ninguna vista se queda contando lo que otra descarta.
 
