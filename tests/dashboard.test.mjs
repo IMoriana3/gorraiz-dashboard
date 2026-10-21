@@ -35,7 +35,7 @@ function dashboard() {
       ponFuenteSpc,incorporaSpc,getSpcDaily,getSpcRows,bloquesSpc,fn,kstarCfg,kstarCall,
       ideDiario,contrasteRed,gridDiario,horasDia,contrasteTexto,contrastePdfTexto,idePeriodos,idePeriodosNota,
       contrasteFactura,contrasteFacturaTexto,contrasteFacturaPdfTexto,diasEntre,ideHorario,
-      vertidoExcluido,vertidoExcluidoTexto,cortaVertido,fiabilidadTexto,
+      vertidoExcluido,vertidoExcluidoTexto,cortaVertido,fiabilidadTexto,ratioTexto,rangoDias,
       setFetch(fn){globalThis.fetch=fn},
       setKstarAccess(url,key){localStorage.setItem(KSTAR_URL_KEY,url);localStorage.setItem(KSTAR_CLAVE_KEY,key)},
       setKstarAccessSesion(url,key){localStorage.setItem(KSTAR_URL_KEY,url);sessionStorage.setItem(KSTAR_SESSION_KEY,key)},
@@ -418,15 +418,25 @@ test('sin balance, sin días completos o sin ficheros no hay reparto', () => {
   assert.equal(d.idePeriodos('2026-10-05','2026-10-05',[{date:'2026-10-05',complete:true}]),null);
 });
 
-test('un periodo sin horas no se enseña y «Sin periodo» no se pierde', () => {
+test('P1-P6 salen siempre con cero, y «Sin periodo» solo si ha caído algo', () => {
   const d=dashboard(),date='2026-10-05';
   const r=escena(d,{date,horasSol:[10],kWhHora:30,
     idefilas:[[10,5,0,'P4'],[23,4,0,'Sin periodo']],importDia:9,exportDia:0});
   const rep=d.idePeriodos(date,date,r.balance);
-  assert.ok(!rep.franjas.includes('P1'),'un periodo sin horas no sale');
+  // Un periodo que desaparece de la tabla se lee como «no existe»; con cero se
+  // lee como «no hubo», que es lo que pasó.
+  for(const p of ['P1','P2','P3','P4','P5','P6'])
+    assert.ok(rep.franjas.includes(p),p+' tiene que salir aunque no tenga horas');
+  assert.equal(rep.periodos.P1.horas,0);
+  close(rep.periodos.P1.importKWh,0);
   assert.ok(rep.franjas.includes('Sin periodo'),'lo que no tiene periodo no se cuela en P6');
   close(rep.periodos['Sin periodo'].importKWh,4);
+  // Los totales no cambian por enseñar franjas vacías.
   close(rep.importKWh,r.tR);
+  // Y sin nada fuera de periodo, esa fila no aparece.
+  const r2=escena(d,{date,horasSol:[10],kWhHora:30,
+    idefilas:[[10,5,0,'P4']],importDia:5,exportDia:0});
+  assert.ok(!d.idePeriodos(date,date,r2.balance).franjas.includes('Sin periodo'));
 });
 
 // ── Ahorro por periodo tarifario ──────────────────────────────────────────
@@ -630,9 +640,12 @@ test('el informe dice cuánto vertido ha dejado fuera, para poder cuadrarlo con 
   close(d.vertidoExcluido('2026-09-01','2026-10-31'),52);
   close(d.vertidoExcluido('2026-10-01','2026-10-31'),0);
   const t=d.vertidoExcluidoTexto('2026-09-01','2026-10-31');
-  assert.match(t,/No se contabiliza el vertido anterior al 01\/10\/2026/);
+  assert.match(t,/El vertido anterior al 01\/10\/2026/);
   assert.match(t,/52,0 kWh en este periodo/);
   assert.match(t,/fallo del antivertido ya corregido/);
+  // Y dice en qué lado del total están esos kWh, que es lo que se preguntaba
+  // al leer «vertido a red» en los recuadros.
+  assert.match(t,/NO se contabiliza: la cifra de vertido de este informe no lo incluye/);
   // Sin nada que excluir, ni se menciona.
   assert.equal(d.vertidoExcluidoTexto('2026-10-01','2026-10-31'),'');
 });
@@ -670,7 +683,7 @@ test('con precios y contrastes cuadrando, el resumen lo dice', () => {
   const t=d.fiabilidadTexto('2026-11-01','2026-11-30',
     {coverage:{completeDays:30,expectedDays:30,pricedDays:30}});
   assert.match(t,/cobertura 30 de 30/);
-  assert.match(t,/factura 1 periodo\(s\) cubiertos, todos cuadran/);
+  assert.match(t,/factura 1 periodo\(s\) de este rango cubiertos, todos cuadran/);
 });
 
 test('el resumen avisa de la discrepancia y del vertido apartado', () => {
@@ -679,7 +692,7 @@ test('el resumen avisa de la discrepancia y del vertido apartado', () => {
   d.setPricing(facturaDe('2026-11-01','2026-11-30',3400,'Factura noviembre'));
   const t=d.fiabilidadTexto('2026-11-01','2026-11-30',
     {coverage:{completeDays:30,expectedDays:30,pricedDays:30}});
-  assert.match(t,/factura 1 periodo\(s\) cubiertos, 1 con discrepancia/);
+  assert.match(t,/factura 1 periodo\(s\) de este rango cubiertos, 1 con discrepancia/);
 
   // Un vertido anterior al corte aparece en el resumen con sus kWh.
   const e=dashboard();
@@ -729,4 +742,59 @@ test('el donut reparte toda la energía, con el vertido como tercera porción', 
   close(r.tExport,60);close(r.tPV,340);close(r.tR,150);
   // El total del donut ya no es el consumo: es consumo + vertido.
   close(r.tPV+r.tR+r.tExport,r.tC+r.tExport);
+});
+
+test('la fiabilidad de portada no saca discrepancias de fuera del periodo elegido', () => {
+  const d=dashboard();
+  // Dos facturas: noviembre cuadra, diciembre no. Las dos cubiertas por entero.
+  // Se evita octubre a propósito: su día de 25 h deja el mes sin cubrir.
+  mesDeRed(d,'2026-11-01',61,100);
+  d.setPricing({version:1,currency:'EUR',method:'invoice-average',label:'FICTICIO QA',periods:[
+    {from:'2026-11-01',to:'2026-11-30',importKWh:3000,energyEUR:750,ie:.05,vat:.21,source:'Factura noviembre'},
+    {from:'2026-12-01',to:'2026-12-31',importKWh:3400,energyEUR:850,ie:.05,vat:.21,source:'Factura diciembre'}]});
+  const cob={coverage:{completeDays:30,expectedDays:30,pricedDays:30}};
+  // Mirando solo noviembre, la discrepancia de diciembre no se asoma.
+  const nov=d.fiabilidadTexto('2026-11-01','2026-11-30',cob);
+  assert.match(nov,/factura 1 periodo\(s\) de este rango cubiertos, todos cuadran/);
+  assert.ok(!/con discrepancia/.test(nov),'una discrepancia de otro mes no sale en portada');
+  // Mirando diciembre, sí.
+  assert.match(d.fiabilidadTexto('2026-12-01','2026-12-31',cob),
+    /factura 1 periodo\(s\) de este rango cubiertos, 1 con discrepancia/);
+  // Y el contraste completo del anexo las sigue viendo las dos.
+  assert.equal(d.contrasteFactura().completos.length,2);
+  assert.equal(d.contrasteFactura().discrepantes.length,1);
+});
+
+test('el mapa de calor recorre el calendario y deja en gris lo que no tiene muestra', () => {
+  const d=dashboard();
+  // Producción el 1 y el 5 de julio: entre medias no hay muestra.
+  const prodH=[
+    {date:'2026-07-01',h:12,total:30},
+    {date:'2026-07-05',h:12,total:30}];
+  const an=d.calcAnalysis(prodH,[],
+    {totals:{savingsWithIEEUR:100},coverage:{pricedDays:2},monthly:[],daily:[]},null,null);
+  // Antes el eje tenía 2 columnas y el 1 de julio salía pegado al 5.
+  assert.deepStrictEqual([...an.heatDates],
+    ['2026-07-01','2026-07-02','2026-07-03','2026-07-04','2026-07-05']);
+  // Los días del hueco no traen dato: se pintan en gris, no como cero.
+  for(const hueco of ['2026-07-02','2026-07-03','2026-07-04'])
+    assert.equal(an.heatData[hueco],undefined,hueco+' no puede inventarse un cero');
+  assert.equal(an.heatData['2026-07-01'][12],30);
+  assert.equal(an.hayHeat,true);
+  // Y una hora sin muestra dentro de un día con datos tampoco es cero.
+  assert.equal(an.heatData['2026-07-01'][13],undefined);
+});
+
+test('el ratio de ahorro dice sobre cuántos días y qué fechas se calcula', () => {
+  const d=dashboard();
+  const an=d.calcAnalysis([],[],{totals:{savingsWithIEEUR:10784},coverage:{pricedDays:292},monthly:[],
+    daily:[{date:'2025-12-16',priced:true},{date:'2026-03-02',priced:false},{date:'2026-10-20',priced:true}]},null,null);
+  assert.equal(an.pb.desde,'2025-12-16');
+  assert.equal(an.pb.hasta,'2026-10-20');
+  assert.equal(an.pb.dias,292);
+  // Sin anualizar: el texto dice «acumulado» y nombra los días y el rango.
+  const t=d.ratioTexto(an.pb);
+  assert.match(t,/acumulado en 292 día\(s\) valorados/);
+  assert.match(t,/16\/12\/2025 → 20\/10\/2026/);
+  assert.equal(d.ratioTexto({pct:null}),'—');
 });

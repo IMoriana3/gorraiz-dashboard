@@ -279,7 +279,7 @@ input[type=file]{display:none}
     <div class="pcon" id="p5">
       <div class="slbl">Análisis avanzado</div>
       <div class="row">
-        <div class="cc" style="flex:2"><h4>Mapa de calor: producción FV hora × día</h4><canvas id="c5heat" height="250"></canvas></div>
+        <div class="cc" style="flex:2"><h4>Mapa de calor: producción FV hora × día · horas locales (Europe/Madrid)</h4><canvas id="c5heat" height="250"></canvas></div>
         <div class="cc" style="flex:1"><h4>Retorno de la inversión</h4><div id="paybackBox"></div></div>
       </div>
       <div class="row">
@@ -287,6 +287,8 @@ input[type=file]{display:none}
         <div class="cc"><h4>Autoconsumo y vertido mensual medido</h4><canvas id="c5curt" height="200"></canvas></div>
       </div>
     </div>
+
+    <div class="cc" style="margin-top:16px"><h4>Notas técnicas</h4><ul id="notasTecnicas" style="margin:0;padding-left:18px;font-size:11px;line-height:1.7;color:var(--muted)"></ul></div>
 
     <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
       <button class="btn btn1" onclick="genPDF()">📄 Descargar PDF</button>
@@ -371,7 +373,12 @@ const CFG={kwp:123.84,mod:'Autoconsumo con excedentes acogido a compensación si
   // Consecuencia que conviene tener presente del tramo excluido: esos kWh
   // salieron de verdad a la red, así que al no restarlos el autoconsumo y el
   // consumo de esos meses quedan por encima de lo que midió la distribuidora.
-  vertidoDesde:'2026-10-07'};
+  vertidoDesde:'2026-10-07',
+  // El IVA es deducible para un titular empresa, así que el «efecto en caja»
+  // no es ahorro suyo. Se deja a la vista por defecto para no cambiar el
+  // informe de hoy sin pedirlo; ponerlo en false lo quita de la portada y lo
+  // deja solo en el anexo, que es donde es un dato informativo.
+  mostrarIVAEnPortada:true};
 const PERFIL_SOLAR={1:.045,2:.060,3:.085,4:.095,5:.115,6:.125,7:.130,8:.115,9:.095,10:.070,11:.040,12:.025};
 const TEMP_REF={1:5,2:6.2,3:9,4:10.8,5:14.5,6:18.3,7:20.8,8:20.9,9:17.5,10:13.3,11:8.5,12:5.5};
 const HDD_BASE=15,CDD_BASE=24;
@@ -887,8 +894,11 @@ function vertidoExcluido(desde,hasta){
 function vertidoExcluidoTexto(desde,hasta){
   const kWh=vertidoExcluido(desde,hasta);
   if(!(kWh>0.05))return '';
-  return ' No se contabiliza el vertido anterior al '+fdmy(CFG.vertidoDesde)
-    +' ('+fn(kWh,1)+' kWh en este periodo), por proceder de un fallo del antivertido ya corregido.';
+  // Quien lea «vertido a red: 143,4 kWh» tiene que saber si esos 1,2 kWh están
+  // dentro o fuera. Están fuera: el corte se aplica antes de sumar.
+  return ' El vertido anterior al '+fdmy(CFG.vertidoDesde)+' ('+fn(kWh,1)
+    +' kWh en este periodo) procede de un fallo del antivertido ya corregido y NO se contabiliza:'
+    +' la cifra de vertido de este informe no lo incluye.';
 }
 
 function contrasteTexto(c){
@@ -1018,7 +1028,10 @@ function idePeriodos(desde,hasta,balance){
     ahorroEUR:autoValorado>0?suma('ahorroEUR'):null,autoValoradoKWh:autoValorado,
     fuentes:[...fuentes].sort(),
     // 'Sin periodo' solo se enseña si de verdad ha caído algo ahí.
-    franjas:FRANJAS.filter(p=>periodos[p].horas>0)};
+    // P1-P6 salen siempre, con cero en los que no tienen horas: un periodo que
+    // desaparece de la tabla se lee como «no existe», no como «no hubo».
+    // 'Sin periodo' es distinto: solo se enseña si de verdad ha caído algo ahí.
+    franjas:FRANJAS.filter(p=>p!=='Sin periodo'||periodos[p].horas>0)};
 }
 function idePeriodosNota(rep){
   const sinValorar=rep.autoKWh-rep.autoValoradoKWh;
@@ -1117,6 +1130,13 @@ function ideHorario(desde,hasta){
 // lo recibe tiene que poder juzgar de un vistazo sobre cuántos días se ha
 // calculado y si los contadores y la factura cuadran. Un informe que se
 // entrega a dirección se defiende por esto, no por sus totales.
+// El ratio sin su base es un porcentaje suelto: puede leerse como anual, y no
+// lo es. Va siempre con los días valorados y el rango del que salen.
+function ratioTexto(pb){
+  if(!Number.isFinite(pb.pct))return '—';
+  const rango=pb.desde&&pb.hasta?` (${fdmy(pb.desde)} → ${fdmy(pb.hasta)})`:'';
+  return `${fd(pb.pct)} % acumulado en ${fn(pb.dias)} día(s) valorados${rango}`;
+}
 function fiabilidadTexto(desde,hasta,energia){
   const partes=[];
   const c=energia&&energia.coverage;
@@ -1129,12 +1149,18 @@ function fiabilidadTexto(desde,hasta,energia){
       +(red.discrepantes.length?fn(red.discrepantes.length)+' con discrepancia':'todos cuadran')
     :'i-DE ↔ KSTAR sin días comparables');
 
+  // Solo las facturas que tocan el periodo elegido: una discrepancia de hace
+  // ocho meses no dice nada de este informe, y en portada se lee como si sí.
+  // Las del resto del histórico siguen en las páginas de histórico y anexo.
   const fac=contrasteFactura();
+  const solapa=f=>!(desde&&hasta)||(f.from<=hasta&&f.to>=desde);
+  const cubiertos=fac?fac.completos.filter(solapa):[];
+  const discrepan=fac?fac.discrepantes.filter(solapa):[];
   partes.push(!fac?'factura sin precios cargados'
-    :fac.completos.length
-      ?'factura '+fn(fac.completos.length)+' periodo(s) cubiertos, '
-        +(fac.discrepantes.length?fn(fac.discrepantes.length)+' con discrepancia':'todos cuadran')
-      :'factura sin periodos cubiertos por entero');
+    :cubiertos.length
+      ?'factura '+fn(cubiertos.length)+' periodo(s) de este rango cubiertos, '
+        +(discrepan.length?fn(discrepan.length)+' con discrepancia':'todos cuadran')
+      :'factura sin periodos de este rango cubiertos por entero');
 
   const fuera=vertidoExcluido(desde,hasta);
   if(fuera>0.05)partes.push('vertido no contabilizado '+fn(fuera,1)+' kWh');
@@ -1194,7 +1220,30 @@ function textoCobertura(v){
     (c.forwardEstimatedDays?`${fn(c.forwardEstimatedDays)} días valorados con el último precio disponible. `:'')+
     'Los totales incluyen solo los días cubiertos.';
 }
-function notaValoracion(v){return textoCobertura(v)+' Los acumulados de ambos inversores deben incluir el cierre del día; un Excel recortado puede estar incompleto. Precio medio mensual de factura, estimativo; puede incluir gestión. Ahorro con IE y sin IVA; el efecto con IVA se muestra aparte. Excedentes pendientes de valorar: desde el permiso procede la compensación simplificada, a falta de confirmar su precio en factura.'}
+// Esto es texto de operador: le dice al que carga los ficheros qué puede
+// fallar. Repetido en las páginas 1, 5 y 7 era ruido para quien lee el
+// informe, así que va una sola vez, al final. En cada página se queda
+// únicamente la línea de cobertura, que sí es del periodo que esa página mira.
+// El método de valoración no es una nota fija: depende de si las facturas
+// cargadas traen precios por periodo. Decirlo es lo que separa un ahorro
+// medido de uno estimado.
+function metodoValoracionTexto(){
+  const rep=typeof R!=='undefined'&&R?R.idePeriodos:null;
+  return rep&&rep.ahorroEUR!==null
+    ? 'Autoconsumo valorado con el precio medio mensual de factura. Las facturas traen además precios por periodo P1-P6, que la tabla de reparto por periodo usa en su columna de ahorro.'
+    : 'Autoconsumo valorado con el precio medio mensual de factura, estimativo; puede incluir gestión. Las facturas cargadas no traen precios por periodo P1-P6.';
+}
+function notasTecnicas(){return [NOTAS_TECNICAS[0],NOTAS_TECNICAS[1],metodoValoracionTexto(),...NOTAS_TECNICAS.slice(3)]}
+const NOTAS_TECNICAS=[
+  'Los acumulados de ambos inversores deben incluir el cierre del día: un Excel recortado puede estar incompleto aunque contenga registros de los dos equipos.',
+  'El consumo horario no se reconstruye a partir de totales diarios.',
+  'Precio medio mensual de factura, estimativo; puede incluir gestión.',
+  'Ahorro con IE y sin IVA. La columna con IVA del anexo es informativa: el IVA es deducible para el titular.',
+  'Excedentes pendientes de valorar: desde el permiso procede la compensación simplificada, a falta de confirmar su precio en factura.',
+  'Los importes no incluyen potencia contratada, alquileres ni otros fijos.',
+  'Las horas de los perfiles horarios y del mapa de calor son locales (Europe/Madrid).',
+  'Marcas del anexo: * mes con cobertura parcial; p mes valorado con el último precio disponible.'];
+const MARCAS='Marcas: * cobertura parcial · p valorado con el último precio disponible.';
 
 // ═══ MEMORIA ENTRE SESIONES ═══
 // El informe solo pinta como "real" los meses que tiene cargados, así que sin
@@ -1621,17 +1670,32 @@ function calcEvol(prodD,energia){
 }
 
 // ── Análisis: perfiles observados y vertido medido ──
+// Todos los días del calendario entre dos fechas, ambas incluidas.
+function rangoDias(desde,hasta){
+  if(!spcFecha(desde)||!spcFecha(hasta)||hasta<desde)return [];
+  const out=[];
+  for(let d=desde;d<=hasta&&out.length<4000;d=spcSumaDias(d,1))out.push(d);
+  return out;
+}
 function calcAnalysis(prodH,consH,energia,perfilRed,perfilVert){
   const hm={};prodH.forEach(r=>{if(Number.isFinite(r.total)){if(!hm[r.date])hm[r.date]={};hm[r.date][r.h]=r.total}});
-  const heatDates=Object.keys(hm).sort();
+  // El eje recorría solo los días CON muestra, así que un tramo sin datos no
+  // se veía: el mapa cerraba el hueco y junio quedaba pegado a agosto como si
+  // julio no existiera. Recorriendo el calendario, lo que falta sale en gris.
+  const conMuestra=Object.keys(hm).sort();
+  const heatDates=conMuestra.length?rangoDias(conMuestra[0],conMuestra[conMuestra.length-1]):[];
   const laborable=d=>{const w=new Date(d+'T12:00:00').getDay();return w>=1&&w<=5};
   const pv=perfilHoras(prodH.filter(r=>laborable(r.date)),'total');
   const red=perfilRed||perfilHoras(consH.filter(r=>r.wd>=1&&r.wd<=5),'red');
   const ahorro=energia.totals.savingsWithIEEUR;
+  const valorados=((energia&&energia.daily)||[]).filter(d=>d.priced);
   return{heatDates,heatData:hm,hayHeat:heatDates.length>0,
     perfil:pv.map((v,i)=>({pv:v,red:red[i],vert:perfilVert?perfilVert[i]:null})),hayPerfil:pv.some(Number.isFinite)||red.some(Number.isFinite),
     exchangeM:energia.monthly,energia,
-    pb:{inv:CFG.inv,ahAcum:ahorro,pct:escala(divide(ahorro,CFG.inv),100),dias:energia.coverage.pricedDays,canP:false},
+    pb:{inv:CFG.inv,ahAcum:ahorro,pct:escala(divide(ahorro,CFG.inv),100),dias:energia.coverage.pricedDays,canP:false,
+      // El ratio es acumulado sobre los días que de verdad se han valorado, no
+      // un porcentaje anual: sin estas dos fechas no se sabe sobre qué va.
+      desde:valorados.length?valorados[0].date:null,hasta:valorados.length?valorados[valorados.length-1].date:null},
     hayPB:Number.isFinite(ahorro)};
 }
 
@@ -1703,10 +1767,16 @@ function render(){
 function destroyCharts(){for(const k in CHARTS){try{CHARTS[k].destroy()}catch(e){}}CHARTS={}}
 
 function cajasKpi(rows){return rows.map(([l,v,s])=>`<div class="kbox"><div class="kl">${esc(l)}</div><div class="kv">${esc(v)}</div><div class="ks">${esc(s)}</div></div>`).join('')}
-function kpisProduccion(r){return[
+function kpisProduccion(r){
+  const c=r.energia.coverage,prov=c.forwardEstimatedDays||0;
+  return[
   ['Producción registrada',kwh(r.tP),`${r.dPV} días con ambos inversores`],['Rendimiento',Number.isFinite(r.yld)?fd(r.yld)+' kWh/kWp':'—',`${CFG.kwp} kWp`],
   ['Ahorro de energía',euros(r.tAE),'Base, sin impuestos'],['Ahorro con IE',euros(r.tAF),'Sin IVA'],
-  ['Efecto en caja con IVA',euros(r.tCash),'Separado del ahorro sin IVA'],['Días valorados',`${r.energia.coverage.pricedDays} / ${r.energia.coverage.expectedDays}`,'Balance completo y precio disponible']];}
+  ...(CFG.mostrarIVAEnPortada?[['Efecto en caja con IVA',euros(r.tCash),'Separado del ahorro sin IVA']]:[]),
+  // Un día valorado con el último precio conocido no es un día medido. Si los
+  // hay, el recuadro lo dice: es el dato que decide cuánto fiarse del ahorro.
+  ['Días valorados',`${c.pricedDays} / ${c.expectedDays}`,
+    prov>0?`${fn(prov)} con precio provisional`:'Balance completo y precio disponible']];}
 // Desde que i-DE puede alimentar el balance, poner «SPC» a secas era falso en
 // cuanto un solo día saliera de los ficheros de la distribuidora. La etiqueta
 // nombra los contadores que han aportado los días que se están sumando.
@@ -1735,10 +1805,11 @@ function renderP1(){
       sc.y1={beginAtZero:true,position:'right',title:{display:true,text:'GHI (kWh/m²)'},grid:{drawOnChartArea:false}}}}
   CHARTS.c1=new Chart($('c1daily'),{type:pd.length<=5?'bar':'line',data:{labels:pd.map(d=>d.date.slice(5)),datasets:ds},options:{responsive:true,scales:{...sc,x:{ticks:{maxRotation:45,autoSkip:true,maxTicksLimit:15}}}}});
   $('conclusionText').textContent=`Producción registrada: ${kwh(R.tP)}. Media de los días con datos de ambos inversores: ${fd(R.avg)} kWh/día. `
-    +notaValoracion(R.energia)+' '+fiabilidadTexto(R.from,R.to,R.energia);
+    +textoCobertura(R.energia)+' '+fiabilidadTexto(R.from,R.to,R.energia);
+  $('notasTecnicas').innerHTML=notasTecnicas().map(t=>`<li>${esc(t)}</li>`).join('');
   $('meteoBox').innerHTML='';
   if(METEO&&METEO.length){const ghi=sumaValores(METEO.map(m=>m.ghi))/METEO.length;
-    $('meteoBox').innerHTML=`<div class="metbox">Open-Meteo · GHI medio: ${fn(ghi,2)} kWh/m²/día. Referencia de proyecto: ${fn(CFG.prodAnual)} kWh/año, de memoria; el antivertido la limitó hasta el 20/10/2026.</div>`}
+    $('meteoBox').innerHTML=`<div class="metbox">Open-Meteo · GHI medio: ${fn(ghi,2)} kWh/m²/día. Referencia de proyecto: ${fn(CFG.prodAnual)} kWh/año según memoria técnica; el antivertido la limitó hasta el 20/10/2026.</div>`}
 }
 function renderP2(){
   const hs=Array.from({length:24},(_,i)=>i+'h');
@@ -1748,11 +1819,11 @@ function renderP2(){
   CHARTS.c2s=new Chart($('c2scatter'),{type:'scatter',data:{datasets:[{data:pares.map(d=>({x:d.A,y:d.B})),backgroundColor:'rgba(212,160,57,.5)',borderColor:'#d4a039',pointRadius:4}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{title:{display:true,text:'Inv A (kWh)'},beginAtZero:true},y:{title:{display:true,text:'Inv B (kWh)'},beginAtZero:true}}}});
   const meses=R.energia.monthly;
   let h='<tr><th>Mes</th><th>Días valorados</th><th>Autoconsumo valorado (kWh)</th><th>Media €/kWh</th><th>Base (€)</th><th>Con IE, sin IVA (€)</th><th>Caja con IVA (€)</th></tr>';
-  meses.forEach(m=>{h+=`<tr><td>${esc(m.month)}${m.partial?' *':''}</td><td>${m.pricedDays}/${m.expectedDays}</td><td>${fn(m.pricedSelfKWh,1)}</td><td>${fn(m.price,5)}</td><td>${fn(m.energySavingsEUR,2)}</td><td>${fn(m.savingsWithIEEUR,2)}</td><td>${fn(m.cashSavingsWithVATEUR,2)}</td></tr>`});
+  meses.forEach(m=>{h+=`<tr><td>${esc(m.month)}${m.partial?' *':''}${(m.forwardEstimatedDays||0)>0?' p':''}</td><td>${m.pricedDays}/${m.expectedDays}</td><td>${fn(m.pricedSelfKWh,1)}</td><td>${fn(m.price,5)}</td><td>${fn(m.energySavingsEUR,2)}</td><td>${fn(m.savingsWithIEEUR,2)}</td><td>${fn(m.cashSavingsWithVATEUR,2)}</td></tr>`});
   if(!meses.length)h+='<tr><td colspan="7">Sin días disponibles para valorar.</td></tr>';
   h+=`<tr class="tot"><td>TOTAL CUBIERTO</td><td>${R.energia.coverage.pricedDays}/${R.energia.coverage.expectedDays}</td><td>${fn(R.energia.totals.pricedSelfKWh,1)}</td><td>${fn(R.energia.totals.price,5)}</td><td>${fn(R.tAE,2)}</td><td>${fn(R.tAF,2)}</td><td>${fn(R.tCash,2)}</td></tr>`;
-  $('tblAhorro').innerHTML=h;$('ahorroNota').textContent=notaValoracion(R.energia)+' * Mes con cobertura parcial.';
-  $('fichaUl').innerHTML=[`Potencia pico: ${CFG.kwp} kWp`,`Generadores: ${CFG.modulos}`,`Inversores: ${CFG.inversores}`,`Cubierta: ${CFG.cubierta}`,CFG.mod,`Producción anual de proyecto: ${fn(CFG.prodAnual)} kWh/año, de memoria; el antivertido la limitó hasta el 20/10/2026`].map(l=>`<li>${esc(l)}</li>`).join('');
+  $('tblAhorro').innerHTML=h;$('ahorroNota').textContent=textoCobertura(R.energia)+' '+MARCAS;
+  $('fichaUl').innerHTML=[`Potencia pico: ${CFG.kwp} kWp`,`Generadores: ${CFG.modulos}`,`Inversores: ${CFG.inversores}`,`Cubierta: ${CFG.cubierta}`,CFG.mod,`Producción anual de proyecto: ${fn(CFG.prodAnual)} kWh/año según memoria técnica; el antivertido la limitó hasta el 20/10/2026`].map(l=>`<li>${esc(l)}</li>`).join('');
 }
 function renderP3(){
   $('k3').innerHTML=cajasKpi(kpisBalance(R));$('balanceCobertura').textContent=textoCobertura(R.energia)+vertidoExcluidoTexto(R.from,R.to);
@@ -1815,20 +1886,50 @@ function renderP3(){
     {label:'L-V · vertido',data:R.hpCons.vLV,borderColor:'#2a6b5a',borderDash:[4,2]}, {label:'Sáb · vertido',data:R.hpCons.vS,borderColor:'#d4a039',borderDash:[4,2]}, {label:'Dom · vertido',data:R.hpCons.vD,borderColor:'#5c95cf',borderDash:[4,2]}].map(d=>({...d,borderWidth:1.4,tension:.2,pointRadius:2,spanGaps:false}))},options:{responsive:true,scales:{y:{beginAtZero:true}}}});
   CHARTS.c3dn=new Chart($('c3donut'),{type:'doughnut',data:{labels:['Autoconsumo','Importación','Vertido'],datasets:[{data:[R.tPV,R.tR,R.tExport],backgroundColor:['#d4a039','#2a6b5a','#5c95cf'],borderWidth:2,borderColor:'#162420'}]},options:{responsive:true,cutout:'50%',plugins:{legend:{position:'bottom'}}}});
 }
+// Cuántos días tiene el mes 'YYYY-MM' según el calendario.
+function diasDelMes(mes){
+  const [a,m]=mes.split('-').map(Number);
+  return (a&&m)?new Date(Date.UTC(a,m,0)).getUTCDate():null;
+}
 function renderP4(){
-  const ev=R.evol,pm=ev.prodM,cm=ev.consM,am=ev.ahorroM;
-  $('evolCobertura').textContent=`Histórico: ${R.historico.from||'—'} → ${R.historico.to||'—'}. `+notaValoracion(ev.energia);
-  CHARTS.c4p=new Chart($('c4prod'),{type:'bar',data:{labels:pm.map(m=>m.mes),datasets:[{label:'Producción registrada',data:pm.map(m=>m.kwh),backgroundColor:'#2a6b5a'}]},options:{responsive:true,scales:{y:{beginAtZero:true}},plugins:{tooltip:{callbacks:{afterLabel:c=>`${pm[c.dataIndex].dias} días con ambos inversores`}}}}});
-  CHARTS.c4c=new Chart($('c4cons'),{type:'bar',data:{labels:cm.map(m=>m.month),datasets:[
-    {label:'Importación',data:cm.map(m=>m.importKWh),backgroundColor:'#2a6b5a',stack:'cons'},
-    {label:'Autoconsumo',data:cm.map(m=>m.selfConsumptionKWh),backgroundColor:'#d4a039',stack:'cons'},
-    {label:'Vertido',data:cm.map(m=>m.exportKWh),backgroundColor:'#5c95cf',stack:'export'}]},options:{responsive:true,scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true}},plugins:{tooltip:{callbacks:{afterLabel:c=>`${cm[c.dataIndex].completeDays}/${cm[c.dataIndex].expectedDays} días con balance`}}}}});
-  CHARTS.c4a=new Chart($('c4ahorro'),{type:'bar',data:{labels:am.map(m=>m.month),datasets:[
-    {label:'Ahorro mensual · días valorados',data:am.map(m=>m.savingsWithIEEUR),backgroundColor:'#2a6b5a'},
-    {label:'Acumulado · días valorados',data:am.map(m=>m.acum),type:'line',borderColor:'#d4a039',borderWidth:2,fill:false,spanGaps:false,pointRadius:2}]},options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'€ · con IE, sin IVA'}}},plugins:{tooltip:{callbacks:{afterLabel:c=>`${am[c.dataIndex].pricedDays}/${am[c.dataIndex].expectedDays} días valorados`}}}}});
-  CHARTS.c4cost=new Chart($('c4coste'),{type:'bar',data:{labels:cm.map(m=>m.month),datasets:[
-    {label:'Con autoconsumo · estimación',data:cm.map(m=>m.gridWithIEEUR),backgroundColor:'#2a6b5a'},
-    {label:'Sin autoconsumo · estimación',data:cm.map(m=>Number.isFinite(m.gridWithIEEUR)&&Number.isFinite(m.savingsWithIEEUR)?m.gridWithIEEUR+m.savingsWithIEEUR:null),backgroundColor:'#e67e22'}]},options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'€ · mismos días valorados'}}}}});
+  const ev=R.evol;
+  // Los cuatro gráficos venían con ejes distintos: la producción traía sus
+  // meses y el balance los suyos, así que un mes con producción pero sin
+  // medida de red (o al revés) desplazaba las barras de un gráfico respecto
+  // al de al lado. Ahora todos recorren la misma lista de meses.
+  const ejeMeses=[...new Set([...ev.prodM.map(m=>m.mes),...ev.consM.map(m=>m.month)])].sort();
+  const alinea=(arr,clave)=>{const idx=new Map(arr.map(x=>[x[clave],x]));return ejeMeses.map(k=>idx.get(k)||null)};
+  const pm=alinea(ev.prodM,'mes'),cm=alinea(ev.consM,'month'),am=alinea(ev.ahorroM,'month');
+  const campo=(fila,k)=>fila&&Number.isFinite(fila[k])?fila[k]:null;
+  // Un mes a medias se lee como una caída real si no se marca. Borde naranja
+  // en esas barras, y una entrada de leyenda que lo nombra.
+  const parcialProd=f=>!!(f&&Number.isFinite(f.dias)&&diasDelMes(f.mes)&&f.dias<diasDelMes(f.mes));
+  const parcialBal=f=>!!(f&&f.partial);
+  const borde=marca=>({borderColor:ejeMeses.map((_,i)=>marca(i)?'#e67e22':'rgba(0,0,0,0)'),
+    borderWidth:ejeMeses.map((_,i)=>marca(i)?2:0)});
+  const leyendaParcial={label:'mes parcial',data:[],backgroundColor:'rgba(0,0,0,0)',
+    borderColor:'#e67e22',borderWidth:2};
+  $('evolCobertura').textContent=`Histórico: ${R.historico.from||'—'} → ${R.historico.to||'—'}. `+textoCobertura(ev.energia);
+  CHARTS.c4p=new Chart($('c4prod'),{type:'bar',data:{labels:ejeMeses,datasets:[
+    {label:'Producción registrada',data:pm.map(m=>campo(m,'kwh')),backgroundColor:'#2a6b5a',
+      ...borde(i=>parcialProd(pm[i]))},leyendaParcial]},
+    options:{responsive:true,scales:{y:{beginAtZero:true}},plugins:{tooltip:{callbacks:{afterLabel:c=>pm[c.dataIndex]?`${pm[c.dataIndex].dias} días con ambos inversores`:''}}}}});
+  CHARTS.c4c=new Chart($('c4cons'),{type:'bar',data:{labels:ejeMeses,datasets:[
+    {label:'Importación',data:cm.map(m=>campo(m,'importKWh')),backgroundColor:'#2a6b5a',stack:'cons'},
+    {label:'Autoconsumo',data:cm.map(m=>campo(m,'selfConsumptionKWh')),backgroundColor:'#d4a039',stack:'cons',
+      ...borde(i=>parcialBal(cm[i]))},
+    {label:'Vertido',data:cm.map(m=>campo(m,'exportKWh')),backgroundColor:'#5c95cf',stack:'export'},
+    leyendaParcial]},options:{responsive:true,scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true}},plugins:{tooltip:{callbacks:{afterLabel:c=>cm[c.dataIndex]?`${cm[c.dataIndex].completeDays}/${cm[c.dataIndex].expectedDays} días con balance`:''}}}}});
+  CHARTS.c4a=new Chart($('c4ahorro'),{type:'bar',data:{labels:ejeMeses,datasets:[
+    {label:'Ahorro mensual · días valorados',data:am.map(m=>campo(m,'savingsWithIEEUR')),backgroundColor:'#2a6b5a',
+      ...borde(i=>parcialBal(am[i]))},
+    {label:'Acumulado · días valorados',data:am.map(m=>campo(m,'acum')),type:'line',borderColor:'#d4a039',borderWidth:2,fill:false,spanGaps:false,pointRadius:2},
+    leyendaParcial]},options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'€ · con IE, sin IVA'}}},plugins:{tooltip:{callbacks:{afterLabel:c=>am[c.dataIndex]?`${am[c.dataIndex].pricedDays}/${am[c.dataIndex].expectedDays} días valorados`:''}}}}});
+  CHARTS.c4cost=new Chart($('c4coste'),{type:'bar',data:{labels:ejeMeses,datasets:[
+    {label:'Con autoconsumo · estimación',data:cm.map(m=>campo(m,'gridWithIEEUR')),backgroundColor:'#2a6b5a',
+      ...borde(i=>parcialBal(cm[i]))},
+    {label:'Sin autoconsumo · estimación',data:cm.map(m=>m&&Number.isFinite(m.gridWithIEEUR)&&Number.isFinite(m.savingsWithIEEUR)?m.gridWithIEEUR+m.savingsWithIEEUR:null),backgroundColor:'#e67e22'},
+    leyendaParcial]},options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'€ · mismos días valorados'}}}}});
 }
 function renderP5(){
   const an=R.analysis;
@@ -1836,17 +1937,18 @@ function renderP5(){
   ctx.fillStyle='#162420';ctx.fillRect(0,0,W,H);
   if(an.hayHeat){
     const dates=an.heatDates,ml=38,mt=12,cw=(W-92)/dates.length,ch=(H-45)/18;
-    const valores=dates.flatMap(d=>Object.values(an.heatData[d]).filter(Number.isFinite)),mx=Math.max(0,...valores);
-    dates.forEach((d,i)=>{for(let h=4;h<22;h++){const v=an.heatData[d][h];ctx.fillStyle=Number.isFinite(v)?`hsl(${42+90*(1-(mx?v/mx:0))} 55% ${18+45*(mx?v/mx:0)}%)`:'#37413d';ctx.fillRect(ml+i*cw,mt+(h-4)*ch,cw+.3,ch+.3)}});
+    const valores=dates.flatMap(d=>Object.values(an.heatData[d]||{}).filter(Number.isFinite)),mx=Math.max(0,...valores);
+    dates.forEach((d,i)=>{for(let h=4;h<22;h++){const v=(an.heatData[d]||{})[h];ctx.fillStyle=Number.isFinite(v)?`hsl(${42+90*(1-(mx?v/mx:0))} 55% ${18+45*(mx?v/mx:0)}%)`:'#37413d';ctx.fillRect(ml+i*cw,mt+(h-4)*ch,cw+.3,ch+.3)}});
     ctx.fillStyle='#9baa9f';ctx.font='9px DM Sans';for(let h=4;h<22;h+=2)ctx.fillText(h+'h',5,mt+(h-4)*ch+8);
     dates.forEach((d,i)=>{if(i%Math.ceil(dates.length/8)===0)ctx.fillText(d.slice(5),ml+i*cw,H-10)});
     ctx.fillText('Gris: sin muestra',W-110,10);
+    ctx.fillText('Horas locales (Europe/Madrid)',5,H-1);
   }else{ctx.fillStyle='#9baa9f';ctx.font='12px DM Sans';ctx.fillText('Sin datos de producción horaria',20,35)}
   const pb=an.pb;
-  $('paybackBox').innerHTML=`<div style="padding:10px;font-size:11px;line-height:1.8"><b>Ahorro valorado con IE, sin IVA</b><div style="font-size:24px;color:var(--accent)">${euros(pb.ahAcum)}</div><div>${pb.dias} días valorados del histórico.</div><div>Inversión de referencia: ${euros(pb.inv)}</div><div>Relación ahorro / inversión: ${Number.isFinite(pb.pct)?fd(pb.pct)+' %':'—'}</div><div class="hint">${esc(textoCobertura(an.energia))} Sin proyección de plazo de retorno. Los ingresos por compensación de excedentes aún no se suman: falta confirmar su precio en factura.</div></div>`;
+  $('paybackBox').innerHTML=`<div style="padding:10px;font-size:11px;line-height:1.8"><b>Ahorro valorado con IE, sin IVA</b><div style="font-size:24px;color:var(--accent)">${euros(pb.ahAcum)}</div><div>${pb.dias} días valorados del histórico.</div><div>Inversión de referencia: ${euros(pb.inv)}</div><div>Relación ahorro / inversión: ${esc(ratioTexto(pb))}</div><div class="hint">${esc(textoCobertura(an.energia))} Sin proyección de plazo de retorno. Los ingresos por compensación de excedentes aún no se suman: falta confirmar su precio en factura.</div></div>`;
   CHARTS.c5p=new Chart($('c5perfil'),{type:'line',data:{labels:Array.from({length:24},(_,i)=>i+'h'),datasets:[
     {label:'Importación horaria de red · i-DE (L-V)',data:an.perfil.map(p=>p.red),borderColor:'#2a6b5a'},
-    {label:'Producción FV · inversores',data:an.perfil.map(p=>p.pv),borderColor:'#d4a039'},
+    {label:'Producción FV · inversores (L-V)',data:an.perfil.map(p=>p.pv),borderColor:'#d4a039'},
     {label:'Vertido horario de red · i-DE (L-V)',data:an.perfil.map(p=>p.vert),borderColor:'#5c95cf'}].map(d=>({...d,borderWidth:1.5,fill:false,pointRadius:0,tension:.2,spanGaps:false}))},options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'Perfil horario medio'}}}}});
   const cm=an.exchangeM;
   CHARTS.c5c=new Chart($('c5curt'),{type:'bar',data:{labels:cm.map(m=>m.month),datasets:[
@@ -1964,9 +2066,9 @@ async function genPDF(){
   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
   try{
     pagina('Producción fotovoltaica — Edificio Gorraiz','Periodo elegido: '+per);
-    pdfKpis(doc,kpisProduccion(R),M,32,ancho);pdfTexto(doc,notaValoracion(R.energia),M,57,ancho,6.5);
+    pdfKpis(doc,kpisProduccion(R),M,32,ancho);pdfTexto(doc,textoCobertura(R.energia),M,57,ancho,6.5);
     await pdfChart(doc,'c1daily',M,77,ancho,96);
-    pdfTexto(doc,`Producción registrada: ${kwh(R.tP)}. Media de días con ambos inversores: ${fd(R.avg)} kWh/día. Mejor día registrado: ${R.best.date} (${kwh(R.best.total)}). Referencia de proyecto: ${fn(CFG.prodAnual)} kWh/año, de memoria; el antivertido la limitó hasta el 20/10/2026.`,M,176,ancho,6.5);
+    pdfTexto(doc,`Producción registrada: ${kwh(R.tP)}. Media de días con ambos inversores: ${fd(R.avg)} kWh/día. Mejor día registrado: ${R.best.date} (${kwh(R.best.total)}). Referencia de proyecto: ${fn(CFG.prodAnual)} kWh/año según memoria técnica; el antivertido la limitó hasta el 20/10/2026.`,M,176,ancho,6.5);
     pdfTexto(doc,fiabilidadTexto(R.from,R.to,R.energia),M,184,ancho,6.5);
 
     pagina('Instalación e inversores','Periodo elegido: '+per);
@@ -1988,7 +2090,7 @@ async function genPDF(){
     // con el ahorro económico de la factura indexada.
     if(R.idePeriodos){
       const rep=R.idePeriodos;
-      pagina('Reparto energético P1-P6 · medida horaria de i-DE','Periodo elegido: '+per);
+      pagina('Reparto por periodo tarifario','Periodo elegido: '+per+' · medida horaria de i-DE');
       pdfTexto(doc,'Importación y vertido por periodo tarifario CNMC, medidos por i-DE. El autoconsumo se deriva de las muestras del inversor. No son importes de facturación.',M,37,ancho,8);
       doc.setFillColor(26,60,52);doc.rect(M,46,ancho,8,'F');
       doc.setTextColor(255);doc.setFontSize(8);doc.setFont(undefined,'bold');
@@ -2016,7 +2118,7 @@ async function genPDF(){
       doc.text(fn(rep.exportKWh,1),col[2],ypos+1);doc.text(fn(rep.autoKWh,1),col[3],ypos+1);
       if(conEuros)doc.text(fn(rep.ahorroEUR,2),col[5],ypos+1);
       pdfTexto(doc,idePeriodosNota(rep)+(R.spcPeriodos&&R.spcPeriodos.diasCompatibles>0
-        ?' El contador KSTAR cubre '+fn(R.spcPeriodos.diasCompatibles)+' dia(s) de este rango y sirve para contrastarlo.':''),
+        ?' El contador KSTAR cubre '+fn(R.spcPeriodos.diasCompatibles)+' día(s) de este rango y sirve para contrastarlo.':''),
         M,ypos+12,ancho,7.5);
     }else if(R.spcPeriodos&&R.spcPeriodos.diasCompatibles>0){
       const reparto=R.spcPeriodos;
@@ -2037,7 +2139,7 @@ async function genPDF(){
     }
 
     pagina('Histórico acumulado','Todos los datos cargados: '+R.historico.from+' a '+R.historico.to);
-    pdfTexto(doc,notaValoracion(R.historico.energia),M,34,ancho,6);
+    pdfTexto(doc,textoCobertura(R.historico.energia),M,34,ancho,6);
     pdfTitulo(doc,'Producción mensual registrada (kWh)',M,50);pdfTitulo(doc,'Balance mensual · días completos (kWh)',M+mitad+6,50);
     await pdfChart(doc,'c4prod',M,54,mitad,61);await pdfChart(doc,'c4cons',M+mitad+6,54,mitad,61);
     pdfTitulo(doc,'Ahorro mensual y acumulado · con IE, sin IVA',M,124);pdfTitulo(doc,'Energía de red valorada · con IE, sin IVA',M+mitad+6,124);
@@ -2045,27 +2147,29 @@ async function genPDF(){
 
     pagina('Análisis del histórico','Producción, importación, autoconsumo y vertido medido');
     pdfTexto(doc,textoCobertura(R.historico.energia),M,34,ancho,6.5);
-    pdfTitulo(doc,'Mapa horario de producción FV',M,47);await pdfChart(doc,'c5heat',M,51,155,65);
+    pdfTitulo(doc,'Mapa horario de producción FV · horas locales (Europe/Madrid)',M,47);await pdfChart(doc,'c5heat',M,51,155,65);
     const pb=R.analysis.pb,px=M+164;
     pdfTitulo(doc,'Ahorro valorado del histórico',px,49);
-    pdfTexto(doc,`Con IE, sin IVA: ${euros(pb.ahAcum)}\nDías valorados: ${pb.dias}\nInversión de referencia: ${euros(pb.inv)}\nRelación ahorro / inversión: ${Number.isFinite(pb.pct)?fd(pb.pct)+' %':'—'}\nSin proyección de plazo de retorno. Excedentes sin valorar.`,px,57,ancho-164,7.5);
+    pdfTexto(doc,`Con IE, sin IVA: ${euros(pb.ahAcum)}\nInversión de referencia: ${euros(pb.inv)}\nRelación ahorro / inversión:\n${ratioTexto(pb)}\nSin proyección de plazo de retorno. Excedentes sin valorar.`,px,57,ancho-164,7.5);
     pdfTitulo(doc,'Producción FV, importación y vertido horarios',M,126);pdfTitulo(doc,'Autoconsumo y vertido medido (MWh)',M+mitad+6,126);
     await pdfChart(doc,'c5perfil',M,130,mitad,59);await pdfChart(doc,'c5curt',M+mitad+6,130,mitad,59);
 
     const meses=R.energia.monthly,porPagina=19;
     for(let inicio=0;inicio<meses.length;inicio+=porPagina){
       pagina('Anexo · Valoración mensual del autoconsumo','Periodo elegido: '+per+' · '+(PRECIOS?PRECIOS.label||'Precios mensuales cargados':'Sin precios cargados'));
-      pdfTexto(doc,notaValoracion(R.energia),M,35,ancho,6.5);
+      pdfTexto(doc,textoCobertura(R.energia),M,35,ancho,6.5);
       const xs=[M,M+27,M+49,M+94,M+126,M+166,M+215],headers=['Mes','Días','Auto. valorado (kWh)','Media €/kWh','Base (€)','Con IE, sin IVA (€)','Caja con IVA (€)'];
       let y=53;doc.setFillColor(26,60,52);doc.rect(M,y,ancho,7,'F');doc.setTextColor(255);doc.setFontSize(6.5);headers.forEach((h,i)=>doc.text(h,xs[i]+2,y+4.5));y+=8;
       meses.slice(inicio,inicio+porPagina).forEach((m,i)=>{if(i%2===0){doc.setFillColor(244,248,246);doc.rect(M,y-1,ancho,6,'F')}
-        doc.setTextColor(30);doc.setFontSize(7);const vals=[m.month+(m.partial?' *':''),`${m.pricedDays}/${m.expectedDays}`,fn(m.pricedSelfKWh,1),fn(m.price,5),fn(m.energySavingsEUR,2),fn(m.savingsWithIEEUR,2),fn(m.cashSavingsWithVATEUR,2)];vals.forEach((v,j)=>doc.text(v,xs[j]+2,y+3));y+=6});
+        doc.setTextColor(30);doc.setFontSize(7);const vals=[m.month+(m.partial?' *':'')+((m.forwardEstimatedDays||0)>0?' p':''),`${m.pricedDays}/${m.expectedDays}`,fn(m.pricedSelfKWh,1),fn(m.price,5),fn(m.energySavingsEUR,2),fn(m.savingsWithIEEUR,2),fn(m.cashSavingsWithVATEUR,2)];vals.forEach((v,j)=>doc.text(v,xs[j]+2,y+3));y+=6});
       if(inicio+porPagina>=meses.length){doc.setFont(undefined,'bold');doc.setTextColor(26,60,52);
         const vals=['TOTAL CUBIERTO',`${R.energia.coverage.pricedDays}/${R.energia.coverage.expectedDays}`,fn(R.energia.totals.pricedSelfKWh,1),fn(R.energia.totals.price,5),fn(R.tAE,2),fn(R.tAF,2),fn(R.tCash,2)];
         vals.forEach((v,j)=>doc.text(v,xs[j]+2,y+4));}
-      pdfTexto(doc,'* Cobertura parcial. Los importes incluyen solo días con balance completo y precio. — indica dato no disponible. No incluyen potencia contratada, alquileres, otros fijos ni compensación de excedentes.'
+      pdfTexto(doc,MARCAS+' Los importes incluyen solo días con balance completo y precio; — es dato no disponible.'
         +contrasteFacturaPdfTexto(),M,186,ancho,6);
     }
+    pagina('Notas técnicas','Criterios de cálculo y avisos sobre la carga de datos');
+    pdfTexto(doc,notasTecnicas().map(t=>'\u2013 '+t).join('\n'),M,34,ancho,7);
     cerrar();doc.save(`Informe_FV_Gorraiz_${R.from.replace(/-/g,'')}_${R.to.replace(/-/g,'')}.pdf`);log('✓ PDF descargado');
   }catch(e){log('⚠ PDF: '+esc(e.message))}
   finally{document.querySelectorAll('#pResults > .pcon').forEach(c=>c.classList.remove('on'));$('p1').classList.add('on');setStep(3)}
