@@ -252,9 +252,9 @@ input[type=file]{display:none}
       <div class="st" id="spcPeriodosKwh"></div>
       <div class="cc"><h4>Balance diario — consumo, importación, autoconsumo y vertido</h4><canvas id="c3daily" height="200"></canvas></div>
       <div class="row">
-        <div class="cc" style="flex:1.2"><h4>Consumo medio por día de la semana</h4><canvas id="c3week" height="180"></canvas></div>
-        <div class="cc" style="flex:1.2"><h4>Importación horaria de red · medida de i-DE</h4><canvas id="c3hourly" height="180"></canvas></div>
-        <div class="cc" style="flex:0 0 240px;max-width:240px"><h4>Cobertura FV</h4><canvas id="c3donut" height="180"></canvas></div>
+        <div class="cc" style="flex:1.2"><h4>Energía media por día de la semana</h4><canvas id="c3week" height="180"></canvas></div>
+        <div class="cc" style="flex:1.2"><h4>Importación y vertido horarios de red · medida de i-DE</h4><canvas id="c3hourly" height="180"></canvas></div>
+        <div class="cc" style="flex:0 0 240px;max-width:240px"><h4>Reparto de energía</h4><canvas id="c3donut" height="180"></canvas></div>
       </div>
       <div style="font-size:10px;color:var(--muted);margin-top:6px;padding:0 4px">
         Autoconsumo = producción FV − vertido. Consumo = importación + autoconsumo. El balance usa días cerrados con ambos inversores y medida de red completa. Los acumulados de los inversores deben incluir el cierre del día: un Excel recortado puede estar incompleto aunque contenga registros de ambos equipos. No se reconstruye el consumo horario con totales diarios.
@@ -283,7 +283,7 @@ input[type=file]{display:none}
         <div class="cc" style="flex:1"><h4>Retorno de la inversión</h4><div id="paybackBox"></div></div>
       </div>
       <div class="row">
-        <div class="cc"><h4>Día laborable: importación y producción FV</h4><canvas id="c5perfil" height="200"></canvas></div>
+        <div class="cc"><h4>Día laborable: importación, vertido y producción FV</h4><canvas id="c5perfil" height="200"></canvas></div>
         <div class="cc"><h4>Autoconsumo y vertido mensual medido</h4><canvas id="c5curt" height="200"></canvas></div>
       </div>
     </div>
@@ -854,9 +854,15 @@ function contrasteRed(){
 // El corte se aplica aquí y solo aquí: es la serie de la que beben el balance,
 // los recuadros, las gráficas, la tabla por periodo y el anexo. Tocarlo en un
 // sitio evita que una vista se quede contando lo que otra ya descarta.
-function cortaVertido(d){
+// Quién decide si el vertido de un día se contabiliza. Lo usan el corte del
+// balance y el perfil horario, para que ninguna gráfica enseñe vertido que la
+// aritmética del informe descarta.
+function vertidoCuenta(date){
   const desde=CFG.vertidoDesde;
-  if(!desde||!spcFecha(desde)||d.date>=desde)return d;
+  return !desde||!spcFecha(desde)||date>=desde;
+}
+function cortaVertido(d){
+  if(vertidoCuenta(d.date))return d;
   const fuera=spcNumero(d.exportKWh)?d.exportKWh:0;
   return{...d,exportKWh:0,meta:{...d.meta,vertidoExcluidoKWh:fuera}};
 }
@@ -1091,12 +1097,19 @@ function ideHorario(desde,hasta){
   if(!RAW.I.length)return null;
   const d0=desde?new Date(desde+'T00:00:00'):null,d1=hasta?new Date(hasta+'T23:59:59'):null;
   const filas=filt(RAW.I,d0,d1).map(r=>({h:r.ts.getHours(),wd:r.ts.getDay(),
-    red:Number.isFinite(r.consumo)?r.consumo:null}));
+    red:Number.isFinite(r.consumo)?r.consumo:null,
+    // El vertido excluido cuenta como cero, igual que en cortaVertido: el día
+    // sigue en la media, pero sin aportar los kWh que el informe descarta.
+    vert:Number.isFinite(r.gen)?(vertidoCuenta(spcFecha(dk(r.ts)))?Math.max(0,r.gen):0):null}));
   if(!filas.length)return null;
-  return{LV:perfilHoras(filas.filter(r=>r.wd>=1&&r.wd<=5),'red'),
-    S:perfilHoras(filas.filter(r=>r.wd===6),'red'),
-    D:perfilHoras(filas.filter(r=>r.wd===0),'red'),
-    media:perfilHoras(filas,'red')};
+  const lv=r=>r.wd>=1&&r.wd<=5,sa=r=>r.wd===6,dom=r=>r.wd===0;
+  return{LV:perfilHoras(filas.filter(lv),'red'),
+    S:perfilHoras(filas.filter(sa),'red'),
+    D:perfilHoras(filas.filter(dom),'red'),
+    media:perfilHoras(filas,'red'),
+    vLV:perfilHoras(filas.filter(lv),'vert'),
+    vS:perfilHoras(filas.filter(sa),'vert'),
+    vD:perfilHoras(filas.filter(dom),'vert')};
 }
 
 // ═══ FIABILIDAD DE LOS DATOS ═══
@@ -1577,12 +1590,17 @@ function calcKPIs(prod,cons,rango={}){
   const ch=cons.hourly,semana=Array.from({length:7},()=>[]);
   daily.filter(d=>d.complete).forEach(d=>semana[(d.wd+6)%7].push(d));
   const weekly=semana.map(d=>({red:d.length?sumaValores(d.map(x=>x.red))/d.length:null,
-    pv:d.length?sumaValores(d.map(x=>x.pv))/d.length:null}));
+    pv:d.length?sumaValores(d.map(x=>x.pv))/d.length:null,
+    export:d.length?sumaValores(d.map(x=>x.export))/d.length:null}));
   // El perfil horario de red sale de i-DE si hay ficheros; si no, del legado,
   // que con KSTAR_ONLY viene vacío y deja la gráfica en blanco.
   const ih=ideHorario(rango.from,rango.to);
-  const hpCons=ih?{LV:ih.LV,S:ih.S,D:ih.D}
-    :{LV:perfilHoras(ch.filter(r=>r.wd>=1&&r.wd<=5),'red'),S:perfilHoras(ch.filter(r=>r.wd===6),'red'),D:perfilHoras(ch.filter(r=>r.wd===0),'red')};
+  // Sin ficheros de i-DE no hay medida horaria de vertido: la serie va vacía
+  // en vez de inventarse un reparto a partir de la producción.
+  const vacio=Array.from({length:24},()=>null);
+  const hpCons=ih?{LV:ih.LV,S:ih.S,D:ih.D,vLV:ih.vLV,vS:ih.vS,vD:ih.vD}
+    :{LV:perfilHoras(ch.filter(r=>r.wd>=1&&r.wd<=5),'red'),S:perfilHoras(ch.filter(r=>r.wd===6),'red'),D:perfilHoras(ch.filter(r=>r.wd===0),'red'),
+      vLV:vacio,vS:vacio.slice(),vD:vacio.slice()};
   const picoD=daily.filter(d=>d.complete).reduce((m,d)=>!m||d.total>m.total?d:m,null)||{total:null,date:'—'};
   return{tP,dPV,avg,best,yld:divide(tP,CFG.kwp),iA:sumaValores(pd.map(d=>d.A)),iB:sumaValores(pd.map(d=>d.B)),
     tAE:tot.energySavingsEUR,tAF:tot.savingsWithIEEUR,tCash:tot.cashSavingsWithVATEUR,tGrid:tot.gridWithIEEUR,
@@ -1603,7 +1621,7 @@ function calcEvol(prodD,energia){
 }
 
 // ── Análisis: perfiles observados y vertido medido ──
-function calcAnalysis(prodH,consH,energia,perfilRed){
+function calcAnalysis(prodH,consH,energia,perfilRed,perfilVert){
   const hm={};prodH.forEach(r=>{if(Number.isFinite(r.total)){if(!hm[r.date])hm[r.date]={};hm[r.date][r.h]=r.total}});
   const heatDates=Object.keys(hm).sort();
   const laborable=d=>{const w=new Date(d+'T12:00:00').getDay();return w>=1&&w<=5};
@@ -1611,7 +1629,7 @@ function calcAnalysis(prodH,consH,energia,perfilRed){
   const red=perfilRed||perfilHoras(consH.filter(r=>r.wd>=1&&r.wd<=5),'red');
   const ahorro=energia.totals.savingsWithIEEUR;
   return{heatDates,heatData:hm,hayHeat:heatDates.length>0,
-    perfil:pv.map((v,i)=>({pv:v,red:red[i]})),hayPerfil:pv.some(Number.isFinite)||red.some(Number.isFinite),
+    perfil:pv.map((v,i)=>({pv:v,red:red[i],vert:perfilVert?perfilVert[i]:null})),hayPerfil:pv.some(Number.isFinite)||red.some(Number.isFinite),
     exchangeM:energia.monthly,energia,
     pb:{inv:CFG.inv,ahAcum:ahorro,pct:escala(divide(ahorro,CFG.inv),100),dias:energia.coverage.pricedDays,canP:false},
     hayPB:Number.isFinite(ahorro)};
@@ -1650,7 +1668,8 @@ function calculaInforme(desde,hasta){
   const fechas=[...new Set([].concat(RAW.A,RAW.B,RAW.I).map(r=>dk(r.ts)))].sort();
   const prodAll=procProd(RAW.A,RAW.B),consAll=procCons(RAW.I);
   const historico=calcKPIs(prodAll,consAll,{from:fechas[0],to:fechas[fechas.length-1]});
-  return{...kpis,historico,evol:calcEvol(prodAll.daily,historico.energia),analysis:calcAnalysis(prodAll.hourly,consAll.hourly,historico.energia,(ideHorario(fechas[0],fechas[fechas.length-1])||{}).LV),meteo:METEO};
+  const ihAll=ideHorario(fechas[0],fechas[fechas.length-1])||{};
+  return{...kpis,historico,evol:calcEvol(prodAll.daily,historico.energia),analysis:calcAnalysis(prodAll.hourly,consAll.hourly,historico.energia,ihAll.LV,ihAll.vLV),meteo:METEO};
 }
 async function generate(){
   log('Procesando...');setStep(2);
@@ -1789,10 +1808,12 @@ function renderP3(){
     {label:'Vertido',data:cd.map(d=>d.export),borderColor:'#5c95cf'}].map(d=>({...d,borderWidth:1.4,fill:false,tension:.2,pointRadius:2,spanGaps:false}))},options:{responsive:true,scales:{y:{beginAtZero:true},x:{ticks:{autoSkip:true,maxTicksLimit:15}}}}});
   CHARTS.c3w=new Chart($('c3week'),{type:'bar',data:{labels:['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'],datasets:[
     {label:'Importación',data:R.weekly.map(w=>w.red),backgroundColor:'#2a6b5a',stack:'a'},
-    {label:'Autoconsumo',data:R.weekly.map(w=>w.pv),backgroundColor:'#d4a039',stack:'a'}]},options:{responsive:true,scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true}}}});
+    {label:'Autoconsumo',data:R.weekly.map(w=>w.pv),backgroundColor:'#d4a039',stack:'a'},
+    {label:'Vertido',data:R.weekly.map(w=>w.export),backgroundColor:'#5c95cf',stack:'v'}]},options:{responsive:true,scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true}}}});
   CHARTS.c3h=new Chart($('c3hourly'),{type:'line',data:{labels:Array.from({length:24},(_,i)=>i+'h'),datasets:[
-    {label:'L-V · red',data:R.hpCons.LV,borderColor:'#2a6b5a'}, {label:'Sáb · red',data:R.hpCons.S,borderColor:'#d4a039'}, {label:'Dom · red',data:R.hpCons.D,borderColor:'#5c95cf'}].map(d=>({...d,borderWidth:1.4,tension:.2,pointRadius:2,spanGaps:false}))},options:{responsive:true,scales:{y:{beginAtZero:true}}}});
-  CHARTS.c3dn=new Chart($('c3donut'),{type:'doughnut',data:{labels:['Autoconsumo','Importación'],datasets:[{data:[R.tPV,R.tR],backgroundColor:['#d4a039','#2a6b5a'],borderWidth:2,borderColor:'#162420'}]},options:{responsive:true,cutout:'50%',plugins:{legend:{position:'bottom'}}}});
+    {label:'L-V · red',data:R.hpCons.LV,borderColor:'#2a6b5a'}, {label:'Sáb · red',data:R.hpCons.S,borderColor:'#d4a039'}, {label:'Dom · red',data:R.hpCons.D,borderColor:'#5c95cf'},
+    {label:'L-V · vertido',data:R.hpCons.vLV,borderColor:'#2a6b5a',borderDash:[4,2]}, {label:'Sáb · vertido',data:R.hpCons.vS,borderColor:'#d4a039',borderDash:[4,2]}, {label:'Dom · vertido',data:R.hpCons.vD,borderColor:'#5c95cf',borderDash:[4,2]}].map(d=>({...d,borderWidth:1.4,tension:.2,pointRadius:2,spanGaps:false}))},options:{responsive:true,scales:{y:{beginAtZero:true}}}});
+  CHARTS.c3dn=new Chart($('c3donut'),{type:'doughnut',data:{labels:['Autoconsumo','Importación','Vertido'],datasets:[{data:[R.tPV,R.tR,R.tExport],backgroundColor:['#d4a039','#2a6b5a','#5c95cf'],borderWidth:2,borderColor:'#162420'}]},options:{responsive:true,cutout:'50%',plugins:{legend:{position:'bottom'}}}});
 }
 function renderP4(){
   const ev=R.evol,pm=ev.prodM,cm=ev.consM,am=ev.ahorroM;
@@ -1825,7 +1846,8 @@ function renderP5(){
   $('paybackBox').innerHTML=`<div style="padding:10px;font-size:11px;line-height:1.8"><b>Ahorro valorado con IE, sin IVA</b><div style="font-size:24px;color:var(--accent)">${euros(pb.ahAcum)}</div><div>${pb.dias} días valorados del histórico.</div><div>Inversión de referencia: ${euros(pb.inv)}</div><div>Relación ahorro / inversión: ${Number.isFinite(pb.pct)?fd(pb.pct)+' %':'—'}</div><div class="hint">${esc(textoCobertura(an.energia))} Sin proyección de plazo de retorno. Los ingresos por compensación de excedentes aún no se suman: falta confirmar su precio en factura.</div></div>`;
   CHARTS.c5p=new Chart($('c5perfil'),{type:'line',data:{labels:Array.from({length:24},(_,i)=>i+'h'),datasets:[
     {label:'Importación horaria de red · i-DE (L-V)',data:an.perfil.map(p=>p.red),borderColor:'#2a6b5a'},
-    {label:'Producción FV · inversores',data:an.perfil.map(p=>p.pv),borderColor:'#d4a039'}].map(d=>({...d,borderWidth:1.5,fill:false,pointRadius:0,tension:.2,spanGaps:false}))},options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'Perfil horario medio'}}}}});
+    {label:'Producción FV · inversores',data:an.perfil.map(p=>p.pv),borderColor:'#d4a039'},
+    {label:'Vertido horario de red · i-DE (L-V)',data:an.perfil.map(p=>p.vert),borderColor:'#5c95cf'}].map(d=>({...d,borderWidth:1.5,fill:false,pointRadius:0,tension:.2,spanGaps:false}))},options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'Perfil horario medio'}}}}});
   const cm=an.exchangeM;
   CHARTS.c5c=new Chart($('c5curt'),{type:'bar',data:{labels:cm.map(m=>m.month),datasets:[
     {label:'Autoconsumo',data:cm.map(m=>escala(m.selfConsumptionKWh,.001)),backgroundColor:'#d4a039'},
@@ -1958,9 +1980,9 @@ async function genPDF(){
     pdfKpis(doc,kpisBalance(R),M,32,ancho);pdfTexto(doc,textoCobertura(R.energia)+vertidoExcluidoTexto(R.from,R.to),M,57,ancho,7);
     await pdfChart(doc,'c3daily',M,71,ancho,57);
     const w1=ancho*.35-2,w2=ancho*.35-2,w3=ancho*.30-4;
-    pdfTitulo(doc,'Media por día de semana',M,135);pdfTitulo(doc,'Importación horaria de red · i-DE',M+w1+4,135);pdfTitulo(doc,'Cobertura FV',M+w1+w2+8,135);
+    pdfTitulo(doc,'Energía media por día de semana',M,135);pdfTitulo(doc,'Importación y vertido horarios · i-DE',M+w1+4,135);pdfTitulo(doc,'Reparto de energía',M+w1+w2+8,135);
     await pdfChart(doc,'c3week',M,139,w1,47);await pdfChart(doc,'c3hourly',M+w1+4,139,w2,47);await pdfChart(doc,'c3donut',M+w1+w2+8,139,w3,47);
-    pdfTexto(doc,'Autoconsumo = FV - vertido. Consumo = importación + autoconsumo. Los acumulados de ambos inversores deben cubrir el cierre del día. El balance usa solo días con producción de los dos inversores y medida de red completa.'+vertidoExcluidoTexto(R.from,R.to)+contrastePdfTexto(),M,193,ancho,6);
+    pdfTexto(doc,'Autoconsumo = FV - vertido. Consumo = importación + autoconsumo; el reparto de energía añade el vertido, así que su total es consumo + vertido y no un porcentaje de cobertura. Los acumulados de ambos inversores deben cubrir el cierre del día. El balance usa solo días con producción de los dos inversores y medida de red completa.'+vertidoExcluidoTexto(R.from,R.to)+contrastePdfTexto(),M,193,ancho,6);
 
     // Una página separada evita confundir el reparto de energía por periodo
     // con el ahorro económico de la factura indexada.
@@ -2027,7 +2049,7 @@ async function genPDF(){
     const pb=R.analysis.pb,px=M+164;
     pdfTitulo(doc,'Ahorro valorado del histórico',px,49);
     pdfTexto(doc,`Con IE, sin IVA: ${euros(pb.ahAcum)}\nDías valorados: ${pb.dias}\nInversión de referencia: ${euros(pb.inv)}\nRelación ahorro / inversión: ${Number.isFinite(pb.pct)?fd(pb.pct)+' %':'—'}\nSin proyección de plazo de retorno. Excedentes sin valorar.`,px,57,ancho-164,7.5);
-    pdfTitulo(doc,'Producción FV e importación horaria de red',M,126);pdfTitulo(doc,'Autoconsumo y vertido medido (MWh)',M+mitad+6,126);
+    pdfTitulo(doc,'Producción FV, importación y vertido horarios',M,126);pdfTitulo(doc,'Autoconsumo y vertido medido (MWh)',M+mitad+6,126);
     await pdfChart(doc,'c5perfil',M,130,mitad,59);await pdfChart(doc,'c5curt',M+mitad+6,130,mitad,59);
 
     const meses=R.energia.monthly,porPagina=19;

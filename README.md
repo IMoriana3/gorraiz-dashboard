@@ -27,7 +27,19 @@ La página 1 cierra con una línea que reúne las tres validaciones y la cobertu
 
 La fecha es la del **permiso**, no la del día en que se deshabilitó el antivertido (20/10/2026). Entre ambas no hubo vertido, pero si lo hubiera habido habría sido igual de legal, y marcarlo como avería sería falso.
 
-El corte se aplica en `gridDiario()` y solo ahí, que es la serie de la que beben el balance, los recuadros, las gráficas, la tabla por periodo y el anexo: así ninguna vista se queda contando lo que otra descarta.
+Quién decide si el vertido de un día cuenta es `vertidoCuenta(date)`, y nadie más. Lo consultan los dos sitios que tocan vertido: `cortaVertido()`, por donde pasa la serie diaria de la que beben el balance, los recuadros, las gráficas, la tabla por periodo y el anexo; y `ideHorario()`, que construye los perfiles horarios. En los perfiles el vertido excluido cuenta como **cero**, igual que en la serie diaria: el día sigue entrando en la media, pero sin aportar los kWh que el informe descarta. Así ninguna vista cuenta lo que otra tira.
+
+### Dónde aparece el vertido
+
+Donde el vertido es una parte más del mismo reparto va dentro; donde cambiaría el significado de la gráfica, va aparte:
+
+| Gráfica | Cómo entra |
+|---|---|
+| Balance diario | Una serie más, junto a consumo, importación y autoconsumo. |
+| Energía media por día de semana | **Barra aparte**, no apilada: importación + autoconsumo *es* el consumo, y meter el vertido dentro de esa pila la convierte en otra cosa. |
+| Importación y vertido horarios · i-DE | Cada tipo de día (L-V, sábado, domingo) lleva su pareja de vertido en línea discontinua del mismo color. |
+| Reparto de energía (donut) | Tercera porción. Por eso ya no se llama «Cobertura FV»: su total pasa a ser consumo + vertido, y el porcentaje de cobertura sigue estando en su recuadro. |
+| Día laborable: importación, vertido y producción FV | Una curva más sobre el perfil de día laborable. |
 
 Consecuencia que conviene tener presente al leer el informe: esos kWh **salieron de verdad a la red**, así que al no restarlos el autoconsumo y el consumo de esos meses quedan por encima de lo que midió la distribuidora. Por eso el informe dice en una línea cuántos kWh ha dejado fuera en el periodo: quien lo cruce con los ficheros de i-DE tiene que poder explicar la diferencia sin pensar que hay un error.
 
