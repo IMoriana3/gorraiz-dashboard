@@ -1397,13 +1397,28 @@ function kpisProduccion(r){return[
   ['Producción registrada',kwh(r.tP),`${r.dPV} días con ambos inversores`],['Rendimiento',Number.isFinite(r.yld)?fd(r.yld)+' kWh/kWp':'—',`${CFG.kwp} kWp`],
   ['Ahorro de energía',euros(r.tAE),'Base, sin impuestos'],['Ahorro con IE',euros(r.tAF),'Sin IVA'],
   ['Efecto en caja con IVA',euros(r.tCash),'Separado del ahorro sin IVA'],['Días valorados',`${r.energia.coverage.pricedDays} / ${r.energia.coverage.expectedDays}`,'Balance completo y precio disponible']];}
-function kpisBalance(r){return[
-  ['Consumo del edificio',kwh(r.tC),'Importación + autoconsumo'],['Importación de red',kwh(r.tR),'SPC · días completos'],
-  ['Autoconsumo FV',kwh(r.tPV),'Producción − vertido'],['Vertido a red',kwh(r.tExport),'SPC · sin valoración económica'],
+// Desde que i-DE puede alimentar el balance, poner «SPC» a secas era falso en
+// cuanto un solo día saliera de los ficheros de la distribuidora. La etiqueta
+// nombra los contadores que han aportado los días que se están sumando.
+function fuenteRedTexto(energia){
+  const dias=((energia&&energia.daily)||[]).filter(d=>d.complete);
+  if(!dias.length)return 'sin días completos';
+  return [...new Set(dias.map(d=>(d.meta&&d.meta.contador)||'KSTAR'))].sort().join(' + ');
+}
+function kpisBalance(r){const red=fuenteRedTexto(r.energia);return[
+  ['Consumo del edificio',kwh(r.tC),'Importación + autoconsumo'],['Importación de red',kwh(r.tR),red+' · días completos'],
+  ['Autoconsumo FV',kwh(r.tPV),'Producción - vertido'],['Vertido a red',kwh(r.tExport),red+' · sin valoración económica'],
   ['Cobertura FV',Number.isFinite(r.pct)?fd(r.pct*100)+' %':'—',`${r.energia.coverage.completeDays} días con balance`]];}
 function renderP1(){
   $('k1').innerHTML=cajasKpi(kpisProduccion(R));
-  const pd=R.prod.daily,ds=[{label:'Producción registrada (kWh)',data:pd.map(d=>d.total),borderColor:'#2a6b5a',backgroundColor:'rgba(42,107,90,.3)',borderWidth:1.5,fill:true,tension:.3,pointRadius:pd.length>20?0:3,yAxisID:'y',spanGaps:false}];
+  // La serie del balance recorre TODOS los días del periodo, con null donde
+  // falta el dato; la de producción solo trae los días que existen. Con esta
+  // última, el eje saltaba del 24/09 al 02/10 y la línea los unía como si
+  // fueran consecutivos: el informe escondía el hueco en lugar de enseñarlo.
+  const pd=(R.energia&&R.energia.daily&&R.energia.daily.length)
+    ?R.energia.daily.map(d=>({date:d.date,total:d.generatedKWh}))
+    :R.prod.daily;
+  const ds=[{label:'Producción registrada (kWh)',data:pd.map(d=>d.total),borderColor:'#2a6b5a',backgroundColor:'rgba(42,107,90,.3)',borderWidth:1.5,fill:true,tension:.3,pointRadius:pd.length>20?0:3,yAxisID:'y',spanGaps:false}];
   const sc={y:{beginAtZero:true,position:'left',title:{display:true,text:'kWh/día'}}};
   if(METEO){const gm={};METEO.forEach(m=>gm[m.date]=m.ghi);const ghi=pd.map(d=>Number.isFinite(gm[d.date])?gm[d.date]:null);
     if(ghi.some(Number.isFinite)){ds.push({label:'GHI (kWh/m²)',data:ghi,type:'line',borderColor:'#d4a039',borderDash:[5,3],borderWidth:1.5,fill:false,pointRadius:0,yAxisID:'y1'});
@@ -1508,9 +1523,15 @@ document.querySelectorAll('.ptab').forEach(b=>{b.onclick=()=>{
 }});
 
 // ═══ PDF: MISMO MODELO Y COBERTURA QUE LAS VISTAS ═══
+// jsPDF escribe en WinAnsi: lo que no está en esa tabla sale como basura.
+// «Producción − vertido» se imprimía «Producción " vertido».
+function pdfSano(t){
+  return String(t).replace(/[\u2212\u2013\u2014]/g,'-').replace(/\u2192/g,'a')
+    .replace(/\u2194/g,'<->').replace(/\u2026/g,'...').replace(/[\u00ab\u00bb]/g,'"');
+}
 function pdfTexto(doc,text,x,y,w,size=7){
   doc.setFontSize(size);doc.setFont(undefined,'normal');doc.setTextColor(65);
-  const limpio=String(text).replace(/→/g,'a');
+  const limpio=pdfSano(text);
   const lines=doc.splitTextToSize(limpio,w);doc.text(lines,x,y);return y+lines.length*size*.38;
 }
 function creaPdf(){
@@ -1545,9 +1566,9 @@ async function pdfChart(doc,id,x,y,w,h){
 function pdfKpis(doc,rows,x,y,w){
   const ancho=w/rows.length;
   rows.forEach(([l,v,s],i)=>{const xx=x+i*ancho;doc.setDrawColor(185);doc.setFillColor(255);doc.roundedRect(xx,y,ancho-2,19,1,1,'FD');
-    doc.setTextColor(90);doc.setFontSize(5.8);doc.setFont(undefined,'normal');doc.text(l,xx+ancho/2-1,y+4,{align:'center'});
-    doc.setTextColor(0);doc.setFontSize(10);doc.setFont(undefined,'bold');doc.text(v,xx+ancho/2-1,y+11,{align:'center'});
-    doc.setFont(undefined,'normal');doc.setFontSize(4.8);doc.setTextColor(110);doc.text(s,xx+ancho/2-1,y+16,{align:'center'});
+    doc.setTextColor(90);doc.setFontSize(5.8);doc.setFont(undefined,'normal');doc.text(pdfSano(l),xx+ancho/2-1,y+4,{align:'center'});
+    doc.setTextColor(0);doc.setFontSize(10);doc.setFont(undefined,'bold');doc.text(pdfSano(v),xx+ancho/2-1,y+11,{align:'center'});
+    doc.setFont(undefined,'normal');doc.setFontSize(4.8);doc.setTextColor(110);doc.text(pdfSano(s),xx+ancho/2-1,y+16,{align:'center'});
   });
 }
 function pdfTitulo(doc,t,x,y){doc.setTextColor(35);doc.setFontSize(8);doc.setFont(undefined,'bold');doc.text(t,x,y)}
