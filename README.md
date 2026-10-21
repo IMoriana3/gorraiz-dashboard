@@ -10,10 +10,20 @@ Dashboard de producción, intercambio con la red y valoración económica del Ed
 |---|---|---|
 | Generación de los dos inversores | Solarman | API del Worker o ficheros XLSX |
 | Importación/exportación diaria e histórico del contador | KSTAR SPC01 | Worker independiente en Cloudflare, conectado al dashboard |
+| Importación diaria facturada, para contrastar | i-DE | Ficheros XLSX horarios subidos a mano |
 | Reparto provisional P1-P6 de energía | Acumulados KSTAR | Solo fechas con intervalos compatibles; sin precios horarios |
 | Precios medios por periodo de factura | Configuración privada | Archivo JSON importado en el navegador |
 
-El botón **Traer datos** consulta Solarman y KSTAR por conexiones independientes. i-DE y Datadis permanecen archivados en el código, sin consultas ni curvas en el informe actual. El 19/10/2026 se validó una descarga real de KSTAR: 658,92 kWh importados, 0 kWh exportados, 74 kWh de autoconsumo comunicado y 287 registros del contador.
+El botón **Traer datos** consulta Solarman y KSTAR por conexiones independientes. La **descarga automática** de i-DE y Datadis sigue archivada en el código, sin consultas. El 19/10/2026 se validó una descarga real de KSTAR: 658,92 kWh importados, 0 kWh exportados, 74 kWh de autoconsumo comunicado y 287 registros del contador.
+
+### Contraste i-DE ↔ KSTAR
+
+Los ficheros horarios de i-DE **sí** se suben a mano, pero solo se usan por su **total diario**: la curva horaria no se dibuja como medida de intercambio, porque su reparto por horas no está validado contra el contador. Los dos aparatos miden la misma energía de red, así que sus totales diarios se comparan día a día.
+
+- Un día de i-DE al que le falten horas no se declara completo y no entra en la comparación. Los días del cambio de hora tienen 23 y 25 horas, no 24; se cuentan con el huso peninsular, no con el del navegador.
+- Se avisa cuando la diferencia supera **a la vez** 1 kWh y el 2 %. Exigir ambos umbrales evita la alarma por un día de consumo mínimo, donde cualquier décima es un gran porcentaje, y por uno de mucho consumo, donde unos kWh son ruido de redondeo.
+- En el balance manda i-DE donde haya día completo, por ser la medida que factura; KSTAR cubre lo que la distribuidora todavía no ha publicado. Cada día deja constancia de su origen en `meta.contador`.
+- Si hay discrepancia, se dice en el panel **y en la página 3 del PDF**: quien lee el informe no ve la pantalla.
 
 ## Informes y cálculo
 

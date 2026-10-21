@@ -23,6 +23,7 @@ function dashboard() {
     let PRECIOS=null,PRECIO_FUTURO=false,METEO=null,RAW={A:[],B:[],I:[]};
     function guardaFuentes(){}
     ${section('function fn(x,d=0)', '// ── Parse Excel date ──')}
+    ${section('function fdmy(d)', 'function esc(t)')}
     ${section('// ═══ SPC: FUENTES DIARIAS', '// ═══ PRECIOS PRIVADOS:')}
     ${section('function filt(arr,d,h)', '// ── Meteo ──')}
     ${section('function calculaInforme(desde,hasta){', 'async function generate(){')}
@@ -32,6 +33,7 @@ function dashboard() {
     globalThis.api={
       procProd,procCons,calcKPIs,calcEvol,calcAnalysis,calculaInforme,calcCompPeriod,
       ponFuenteSpc,incorporaSpc,getSpcDaily,getSpcRows,bloquesSpc,fn,kstarCfg,kstarCall,
+      ideDiario,contrasteRed,gridDiario,horasDia,contrasteTexto,contrastePdfTexto,
       setFetch(fn){globalThis.fetch=fn},
       setKstarAccess(url,key){localStorage.setItem(KSTAR_URL_KEY,url);sessionStorage.setItem(KSTAR_SESSION_KEY,key)},
       setRaw(value){RAW=value},
@@ -194,3 +196,127 @@ test('KSTAR rechaza estacion o medidor ajenos, fechas abiertas y respuestas inco
   assert.equal(requests,2);
 });
 
+// ── Contraste i-DE ↔ KSTAR ────────────────────────────────────────────────
+// i-DE y KSTAR miden la misma energía de red por vías distintas. Estas pruebas
+// fijan que se comparan solo días completos y que una diferencia real se avisa.
+const horas = (date, kWh, n = 24) => Array.from({length:n},
+  (_, h) => ({ts:new Date(`${date}T${String(h).padStart(2,'0')}:30:00`), consumo:kWh/n, gen:0, periodo:'P2'}));
+
+test('i-DE se agrega por día y un día al que le faltan horas no se da por completo', () => {
+  const d=dashboard();
+  d.setRaw({A:[],B:[],I:[...horas('2026-10-05',240),...horas('2026-10-06',120,20)]});
+  const dias=d.ideDiario();
+  assert.equal(dias.length,2);
+  close(dias[0].importKWh,240);
+  assert.equal(dias[0].horas,24);assert.equal(dias[0].completo,true);
+  assert.equal(dias[1].horas,20);assert.equal(dias[1].completo,false,'20 horas no cubren el día');
+});
+
+test('el día del cambio de hora de octubre tiene 25 horas y se completa con ellas', () => {
+  const d=dashboard();
+  assert.equal(d.horasDia('2026-10-25'),25);
+  assert.equal(d.horasDia('2026-03-29'),23);
+  assert.equal(d.horasDia('2026-10-20'),24);
+  d.setRaw({A:[],B:[],I:horas('2026-10-25',250,24)});
+  assert.equal(d.ideDiario()[0].completo,false,'24 horas no cubren un día de 25');
+});
+
+test('contraste avisa de la discrepancia real y calla ante el ruido de redondeo', () => {
+  const d=dashboard();
+  d.setGrid([grid('2026-10-05',240,0),grid('2026-10-06',100,0),grid('2026-10-07',1000,0)]);
+  d.setRaw({A:[],B:[],I:[...horas('2026-10-05',240.3),...horas('2026-10-06',120),...horas('2026-10-07',1004)]});
+  const c=d.contrasteRed();
+  assert.equal(c.filas.length,3);
+  assert.equal(c.discrepantes.length,1,'solo el 6 difiere de verdad');
+  assert.equal(c.discrepantes[0].date,'2026-10-06');
+  close(c.discrepantes[0].dif,20);
+  // 0,3 kWh sobre 240 no llega al umbral absoluto; 4 kWh sobre 1.000 no llega
+  // al relativo. Ninguno de los dos se avisa.
+  assert.deepEqual([...c.filas.filter(f=>f.discrepa).map(f=>f.date)],['2026-10-06']);
+});
+
+test('contraste separa los días que solo tiene una de las dos fuentes', () => {
+  const d=dashboard();
+  d.setGrid([grid('2026-10-05',240,0)]);
+  d.setRaw({A:[],B:[],I:[...horas('2026-10-05',240),...horas('2026-10-08',200)]});
+  const c=d.contrasteRed();
+  assert.deepEqual([...c.soloIde],['2026-10-08']);
+  assert.deepEqual([...c.soloSpc],[]);
+  assert.equal(c.filas.length,1);
+});
+
+test('la medida que factura manda en el balance y KSTAR cubre lo que i-DE no trae', () => {
+  const d=dashboard(),dia='2026-10-05',otro='2026-10-06';
+  d.setGrid([grid(dia,240,0),grid(otro,100,0)]);
+  d.setRaw({A:[],B:[],I:horas(dia,260)});
+  const red=d.gridDiario();
+  assert.equal(red.length,2);
+  close(red[0].importKWh,260);
+  assert.equal(red[0].meta.contador,'i-DE');
+  assert.equal(red[1].importKWh,100);
+  assert.equal(red[1].meta.contador,'KSTAR');
+  // meta.fuente no se toca: kstarCall la usa para validar la respuesta.
+  assert.equal(red[1].meta.fuente,'spc');
+});
+
+test('un día incompleto de i-DE no desplaza la medida de KSTAR en el balance', () => {
+  const d=dashboard(),dia='2026-10-05';
+  d.setGrid([grid(dia,240,0)]);
+  d.setRaw({A:[],B:[],I:horas(dia,99,10)});
+  const red=d.gridDiario();
+  assert.equal(red.length,1);
+  assert.equal(red[0].importKWh,240,'manda KSTAR mientras i-DE no cubra el día');
+  assert.equal(red[0].meta.contador,'KSTAR');
+  assert.equal(d.contrasteRed().filas.length,0,'un día incompleto no se contrasta');
+});
+
+test('sin ficheros de i-DE el balance y el contraste se comportan como antes', () => {
+  const d=dashboard(),dia='2026-10-18';
+  d.setGrid([grid(dia)]);
+  const r=d.calcKPIs(production(d,dia),d.procCons([]),{from:dia,to:dia});
+  assert.equal(r.tR,150);assert.equal(r.energia.coverage.completeDays,1);
+  const c=d.contrasteRed();
+  assert.equal(c.filas.length,0);assert.equal(c.discrepantes.length,0);
+});
+
+test('el aviso de discrepancia nombra el día y las dos medidas', () => {
+  const d=dashboard();
+  d.setGrid([grid('2026-10-05',240,0),grid('2026-10-06',100,0)]);
+  d.setRaw({A:[],B:[],I:[...horas('2026-10-05',240),...horas('2026-10-06',120)]});
+  const txt=d.contrasteTexto(d.contrasteRed());
+  assert.match(txt,/2 día\(s\) medidos por los dos, 1 cuadran/);
+  assert.match(txt,/1 con discrepancia/);
+  assert.match(txt,/06\/10\/2026/);
+  assert.match(txt,/i-DE 120,0 \/ KSTAR 100,0 kWh/);
+  assert.match(txt,/\+20,0/);
+  assert.ok(!txt.includes('05/10/2026'),'el día que cuadra no se nombra');
+});
+
+test('sin discrepancias lo dice, y sin ficheros de i-DE no dice nada', () => {
+  const d=dashboard();
+  d.setGrid([grid('2026-10-05',240,0)]);
+  assert.equal(d.contrasteTexto(d.contrasteRed()),'','sin i-DE no se habla de contraste');
+  d.setRaw({A:[],B:[],I:horas('2026-10-05',240)});
+  assert.match(d.contrasteTexto(d.contrasteRed()),/1 día\(s\) medidos por los dos, 1 cuadran\. Sin discrepancias\./);
+});
+
+test('con i-DE pero sin ningún día de KSTAR en común se explica, no se calla', () => {
+  const d=dashboard();
+  d.setGrid([grid('2026-10-09',240,0)]);
+  d.setRaw({A:[],B:[],I:horas('2026-10-05',240)});
+  const txt=d.contrasteTexto(d.contrasteRed());
+  assert.match(txt,/aún no hay ningún día medido por los dos/);
+  assert.match(txt,/1 día\(s\) solo de i-DE/);
+  assert.match(txt,/1 día\(s\) solo de KSTAR/);
+});
+
+test('el PDF avisa del mayor desvío y no dice nada cuando los dos cuadran', () => {
+  const d=dashboard();
+  d.setGrid([grid('2026-10-05',240,0),grid('2026-10-06',100,0),grid('2026-10-07',300,0)]);
+  d.setRaw({A:[],B:[],I:[...horas('2026-10-05',240),...horas('2026-10-06',120),...horas('2026-10-07',340)]});
+  const txt=d.contrastePdfTexto();
+  assert.match(txt,/ATENCIÓN: i-DE y KSTAR no cuadran en 2 día\(s\)/);
+  assert.match(txt,/el mayor desvío es el 07\/10\/2026, 40,0 kWh/,'se nombra el desvío mayor, no el primero');
+  d.setRaw({A:[],B:[],I:[...horas('2026-10-05',240),...horas('2026-10-06',100),...horas('2026-10-07',300)]});
+  assert.equal(d.contrastePdfTexto(),'');
+});

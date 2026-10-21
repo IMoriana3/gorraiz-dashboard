@@ -164,10 +164,10 @@ input[type=file]{display:none}
   <div id="pUpload">
     <div class="uz" id="zA" onclick="$('fA').click()"><h3>📂 Inversor A — Ficheros de producción (.xlsx)</h3><p>Selecciona uno o varios ficheros .xlsx del Inversor A</p><div class="st" id="stA"></div><input type="file" id="fA" accept=".xlsx" multiple></div>
     <div class="uz" id="zB" onclick="$('fB').click()"><h3>📂 Inversor B — Ficheros de producción (.xlsx)</h3><p>Selecciona uno o varios ficheros .xlsx del Inversor B</p><div class="st" id="stB"></div><input type="file" id="fB" accept=".xlsx" multiple></div>
-    <div class="uz" id="zI" style="display:none" onclick="$('fI').click()"><h3>📂 Consumo i-DE (.xlsx)</h3><p>Carga los ficheros de consumo horario de i-DE (hoja "Horarias"). Se unirán sin duplicar los días repetidos.</p><div class="st" id="stI"></div><div class="fl" id="flI"></div><input type="file" id="fI" accept=".xlsx" multiple></div>
+    <div class="uz" id="zI" onclick="$('fI').click()"><h3>📂 Importación de red · i-DE (.xlsx)</h3><p>Ficheros horarios de i-DE (hoja "Horarias"). Se unen sin duplicar los días repetidos. Se usan por su <b>total diario</b>, que se contrasta con el contador KSTAR.</p><div class="st" id="stI"></div><div class="fl" id="flI"></div><input type="file" id="fI" accept=".xlsx" multiple></div>
     <div class="az" id="zAuto">
       <h3>⚡ Descarga automática</h3>
-      <p>Trae producción FV de Solarman e importación/exportación de KSTAR SPC01. Las fuentes anteriores i-DE/Datadis quedan archivadas.</p>
+      <p>Trae producción FV de Solarman e importación/exportación de KSTAR SPC01. La descarga automática de i-DE/Datadis sigue archivada; sus ficheros se suben a mano arriba.</p>
       <div class="row">
         <label>Desde:</label><input type="date" id="aDesde">
         <label>Hasta:</label><input type="date" id="aHasta">
@@ -191,6 +191,7 @@ input[type=file]{display:none}
       <div class="hint" id="spcCobertura"></div>
       <div class="hint" id="spcUltimo"></div>
       <div class="hint" id="spcAviso"></div>
+      <div class="hint" id="spcContraste"></div>
       <div class="st" id="spcAccion" role="status"></div>
     </div>
     <div class="az" id="zPrecios">
@@ -505,7 +506,7 @@ function mergeIBR(){
   RAW.I.sort((a,b)=>a.ts-b.ts);
 
   if(!IBR_FILES.length||!fechas.length){
-    RAW.I=[];$('stI').textContent='';$('flI').innerHTML='';$('zI').classList.remove('loaded');chk();return;
+    RAW.I=[];$('stI').textContent='';$('flI').innerHTML='';$('zI').classList.remove('loaded');chk();pintaSpc();return;
   }
   const solap=Object.keys(vistos).filter(d=>vistos[d].size>1);
   const ini=fechas[0],fin=fechas[fechas.length-1];
@@ -522,7 +523,7 @@ function mergeIBR(){
   log(`i-DE: ${nf} fichero(s), ${RAW.I.length} reg, ${fechas.length} días (${fdmy(ini)} → ${fdmy(fin)})`+
       (solap.length?`, ${solap.length} día(s) solapado(s) unificado(s)`:'')+
       (huecos>0?`, ⚠ ${huecos} día(s) sin datos en el rango`:''));
-  chk();
+  chk();pintaSpc();
 }
 
 function clearIBR(){IBR_FILES=[];RAW.I=[];$('fI').value='';mergeIBR();log('i-DE: ficheros de consumo vaciados')}
@@ -711,6 +712,9 @@ function pintaSpc(){
   if(SPC_FUENTES.some(f=>f.meta.sinHistorico||f.meta.completo===false))avisos.push('Hay días con datos parciales o sin histórico del contador.');
   if(n&&dias.some(d=>!spcNumero(d.importKWh)||!spcNumero(d.exportKWh)))avisos.push('Los valores que faltan no se cuentan como cero.');
   $('spcAviso').textContent=avisos.join(' ');
+  const ctr=contrasteRed();
+  $('spcContraste').textContent=contrasteTexto(ctr);
+  $('spcContraste').className=ctr.discrepantes.length?'hint warn':'hint';
 }
 async function cargaCacheSpc(){
   // El Worker aislado no usa caché de servidor: IndexedDB conserva sus días.
@@ -745,6 +749,120 @@ async function comprobarSpc(){
     $('spcAccion').textContent=`KSTAR: ${fn(n)} lecturas. ${completo?'Día cerrado guardado en el navegador.':'Día parcial, aún no válido para el balance.'}`;
   }catch(e){SPC_PRUEBA={ok:false,error:e.message};$('spcAccion').innerHTML=`<span class="err">No se pudo comprobar SPC: ${esc(e.message)}</span>`}
   finally{SPC_OCUPADO=false;await estadoApi();pintaSpc()}
+}
+
+// ═══ CONTRASTE i-DE ↔ KSTAR ═══
+// Los dos aparatos miden lo mismo: la energía que cruza el contador de red.
+// i-DE es la medida que factura la distribuidora; KSTAR, la del equipo propio.
+// Comparar sus totales de cada día delata un error en cualquiera de las dos.
+// Solo se agrega por día: la curva HORARIA de i-DE se sigue sin usar como
+// medida de intercambio (ver procCons), porque su reparto por horas no está
+// validado contra el contador.
+// Se avisa cuando la diferencia supera a la vez el umbral absoluto y el
+// relativo: exigir los dos evita dar la alarma por un día de consumo mínimo
+// (donde cualquier décima es un gran porcentaje) y por un día de mucho
+// consumo (donde unos pocos kWh son ruido de redondeo).
+const CONTRASTE_ABS=1,CONTRASTE_REL=0.02;
+
+// Un día civil no siempre tiene 24 horas: 23 el del cambio a horario de verano
+// y 25 el de vuelta. Se calcula con el huso peninsular y no con el del
+// navegador, porque el fichero de i-DE viene en hora local de la instalación.
+// Sin esto, un día de 23 horas se daría por incompleto y quedaría fuera.
+// Se mira a las 00:00 UTC y no a mediodía: el cambio de hora ocurre a la 01:00
+// UTC, así que a mediodía el desfase ya es el de DESPUÉS del salto y los dos
+// días del par darían lo mismo. A las 00:00 UTC de un día peninsular son la
+// 01:00 o las 02:00 locales de ese mismo día, siempre antes del salto.
+function desfaseMadrid(date){
+  try{
+    const partes=new Intl.DateTimeFormat('en-US',{timeZone:'Europe/Madrid',timeZoneName:'shortOffset'})
+      .formatToParts(new Date(date+'T00:00:00Z'));
+    const txt=(partes.find(p=>p.type==='timeZoneName')||{}).value||'';
+    const m=txt.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
+    if(!m)return 0;
+    return (m[1]==='-'?-1:1)*(Number(m[2])*60+Number(m[3]||0));
+  }catch(e){return 0}
+}
+function horasDia(date){
+  if(!spcFecha(date))return 24;
+  const h=24-(desfaseMadrid(spcSumaDias(date,1))-desfaseMadrid(date))/60;
+  return h>=22&&h<=26?h:24;
+}
+
+// Totales diarios de los ficheros de i-DE. Un día al que le falten horas no se
+// declara completo: compararlo contra KSTAR daría una discrepancia falsa.
+function ideDiario(){
+  const dias=new Map();
+  RAW.I.forEach(r=>{
+    const date=r&&r.ts?spcFecha(dk(r.ts)):'';
+    if(!date)return;
+    let d=dias.get(date);
+    if(!d){d={date,importKWh:0,exportKWh:0,horas:0};dias.set(date,d)}
+    if(Number.isFinite(r.consumo))d.importKWh+=r.consumo;
+    if(Number.isFinite(r.gen))d.exportKWh+=r.gen;
+    d.horas++;
+  });
+  return [...dias.values()].map(d=>{
+    const esperadas=horasDia(d.date);
+    return{...d,esperadas,completo:d.horas>=esperadas};
+  }).sort((a,b)=>a.date.localeCompare(b.date));
+}
+
+// Días medidos por los dos, con su diferencia. No se compara el vertido: con
+// antivertido es cero en ambos y restar ceros no informa de nada.
+function contrasteRed(){
+  const ide=new Map(ideDiario().filter(d=>d.completo).map(d=>[d.date,d]));
+  const spc=new Map(getSpcDaily().filter(d=>spcNumero(d.importKWh)).map(d=>[d.date,d]));
+  const filas=[...ide.keys()].filter(f=>spc.has(f)).sort().map(date=>{
+    const a=ide.get(date).importKWh,b=spc.get(date).importKWh;
+    const dif=a-b,ref=Math.max(Math.abs(a),Math.abs(b));
+    const rel=ref>0?Math.abs(dif)/ref:0;
+    return{date,ide:a,spc:b,dif,rel,
+      discrepa:Math.abs(dif)>CONTRASTE_ABS&&rel>CONTRASTE_REL};
+  });
+  return{filas,discrepantes:filas.filter(f=>f.discrepa),
+    soloIde:[...ide.keys()].filter(f=>!spc.has(f)),
+    soloSpc:[...spc.keys()].filter(f=>!ide.has(f))};
+}
+
+// La medida que factura manda donde haya día completo de i-DE; KSTAR cubre lo
+// que la distribuidora aún no ha publicado, que es casi siempre el mes en
+// curso. Cada día deja dicho en meta.contador de cuál de los dos sale, sin
+// tocar meta.fuente, que kstarCall usa para validar la respuesta del Worker.
+function gridDiario(){
+  const dias=new Map();
+  getSpcDaily().forEach(d=>dias.set(d.date,{...d,meta:{...d.meta,contador:'KSTAR'}}));
+  ideDiario().forEach(d=>{
+    if(!d.completo)return;
+    dias.set(d.date,{date:d.date,importKWh:d.importKWh,exportKWh:d.exportKWh,
+      meta:{contador:'i-DE',completo:true,units:'kWh',horas:d.horas}});
+  });
+  return [...dias.values()].sort((a,b)=>a.date.localeCompare(b.date));
+}
+
+function contrasteTexto(c){
+  if(!RAW.I.length)return '';
+  if(!c.filas.length)
+    return 'Contraste i-DE ↔ KSTAR: aún no hay ningún día medido por los dos'
+      +(c.soloIde.length?`; ${fn(c.soloIde.length)} día(s) solo de i-DE`:'')
+      +(c.soloSpc.length?`; ${fn(c.soloSpc.length)} día(s) solo de KSTAR`:'')+'.';
+  const cuadran=c.filas.length-c.discrepantes.length;
+  const base=`Contraste i-DE ↔ KSTAR: ${fn(c.filas.length)} día(s) medidos por los dos, ${fn(cuadran)} cuadran.`;
+  if(!c.discrepantes.length)return base+' Sin discrepancias.';
+  const det=c.discrepantes.slice(0,4).map(f=>
+    `${fdmy(f.date)}: i-DE ${fn(f.ide,1)} / KSTAR ${fn(f.spc,1)} kWh (${f.dif>0?'+':'−'}${fn(Math.abs(f.dif),1)}, ${fn(f.rel*100,1)} %)`).join(' · ');
+  return base+` ⚠ ${fn(c.discrepantes.length)} con discrepancia — ${det}`
+    +(c.discrepantes.length>4?' · …':'')
+    +'. Revisa cuál de los dos contadores falla antes de dar el informe por bueno.';
+}
+
+// El informe se imprime con las cifras de uno de los dos contadores. Si no
+// cuadran, tiene que decirlo en la propia hoja: quien la lea no ve el panel.
+function contrastePdfTexto(){
+  const c=contrasteRed();
+  if(!c.discrepantes.length)return '';
+  const peor=c.discrepantes.reduce((m,f)=>!m||Math.abs(f.dif)>Math.abs(m.dif)?f:m,null);
+  return ` ATENCIÓN: i-DE y KSTAR no cuadran en ${fn(c.discrepantes.length)} día(s);`
+    +` el mayor desvío es el ${fdmy(peor.date)}, ${fn(Math.abs(peor.dif),1)} kWh.`;
 }
 
 // ═══ PRECIOS PRIVADOS: SOLO EN ESTE NAVEGADOR ═══
@@ -1162,7 +1280,7 @@ function perfilHoras(rows,campo){
   return a.map(v=>v.length?v.reduce((s,x)=>s+x,0)/v.length:null);
 }
 function calcKPIs(prod,cons,rango={}){
-  const balance=GorraizEnergia.buildDailyBalance(prod.daily,getSpcDaily(),{today:spcHoy('Europe/Madrid'),...rango});
+  const balance=GorraizEnergia.buildDailyBalance(prod.daily,gridDiario(),{today:spcHoy('Europe/Madrid'),...rango});
   const energia=GorraizEnergia.valueBalance(balance,PRECIOS,{allowForwardEstimate:PRECIO_FUTURO});
   const tot=energia.totals,pd=prod.daily,validos=pd.filter(d=>Number.isFinite(d.total));
   const tP=sumaValores(validos.map(d=>d.total)),dPV=validos.length,avg=divide(tP,dPV);
@@ -1457,7 +1575,7 @@ async function genPDF(){
     const w1=ancho*.35-2,w2=ancho*.35-2,w3=ancho*.30-4;
     pdfTitulo(doc,'Media por día de semana',M,135);pdfTitulo(doc,'KSTAR horario · pendiente de validar',M+w1+4,135);pdfTitulo(doc,'Cobertura FV',M+w1+w2+8,135);
     await pdfChart(doc,'c3week',M,139,w1,47);await pdfChart(doc,'c3hourly',M+w1+4,139,w2,47);await pdfChart(doc,'c3donut',M+w1+w2+8,139,w3,47);
-    pdfTexto(doc,'Autoconsumo = FV - vertido. Consumo = importación + autoconsumo. Los acumulados de ambos inversores deben cubrir el cierre del día. No se inventa consumo horario donde faltan intervalos SPC.',M,193,ancho,6);
+    pdfTexto(doc,'Autoconsumo = FV - vertido. Consumo = importación + autoconsumo. Los acumulados de ambos inversores deben cubrir el cierre del día. No se inventa consumo horario donde faltan intervalos SPC.'+contrastePdfTexto(),M,193,ancho,6);
 
     // Una página separada evita confundir el reparto provisional de los
     // acumulados con el ahorro económico de la factura indexada.
