@@ -33,7 +33,7 @@ function dashboard() {
     globalThis.api={
       procProd,procCons,calcKPIs,calcEvol,calcAnalysis,calculaInforme,calcCompPeriod,
       ponFuenteSpc,incorporaSpc,getSpcDaily,getSpcRows,bloquesSpc,fn,kstarCfg,kstarCall,
-      ideDiario,contrasteRed,gridDiario,horasDia,contrasteTexto,contrastePdfTexto,idePeriodos,
+      ideDiario,contrasteRed,gridDiario,horasDia,contrasteTexto,contrastePdfTexto,idePeriodos,idePeriodosNota,
       setFetch(fn){globalThis.fetch=fn},
       setKstarAccess(url,key){localStorage.setItem(KSTAR_URL_KEY,url);localStorage.setItem(KSTAR_CLAVE_KEY,key)},
       setKstarAccessSesion(url,key){localStorage.setItem(KSTAR_URL_KEY,url);sessionStorage.setItem(KSTAR_SESSION_KEY,key)},
@@ -390,4 +390,61 @@ test('el reparto respeta el rango pedido y desaparece sin ficheros de i-DE', () 
   assert.equal(d.idePeriodos('2026-10-20','2026-10-25'),null,'rango sin filas no devuelve reparto');
   d.setRaw({A:[],B:[],I:[]});
   assert.equal(d.idePeriodos('2026-10-01','2026-10-31'),null);
+});
+
+// ── Ahorro por periodo tarifario ──────────────────────────────────────────
+const preciosPeriodo = (from,to,precios,source) => ({version:1,currency:'EUR',
+  method:'invoice-average',label:'FICTICIO QA',periods:[{from,to,importKWh:100,energyEUR:25,
+    ie:.05,vat:.21,source,pricesByPeriod:precios}]});
+
+test('el ahorro por periodo usa el precio de ese periodo y nombra la factura', () => {
+  const d=dashboard(),date='2026-10-05';
+  const muestras=[{ts:new Date(date+'T10:00:00'),dia:40,pot:0,acum:0},
+                  {ts:new Date(date+'T10:50:00'),dia:40,pot:0,acum:40}];
+  d.setRaw({A:muestras,B:muestras,I:horasP(date,[[10,0,0,'P1']])});
+  d.setPricing(preciosPeriodo('2026-10-01','2026-10-31',
+    {P1:.25,P2:.20,P3:.20,P4:.15,P5:.15,P6:.15},'Factura ficticia octubre'));
+  const rep=d.idePeriodos(date,date);
+  // 80 kWh autoconsumidos en P1 a 0,25 €/kWh.
+  close(rep.periodos.P1.autoKWh,80);
+  close(rep.periodos.P1.ahorroEUR,20);
+  close(rep.ahorroEUR,20);
+  close(rep.autoValoradoKWh,80);
+  assert.equal(rep.fuentes.length,1);
+  assert.match(rep.fuentes[0],/Factura ficticia octubre \(2026-10-01 a 2026-10-31\)/);
+});
+
+test('sin precios por periodo el reparto sigue dando kWh, pero el ahorro queda nulo', () => {
+  const d=dashboard(),date='2026-10-05';
+  d.setRaw({A:[{ts:new Date(date+'T10:30:00'),dia:40,pot:1000,acum:0}],
+            B:[{ts:new Date(date+'T10:30:00'),dia:40,pot:1000,acum:0}],
+            I:horasP(date,[[10,1,0,'P1']])});
+  // Una factura con precio medio pero SIN desglose por periodo no vale aquí.
+  d.setPricing(fakePrices,true);
+  const rep=d.idePeriodos(date,date);
+  close(rep.periodos.P1.importKWh,1);
+  assert.equal(rep.ahorroEUR,null,'un cero sería afirmar un ahorro que no se ha calculado');
+  assert.equal(rep.autoValoradoKWh,0);
+  assert.equal(rep.fuentes.length,0);
+  assert.match(d.idePeriodosNota(rep),/Sin precios por periodo cargados/);
+});
+
+test('un rango que cruza dos facturas valora cada día con la suya', () => {
+  const d=dashboard();
+  const muestras=date=>[{ts:new Date(date+'T10:00:00'),dia:50,pot:0,acum:0},
+                        {ts:new Date(date+'T10:50:00'),dia:50,pot:0,acum:50}];
+  d.setRaw({A:[...muestras('2026-09-30'),...muestras('2026-10-01')],
+            B:[...muestras('2026-09-30'),...muestras('2026-10-01')],
+            I:[...horasP('2026-09-30',[[10,0,0,'P1']]),...horasP('2026-10-01',[[10,0,0,'P1']])]});
+  d.setPricing({version:1,currency:'EUR',method:'invoice-average',label:'FICTICIO QA',periods:[
+    {from:'2026-09-01',to:'2026-09-30',importKWh:100,energyEUR:25,ie:.05,vat:.21,
+     source:'Septiembre',pricesByPeriod:{P1:.10,P2:.10,P3:.10,P4:.10,P5:.10,P6:.10}},
+    {from:'2026-10-01',to:'2026-10-31',importKWh:100,energyEUR:25,ie:.05,vat:.21,
+     source:'Octubre',pricesByPeriod:{P1:.30,P2:.30,P3:.30,P4:.30,P5:.30,P6:.30}}]});
+  const rep=d.idePeriodos('2026-09-30','2026-10-01');
+  // 100 kWh a 0,10 el día de septiembre y 100 a 0,30 el de octubre: 40 €, no 2 x 20.
+  close(rep.ahorroEUR,40);
+  assert.equal(rep.fuentes.length,2,'se nombran las dos facturas aplicadas');
+  assert.match(d.idePeriodosNota(rep),/Septiembre/);
+  assert.match(d.idePeriodosNota(rep),/Octubre/);
 });

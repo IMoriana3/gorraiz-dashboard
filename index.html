@@ -889,33 +889,55 @@ function idePeriodos(desde,hasta){
   const prodH={};
   procProd(filt(RAW.A,d0,d1),filt(RAW.B,d0,d1)).hourly
     .forEach(h=>{if(Number.isFinite(h.total))prodH[h.hour]=h.total});
-  const vacio=()=>({importKWh:0,exportKWh:0,autoKWh:0,horas:0,horasConProd:0});
+  const vacio=()=>({importKWh:0,exportKWh:0,autoKWh:0,horas:0,horasConProd:0,
+    ahorroEUR:0,autoValoradoKWh:0});
   const periodos=Object.fromEntries(FRANJAS.map(p=>[p,vacio()]));
-  const dias=new Set();
+  const dias=new Set(),fuentes=new Set();
   filas.forEach(r=>{
     const p=FRANJAS.includes(r.periodo)?r.periodo:'Sin periodo';
-    const c=periodos[p];
+    const c=periodos[p],fecha=dk(r.ts);
     if(Number.isFinite(r.consumo))c.importKWh+=r.consumo;
     const vertido=Number.isFinite(r.gen)?r.gen:0;
     c.exportKWh+=vertido;
     const pv=prodH[hk(r.ts)];
-    if(Number.isFinite(pv)){c.autoKWh+=Math.max(0,pv-vertido);c.horasConProd++}
-    c.horas++;dias.add(dk(r.ts));
+    if(Number.isFinite(pv)){
+      const auto=Math.max(0,pv-vertido);
+      c.autoKWh+=auto;c.horasConProd++;
+      // Se valora con la factura que cubre ESE día: un rango puede abarcar
+      // dos facturas con precios distintos, y promediarlas sería inventar.
+      const fac=PRECIOS?GorraizEnergia.periodAt(PRECIOS,fecha,PRECIO_FUTURO):null;
+      const precio=fac&&fac.pricesByPeriod?fac.pricesByPeriod[p]:null;
+      if(Number.isFinite(precio)){
+        c.ahorroEUR+=auto*precio;c.autoValoradoKWh+=auto;
+        fuentes.add(fac.source+' ('+fac.from+' a '+fac.to+')'+(fac.forwardEstimate?' · extrapolada':''));
+      }
+    }
+    c.horas++;dias.add(fecha);
   });
   const suma=k=>FRANJAS.reduce((t,p)=>t+periodos[p][k],0);
+  const autoValorado=suma('autoValoradoKWh');
   return{periodos,dias:dias.size,
     horas:suma('horas'),horasConProd:suma('horasConProd'),
     importKWh:suma('importKWh'),exportKWh:suma('exportKWh'),autoKWh:suma('autoKWh'),
+    ahorroEUR:autoValorado>0?suma('ahorroEUR'):null,autoValoradoKWh:autoValorado,
+    fuentes:[...fuentes].sort(),
     // 'Sin periodo' solo se enseña si de verdad ha caído algo ahí.
     franjas:FRANJAS.filter(p=>periodos[p].horas>0)};
 }
 function idePeriodosNota(rep){
   const faltan=rep.horas-rep.horasConProd;
+  const sinValorar=rep.autoKWh-rep.autoValoradoKWh;
   return 'Importación y vertido por periodo: medida horaria de i-DE, con el periodo tarifario que asigna la distribuidora. '
     +fn(rep.dias)+' día(s) y '+fn(rep.horas)+' horas en el rango. '
     +'El autoconsumo por periodo se deriva restando el vertido de cada hora a la producción de las muestras del inversor'
     +(faltan>0?', y le faltan '+fn(faltan)+' horas sin producción registrada':'')
-    +'. No se aplican precios: para el ahorro hacen falta los €/kWh de factura.';
+    +'. '
+    // Decir de dónde sale cada precio es lo que separa un ahorro medido de una
+    // cifra sin respaldo: el lector tiene que poder ir a la factura y cotejarla.
+    +(rep.fuentes.length
+      ?'Precios por periodo de: '+rep.fuentes.join(' · ')+'.'
+        +(sinValorar>0.05?' Quedan '+fn(sinValorar,1)+' kWh autoconsumidos sin precio que los cubra.':'')
+      :'Sin precios por periodo cargados: para el ahorro hacen falta los €/kWh de cada periodo de tus facturas.');
 }
 
 // ═══ PRECIOS PRIVADOS: SOLO EN ESTE NAVEGADOR ═══
@@ -1511,14 +1533,20 @@ function renderP3(){
   if(R.idePeriodos){
     const rep=R.idePeriodos;
     let html='<strong>Importación, vertido y autoconsumo por periodo · medida horaria de i-DE</strong>';
-    html+='<table><tr><th>Periodo</th><th>Importación</th><th>Vertido</th><th>Autoconsumo FV</th></tr>';
+    const conEuros=rep.ahorroEUR!==null;
+    html+='<table><tr><th>Periodo</th><th>Importación</th><th>Vertido</th><th>Autoconsumo FV</th>'
+      +(conEuros?'<th>€/kWh</th><th>Ahorro</th>':'')+'</tr>';
     for(const p of rep.franjas){
       const x=rep.periodos[p];
+      const medio=x.autoValoradoKWh>0?x.ahorroEUR/x.autoValoradoKWh:null;
       html+='<tr><td>'+esc(p)+'</td><td>'+fn(x.importKWh,1)+' kWh</td><td>'+fn(x.exportKWh,1)+
-        ' kWh</td><td>'+(x.horasConProd?fn(x.autoKWh,1)+' kWh':'—')+'</td></tr>';
+        ' kWh</td><td>'+(x.horasConProd?fn(x.autoKWh,1)+' kWh':'—')+'</td>'
+        +(conEuros?'<td>'+(Number.isFinite(medio)?fn(medio,4):'—')+'</td><td>'+
+          (x.autoValoradoKWh>0?euros(x.ahorroEUR):'—')+'</td>':'')+'</tr>';
     }
     html+='<tr><td><b>TOTAL</b></td><td><b>'+fn(rep.importKWh,1)+' kWh</b></td><td><b>'+
-      fn(rep.exportKWh,1)+' kWh</b></td><td><b>'+fn(rep.autoKWh,1)+' kWh</b></td></tr>';
+      fn(rep.exportKWh,1)+' kWh</b></td><td><b>'+fn(rep.autoKWh,1)+' kWh</b></td>'
+      +(conEuros?'<td></td><td><b>'+euros(rep.ahorroEUR)+'</b></td>':'')+'</tr>';
     html+='</table><div class="hint">'+esc(idePeriodosNota(rep))+
       (detalle&&detalle.diasCompatibles?' El contador KSTAR cubre '+fn(detalle.diasCompatibles)+
         ' día(s) de este rango y sirve para contrastarlo.':'')+'</div>';
@@ -1678,21 +1706,29 @@ async function genPDF(){
       pdfTexto(doc,'Importación y vertido por periodo tarifario CNMC, medidos por i-DE. El autoconsumo se deriva de las muestras del inversor. No son importes de facturación.',M,37,ancho,8);
       doc.setFillColor(26,60,52);doc.rect(M,46,ancho,8,'F');
       doc.setTextColor(255);doc.setFontSize(8);doc.setFont(undefined,'bold');
-      const col=[M+5,M+60,M+120,M+180];
+      const conEuros=rep.ahorroEUR!==null;
+      const col=conEuros?[M+5,M+42,M+88,M+130,M+180,M+215]:[M+5,M+60,M+120,M+180];
       doc.text('Periodo',col[0],51.5);doc.text('Importación (kWh)',col[1],51.5);
       doc.text('Vertido (kWh)',col[2],51.5);doc.text('Autoconsumo FV (kWh)',col[3],51.5);
+      if(conEuros){doc.text('EUR/kWh',col[4],51.5);doc.text('Ahorro (EUR)',col[5],51.5)}
       let ypos=60;
       for(const p of rep.franjas){
         const d=rep.periodos[p];doc.setFontSize(8.5);doc.setTextColor(30);doc.setFont(undefined,'normal');
         doc.text(p,col[0],ypos);doc.text(fn(d.importKWh,1),col[1],ypos);
         doc.text(fn(d.exportKWh,1),col[2],ypos);
         doc.text(d.horasConProd?fn(d.autoKWh,1):'-',col[3],ypos);
+        if(conEuros){
+          const medio=d.autoValoradoKWh>0?d.ahorroEUR/d.autoValoradoKWh:null;
+          doc.text(Number.isFinite(medio)?fn(medio,4):'-',col[4],ypos);
+          doc.text(d.autoValoradoKWh>0?fn(d.ahorroEUR,2):'-',col[5],ypos);
+        }
         ypos+=9;
       }
       doc.setDrawColor(150);doc.line(M,ypos-5,M+ancho,ypos-5);
       doc.setFont(undefined,'bold');doc.setFontSize(8.5);doc.setTextColor(0);
       doc.text('TOTAL',col[0],ypos+1);doc.text(fn(rep.importKWh,1),col[1],ypos+1);
       doc.text(fn(rep.exportKWh,1),col[2],ypos+1);doc.text(fn(rep.autoKWh,1),col[3],ypos+1);
+      if(conEuros)doc.text(fn(rep.ahorroEUR,2),col[5],ypos+1);
       pdfTexto(doc,idePeriodosNota(rep)+(R.spcPeriodos&&R.spcPeriodos.diasCompatibles>0
         ?' El contador KSTAR cubre '+fn(R.spcPeriodos.diasCompatibles)+' dia(s) de este rango y sirve para contrastarlo.':''),
         M,ypos+12,ancho,7.5);

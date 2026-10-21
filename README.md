@@ -32,7 +32,7 @@ La importación y el vertido por periodo tarifario salen del fichero de i-DE, qu
 
 El reparto de los acumulados KSTAR queda como respaldo para cuando no hay ficheros de i-DE: solo alcanza los días con intervalos compatibles. No se enseñan los dos a la vez, porque serían lo mismo con distinta cobertura.
 
-Ninguno de los dos aplica precios. Para el ahorro en euros hacen falta los €/kWh de factura.
+Con `pricesByPeriod` en la configuración de precios, la tabla añade €/kWh y ahorro por periodo, valorando cada hora con la factura que cubre su día. El informe nombra la factura aplicada y los kWh autoconsumidos que se han quedado sin precio. Sin ese desglose, la tabla sigue dando kWh y el ahorro queda sin calcular, nunca a cero. Ver [configuración y límites económicos](docs/precios.md).
 
 ## Informes y cálculo
 

@@ -195,3 +195,37 @@ test('fechas civiles inválidas y duplicados SPC se rechazan sin alterar el cale
   assert.throws(()=>balance([p],[],{from:'2026-05-03',to:'2026-05-02'}),/Rango/);
   assert.throws(()=>balance([p],[],{today:'2026-06-31'}),/Fecha/);
 });
+
+// ── Precios por periodo tarifario (opcionales) ────────────────────────────
+const conPeriodos = extra => ({...config, periods:[{...config.periods[0], ...extra}]});
+const seis = {P1:.21,P2:.18,P3:.18,P4:.15,P5:.15,P6:.15};
+
+test('los precios por periodo son opcionales, y si se declaran van los seis', () => {
+  assert.equal(validatePricingConfig(config).periods[0].pricesByPeriod,null,
+    'sin declararlos, no se inventa ninguno');
+
+  const ok = validatePricingConfig(conPeriodos({pricesByPeriod:seis}));
+  assert.equal(ok.periods[0].pricesByPeriod.P1,.21);
+  assert.equal(ok.periods[0].pricesByPeriod.P6,.15);
+
+  // Con cinco, el que falta valoraría su energía a cero sin avisar.
+  const cinco = {...seis}; delete cinco.P5;
+  assert.throws(()=>validatePricingConfig(conPeriodos({pricesByPeriod:cinco})),/P5/);
+});
+
+test('un precio por periodo no positivo, desconocido o mal tipado se rechaza', () => {
+  assert.throws(()=>validatePricingConfig(conPeriodos({pricesByPeriod:{...seis,P3:0}})),/P3/);
+  assert.throws(()=>validatePricingConfig(conPeriodos({pricesByPeriod:{...seis,P3:-1}})),/P3/);
+  assert.throws(()=>validatePricingConfig(conPeriodos({pricesByPeriod:{...seis,P7:.1}})),/P7/);
+  assert.throws(()=>validatePricingConfig(conPeriodos({pricesByPeriod:[1,2,3,4,5,6]})),/P1-P6/);
+  assert.throws(()=>validatePricingConfig(conPeriodos({pricesByPeriod:{...seis,P2:'0,18'}})),/P2/);
+});
+
+test('periodAt localiza la factura de cada día y respeta la extrapolación', () => {
+  const {periodAt} = globalThis.GorraizEnergia;
+  const cfg = validatePricingConfig(conPeriodos({pricesByPeriod:seis}));
+  assert.equal(periodAt(cfg,'2026-05-15').pricesByPeriod.P1,.21);
+  assert.equal(periodAt(cfg,'2026-04-30'),null,'antes de la primera factura no hay precio');
+  assert.equal(periodAt(cfg,'2026-06-10'),null,'después de la última, tampoco sin permiso');
+  assert.equal(periodAt(cfg,'2026-06-10',true).forwardEstimate,true);
+});
