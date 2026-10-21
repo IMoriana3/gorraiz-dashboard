@@ -69,7 +69,7 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min
 .spc-head .btn{padding:6px 12px;font-size:11px}
 .spc-head .btn:disabled{opacity:.5;cursor:not-allowed}
 #zSpc .krow{margin:10px 0 6px} #zSpc .kbox{min-width:130px}
-#zSpc .warn{color:var(--orange)} #zSpc .err{color:var(--red)}
+#zSpc .warn,#zPrecios .warn{color:var(--orange)} #zSpc .err,#zPrecios .err{color:var(--red)}
 input[type=file]{display:none}
 .drow{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
 .drow label{font-size:12px;color:var(--dim)}
@@ -199,6 +199,7 @@ input[type=file]{display:none}
       <p>Importa los precios medios mensuales calculados de tus facturas. Se guardan solo en este navegador.</p>
       <div class="row"><button class="btn btn2" onclick="$('fPrecios').click()" style="padding:6px 12px;font-size:11px">Importar precios (.json)</button><button class="btn btn2" onclick="quitaPrecios()" style="padding:6px 12px;font-size:11px">Quitar precios</button><input type="file" id="fPrecios" accept=".json,application/json"></div>
       <div class="st" id="preciosEstado" role="status"></div>
+      <div class="hint" id="preciosContraste"></div>
       <label class="hint" style="display:block;margin-top:8px"><input type="checkbox" id="precioFuturo"> Estimar los días posteriores con el último precio disponible</label>
       <div class="hint">La media mensual puede incluir gestión y otros conceptos del término de energía. Es una estimación del ahorro por autoconsumo, no el precio marginal horario ni el ahorro de toda la factura. El vertido no se valora sin un precio de compensación.</div>
     </div>
@@ -252,11 +253,11 @@ input[type=file]{display:none}
       <div class="cc"><h4>Balance diario — consumo, importación, autoconsumo y vertido</h4><canvas id="c3daily" height="200"></canvas></div>
       <div class="row">
         <div class="cc" style="flex:1.2"><h4>Consumo medio por día de la semana</h4><canvas id="c3week" height="180"></canvas></div>
-        <div class="cc" style="flex:1.2"><h4>Importación horaria KSTAR · pendiente de validar intervalos</h4><canvas id="c3hourly" height="180"></canvas></div>
+        <div class="cc" style="flex:1.2"><h4>Importación horaria de red · medida de i-DE</h4><canvas id="c3hourly" height="180"></canvas></div>
         <div class="cc" style="flex:0 0 240px;max-width:240px"><h4>Cobertura FV</h4><canvas id="c3donut" height="180"></canvas></div>
       </div>
       <div style="font-size:10px;color:var(--muted);margin-top:6px;padding:0 4px">
-        Autoconsumo = producción FV − vertido. Consumo = importación + autoconsumo. El balance usa días cerrados con ambos inversores y datos SPC. Los acumulados de los inversores deben incluir el cierre del día: un Excel recortado puede estar incompleto aunque contenga registros de ambos equipos. No se reconstruye el consumo horario con totales diarios.
+        Autoconsumo = producción FV − vertido. Consumo = importación + autoconsumo. El balance usa días cerrados con ambos inversores y medida de red completa. Con el antivertido operativo el vertido debería ser nulo: el que aparece medido es energía que salió a la red. Los acumulados de los inversores deben incluir el cierre del día: un Excel recortado puede estar incompleto aunque contenga registros de ambos equipos. No se reconstruye el consumo horario con totales diarios.
       </div>
     </div>
 
@@ -358,7 +359,7 @@ Chart.defaults.scale.ticks.font={size:10};Chart.defaults.plugins.title.font={siz
 const LOGO_B64="data:image/jpeg;base64,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";
 $("logo").src=LOGO_B64;
 
-const CFG={kwp:123.84,mod:'Autoconsumo fotovoltaico',modulos:'288 módulos de 430 Wp',inversores:'2 × 50 kW (KSTAR G50KT)',cubierta:'Este-Oeste',prodAnual:141793,inv:80432.64,factor_e:.2};
+const CFG={kwp:123.84,mod:'Autoconsumo fotovoltaico',modulos:'288 módulos de 430 Wp',inversores:'2 × 50 kW (KSTAR G50KT)',cubierta:'a dos aguas, sin orientación este-oeste franca',prodAnual:141793,inv:80432.64,factor_e:.2};
 const PERFIL_SOLAR={1:.045,2:.060,3:.085,4:.095,5:.115,6:.125,7:.130,8:.115,9:.095,10:.070,11:.040,12:.025};
 const TEMP_REF={1:5,2:6.2,3:9,4:10.8,5:14.5,6:18.3,7:20.8,8:20.9,9:17.5,10:13.3,11:8.5,12:5.5};
 const HDD_BASE=15,CDD_BASE=24;
@@ -722,6 +723,9 @@ function pintaSpc(){
   const ctr=contrasteRed();
   $('spcContraste').textContent=contrasteTexto(ctr);
   $('spcContraste').className=ctr.discrepantes.length?'hint warn':'hint';
+  // El contraste con la factura depende de los mismos datos de red, así que se
+  // repinta aquí y no solo al importar precios.
+  if(typeof pintaContrasteFactura==='function')pintaContrasteFactura();
 }
 async function cargaCacheSpc(){
   // El Worker aislado no usa caché de servidor: IndexedDB conserva sus días.
@@ -864,6 +868,15 @@ function contrasteTexto(c){
 
 // El informe se imprime con las cifras de uno de los dos contadores. Si no
 // cuadran, tiene que decirlo en la propia hoja: quien la lea no ve el panel.
+// En el anexo, que es donde se valora, importa decir si los kWh medidos
+// cuadran con los facturados: todos los importes de esa tabla salen de ellos.
+function contrasteFacturaPdfTexto(){
+  const c=contrasteFactura();
+  if(!c||!c.discrepantes.length)return '';
+  const peor=c.discrepantes.reduce((m,f)=>!m||Math.abs(f.dif)>Math.abs(m.dif)?f:m,null);
+  return ' ATENCIÓN: en '+fn(c.discrepantes.length)+' periodo(s) los kWh medidos no cuadran con los facturados;'
+    +' el mayor desvío es '+(peor.source||fdmy(peor.from))+', '+fn(Math.abs(peor.dif),1)+' kWh ('+fn(peor.rel*100,1)+' %).';
+}
 function contrastePdfTexto(){
   const c=contrasteRed();
   if(!c.discrepantes.length)return '';
@@ -950,6 +963,75 @@ function idePeriodosNota(rep){
       :'Sin precios por periodo cargados: para el ahorro hacen falta los €/kWh de cada periodo de tus facturas.');
 }
 
+// ═══ CONTRASTE FACTURA ↔ MEDIDA ═══
+// La factura trae los kWh que la distribuidora ha facturado en cada periodo, y
+// salen del mismo contador que la curva horaria de i-DE. Si no coinciden, o la
+// lectura está mal o faltan días: es el contraste más fuerte del sistema,
+// porque cierra el círculo contra lo que de verdad se paga.
+// Se exige a la vez desvío absoluto y relativo, por lo mismo que en el otro
+// contraste, pero más ajustado: aquí debería cuadrar casi al kWh.
+const FACTURA_ABS=10,FACTURA_REL=0.01;
+function diasEntre(desde,hasta){
+  if(!spcFecha(desde)||!spcFecha(hasta))return 0;
+  return Math.round((Date.parse(hasta+'T00:00:00Z')-Date.parse(desde+'T00:00:00Z'))/864e5)+1;
+}
+function contrasteFactura(){
+  if(!PRECIOS||!PRECIOS.periods||!PRECIOS.periods.length)return null;
+  const red=gridDiario();
+  if(!red.length)return null;
+  const filas=PRECIOS.periods.map(p=>{
+    const dentro=red.filter(d=>d.date>=p.from&&d.date<=p.to&&spcNumero(d.importKWh));
+    const medida=dentro.reduce((t,d)=>t+d.importKWh,0);
+    const esperados=diasEntre(p.from,p.to),cubiertos=dentro.length;
+    const completo=cubiertos>0&&cubiertos>=esperados;
+    const dif=medida-p.importKWh;
+    const rel=p.importKWh>0?Math.abs(dif)/p.importKWh:0;
+    const contadores=[...new Set(dentro.map(d=>(d.meta&&d.meta.contador)||'KSTAR'))].sort();
+    return{from:p.from,to:p.to,source:p.source,facturado:p.importKWh,medida,dif,rel,
+      esperados,cubiertos,completo,contadores,
+      // Un mes a medio cubrir siempre sale corto: eso no es una discrepancia,
+      // es que faltan días, y decir lo contrario sería una alarma falsa.
+      discrepa:completo&&Math.abs(dif)>FACTURA_ABS&&rel>FACTURA_REL};
+  });
+  return{filas,completos:filas.filter(f=>f.completo),
+    discrepantes:filas.filter(f=>f.discrepa),
+    parciales:filas.filter(f=>!f.completo)};
+}
+function contrasteFacturaTexto(c){
+  if(!c)return '';
+  if(!c.completos.length)
+    return 'Contraste con la factura: ningún periodo de factura está cubierto por entero'
+      +(c.parciales.length?' ('+fn(c.parciales.length)+' a medias)':'')+'; no se puede comparar todavía.';
+  const cuadran=c.completos.length-c.discrepantes.length;
+  let t='Contraste con la factura: '+fn(c.completos.length)+' periodo(s) cubiertos por entero, '+fn(cuadran)+' cuadran.';
+  if(c.discrepantes.length){
+    t+=' ⚠ '+c.discrepantes.slice(0,3).map(f=>
+      (f.source||fdmy(f.from))+': facturado '+fn(f.facturado,1)+' kWh, medido '+fn(f.medida,1)
+      +' ('+(f.dif>0?'+':'−')+fn(Math.abs(f.dif),1)+', '+fn(f.rel*100,1)+' %)').join(' · ');
+    t+='. Revisa la lectura de ese mes antes de dar el informe por bueno.';
+  }
+  if(c.parciales.length)t+=' Quedan '+fn(c.parciales.length)+' periodo(s) sin cubrir del todo, que no se comparan.';
+  return t;
+}
+
+// Perfil horario de la importación de red, medido por i-DE. Dos gráficas del
+// informe salían siempre vacías porque esperaban intervalos del contador
+// KSTAR, de los que casi no hay: ocupaban un tercio de página sin decir nada.
+// Esto NO reabre la puerta a presentar la curva de i-DE como medida de KSTAR
+// —procCons sigue devolviendo vacío a propósito—: es un dato distinto, de otro
+// aparato, y se rotula como lo que es.
+function ideHorario(desde,hasta){
+  if(!RAW.I.length)return null;
+  const d0=desde?new Date(desde+'T00:00:00'):null,d1=hasta?new Date(hasta+'T23:59:59'):null;
+  const filas=filt(RAW.I,d0,d1).map(r=>({h:r.ts.getHours(),wd:r.ts.getDay(),
+    red:Number.isFinite(r.consumo)?r.consumo:null}));
+  if(!filas.length)return null;
+  return{LV:perfilHoras(filas.filter(r=>r.wd>=1&&r.wd<=5),'red'),
+    S:perfilHoras(filas.filter(r=>r.wd===6),'red'),
+    D:perfilHoras(filas.filter(r=>r.wd===0),'red'),
+    media:perfilHoras(filas,'red')};
+}
+
 // ═══ PRECIOS PRIVADOS: SOLO EN ESTE NAVEGADOR ═══
 const PRECIOS_KEY='gorraiz_precios_mensuales_v1',PRECIOS_FUTURO_KEY='gorraiz_precios_futuro';
 let PRECIOS=null,PRECIO_FUTURO=false;
@@ -958,6 +1040,14 @@ function pintaPrecios(){
   if(!PRECIOS){$('preciosEstado').textContent='Sin precios cargados. Los importes del informe aparecerán como —.';return}
   const p=PRECIOS.periods;
   $('preciosEstado').textContent=`${PRECIOS.label||'Precios mensuales'} · ${p.length} periodos · ${fdmy(p[0].from)} → ${fdmy(p[p.length-1].to)}${PRECIO_FUTURO?' · estimación futura activada':''}`;
+  pintaContrasteFactura();
+}
+function pintaContrasteFactura(){
+  const caja=$('preciosContraste');
+  if(!caja)return;
+  const c=PRECIOS?contrasteFactura():null;
+  caja.textContent=contrasteFacturaTexto(c);
+  caja.className=c&&c.discrepantes.length?'hint warn':'hint';
 }
 function refrescaValoracion(){
   if(R){R=calculaInforme(R.from,R.to);render();if(COMP.da)genComp()}
@@ -1391,7 +1481,11 @@ function calcKPIs(prod,cons,rango={}){
   daily.filter(d=>d.complete).forEach(d=>semana[(d.wd+6)%7].push(d));
   const weekly=semana.map(d=>({red:d.length?sumaValores(d.map(x=>x.red))/d.length:null,
     pv:d.length?sumaValores(d.map(x=>x.pv))/d.length:null}));
-  const hpCons={LV:perfilHoras(ch.filter(r=>r.wd>=1&&r.wd<=5),'red'),S:perfilHoras(ch.filter(r=>r.wd===6),'red'),D:perfilHoras(ch.filter(r=>r.wd===0),'red')};
+  // El perfil horario de red sale de i-DE si hay ficheros; si no, del legado,
+  // que con KSTAR_ONLY viene vacío y deja la gráfica en blanco.
+  const ih=ideHorario(rango.from,rango.to);
+  const hpCons=ih?{LV:ih.LV,S:ih.S,D:ih.D}
+    :{LV:perfilHoras(ch.filter(r=>r.wd>=1&&r.wd<=5),'red'),S:perfilHoras(ch.filter(r=>r.wd===6),'red'),D:perfilHoras(ch.filter(r=>r.wd===0),'red')};
   const picoD=daily.filter(d=>d.complete).reduce((m,d)=>!m||d.total>m.total?d:m,null)||{total:null,date:'—'};
   return{tP,dPV,avg,best,yld:divide(tP,CFG.kwp),iA:sumaValores(pd.map(d=>d.A)),iB:sumaValores(pd.map(d=>d.B)),
     tAE:tot.energySavingsEUR,tAF:tot.savingsWithIEEUR,tCash:tot.cashSavingsWithVATEUR,tGrid:tot.gridWithIEEUR,
@@ -1412,11 +1506,12 @@ function calcEvol(prodD,energia){
 }
 
 // ── Análisis: perfiles observados y vertido medido ──
-function calcAnalysis(prodH,consH,energia){
+function calcAnalysis(prodH,consH,energia,perfilRed){
   const hm={};prodH.forEach(r=>{if(Number.isFinite(r.total)){if(!hm[r.date])hm[r.date]={};hm[r.date][r.h]=r.total}});
   const heatDates=Object.keys(hm).sort();
   const laborable=d=>{const w=new Date(d+'T12:00:00').getDay();return w>=1&&w<=5};
-  const pv=perfilHoras(prodH.filter(r=>laborable(r.date)),'total'),red=perfilHoras(consH.filter(r=>r.wd>=1&&r.wd<=5),'red');
+  const pv=perfilHoras(prodH.filter(r=>laborable(r.date)),'total');
+  const red=perfilRed||perfilHoras(consH.filter(r=>r.wd>=1&&r.wd<=5),'red');
   const ahorro=energia.totals.savingsWithIEEUR;
   return{heatDates,heatData:hm,hayHeat:heatDates.length>0,
     perfil:pv.map((v,i)=>({pv:v,red:red[i]})),hayPerfil:pv.some(Number.isFinite)||red.some(Number.isFinite),
@@ -1458,7 +1553,7 @@ function calculaInforme(desde,hasta){
   const fechas=[...new Set([].concat(RAW.A,RAW.B,RAW.I).map(r=>dk(r.ts)))].sort();
   const prodAll=procProd(RAW.A,RAW.B),consAll=procCons(RAW.I);
   const historico=calcKPIs(prodAll,consAll,{from:fechas[0],to:fechas[fechas.length-1]});
-  return{...kpis,historico,evol:calcEvol(prodAll.daily,historico.energia),analysis:calcAnalysis(prodAll.hourly,consAll.hourly,historico.energia),meteo:METEO};
+  return{...kpis,historico,evol:calcEvol(prodAll.daily,historico.energia),analysis:calcAnalysis(prodAll.hourly,consAll.hourly,historico.energia,(ideHorario(fechas[0],fechas[fechas.length-1])||{}).LV),meteo:METEO};
 }
 async function generate(){
   log('Procesando...');setStep(2);
@@ -1526,7 +1621,7 @@ function renderP1(){
   $('conclusionText').textContent=`Producción registrada: ${kwh(R.tP)}. Media de los días con datos de ambos inversores: ${fd(R.avg)} kWh/día. `+notaValoracion(R.energia);
   $('meteoBox').innerHTML='';
   if(METEO&&METEO.length){const ghi=sumaValores(METEO.map(m=>m.ghi))/METEO.length;
-    $('meteoBox').innerHTML=`<div class="metbox">Open-Meteo · GHI medio: ${fn(ghi,2)} kWh/m²/día. Referencia de proyecto: ${fn(CFG.prodAnual)} kWh/año.</div>`}
+    $('meteoBox').innerHTML=`<div class="metbox">Open-Meteo · GHI medio: ${fn(ghi,2)} kWh/m²/día. Referencia de proyecto: ${fn(CFG.prodAnual)} kWh/año, de memoria y sin descontar el antivertido.</div>`}
 }
 function renderP2(){
   const hs=Array.from({length:24},(_,i)=>i+'h');
@@ -1540,7 +1635,7 @@ function renderP2(){
   if(!meses.length)h+='<tr><td colspan="7">Sin días disponibles para valorar.</td></tr>';
   h+=`<tr class="tot"><td>TOTAL CUBIERTO</td><td>${R.energia.coverage.pricedDays}/${R.energia.coverage.expectedDays}</td><td>${fn(R.energia.totals.pricedSelfKWh,1)}</td><td>${fn(R.energia.totals.price,5)}</td><td>${fn(R.tAE,2)}</td><td>${fn(R.tAF,2)}</td><td>${fn(R.tCash,2)}</td></tr>`;
   $('tblAhorro').innerHTML=h;$('ahorroNota').textContent=notaValoracion(R.energia)+' * Mes con cobertura parcial.';
-  $('fichaUl').innerHTML=[`Potencia pico: ${CFG.kwp} kWp`,`Generadores: ${CFG.modulos}`,`Inversores: ${CFG.inversores}`,`Cubierta: ${CFG.cubierta}`,CFG.mod,`Producción anual de proyecto: ${fn(CFG.prodAnual)} kWh/año`].map(l=>`<li>${esc(l)}</li>`).join('');
+  $('fichaUl').innerHTML=[`Potencia pico: ${CFG.kwp} kWp`,`Generadores: ${CFG.modulos}`,`Inversores: ${CFG.inversores}`,`Cubierta: ${CFG.cubierta}`,CFG.mod,`Producción anual de proyecto: ${fn(CFG.prodAnual)} kWh/año, de memoria y sin descontar el antivertido`].map(l=>`<li>${esc(l)}</li>`).join('');
 }
 function renderP3(){
   $('k3').innerHTML=cajasKpi(kpisBalance(R));$('balanceCobertura').textContent=textoCobertura(R.energia);
@@ -1631,7 +1726,7 @@ function renderP5(){
   const pb=an.pb;
   $('paybackBox').innerHTML=`<div style="padding:10px;font-size:11px;line-height:1.8"><b>Ahorro valorado con IE, sin IVA</b><div style="font-size:24px;color:var(--accent)">${euros(pb.ahAcum)}</div><div>${pb.dias} días valorados del histórico.</div><div>Inversión de referencia: ${euros(pb.inv)}</div><div>Relación ahorro / inversión: ${Number.isFinite(pb.pct)?fd(pb.pct)+' %':'—'}</div><div class="hint">${esc(textoCobertura(an.energia))} Sin proyección de plazo de retorno ni ingresos por excedentes.</div></div>`;
   CHARTS.c5p=new Chart($('c5perfil'),{type:'line',data:{labels:Array.from({length:24},(_,i)=>i+'h'),datasets:[
-    {label:'Importación horaria KSTAR pendiente de verificar',data:an.perfil.map(p=>p.red),borderColor:'#2a6b5a'},
+    {label:'Importación horaria de red · i-DE (L-V)',data:an.perfil.map(p=>p.red),borderColor:'#2a6b5a'},
     {label:'Producción FV · inversores',data:an.perfil.map(p=>p.pv),borderColor:'#d4a039'}].map(d=>({...d,borderWidth:1.5,fill:false,pointRadius:0,tension:.2,spanGaps:false}))},options:{responsive:true,scales:{y:{beginAtZero:true,title:{display:true,text:'Perfil horario medio'}}}}});
   const cm=an.exchangeM;
   CHARTS.c5c=new Chart($('c5curt'),{type:'bar',data:{labels:cm.map(m=>m.month),datasets:[
@@ -1724,7 +1819,7 @@ async function genPDF(){
     pagina('Producción fotovoltaica — Edificio Gorraiz','Periodo elegido: '+per);
     pdfKpis(doc,kpisProduccion(R),M,32,ancho);pdfTexto(doc,notaValoracion(R.energia),M,57,ancho,6.5);
     await pdfChart(doc,'c1daily',M,77,ancho,96);
-    pdfTexto(doc,`Producción registrada: ${kwh(R.tP)}. Media de días con ambos inversores: ${fd(R.avg)} kWh/día. Mejor día registrado: ${R.best.date} (${kwh(R.best.total)}). Referencia de proyecto: ${fn(CFG.prodAnual)} kWh/año.`,M,180,ancho,7);
+    pdfTexto(doc,`Producción registrada: ${kwh(R.tP)}. Media de días con ambos inversores: ${fd(R.avg)} kWh/día. Mejor día registrado: ${R.best.date} (${kwh(R.best.total)}). Referencia de proyecto: ${fn(CFG.prodAnual)} kWh/año, de memoria y sin descontar el antivertido.`,M,180,ancho,7);
 
     pagina('Instalación e inversores','Periodo elegido: '+per);
     pdfTitulo(doc,'Perfil horario de producción · muestras de inversores',M,36);await pdfChart(doc,'c2hourly',M,40,ancho,48);
@@ -1737,9 +1832,9 @@ async function genPDF(){
     pdfKpis(doc,kpisBalance(R),M,32,ancho);pdfTexto(doc,textoCobertura(R.energia),M,57,ancho,7);
     await pdfChart(doc,'c3daily',M,71,ancho,57);
     const w1=ancho*.35-2,w2=ancho*.35-2,w3=ancho*.30-4;
-    pdfTitulo(doc,'Media por día de semana',M,135);pdfTitulo(doc,'KSTAR horario · pendiente de validar',M+w1+4,135);pdfTitulo(doc,'Cobertura FV',M+w1+w2+8,135);
+    pdfTitulo(doc,'Media por día de semana',M,135);pdfTitulo(doc,'Importación horaria de red · i-DE',M+w1+4,135);pdfTitulo(doc,'Cobertura FV',M+w1+w2+8,135);
     await pdfChart(doc,'c3week',M,139,w1,47);await pdfChart(doc,'c3hourly',M+w1+4,139,w2,47);await pdfChart(doc,'c3donut',M+w1+w2+8,139,w3,47);
-    pdfTexto(doc,'Autoconsumo = FV - vertido. Consumo = importación + autoconsumo. Los acumulados de ambos inversores deben cubrir el cierre del día. El balance usa solo días con producción de los dos inversores y medida de red completa.'+contrastePdfTexto(),M,193,ancho,6);
+    pdfTexto(doc,'Autoconsumo = FV - vertido. Consumo = importación + autoconsumo. Los acumulados de ambos inversores deben cubrir el cierre del día. El balance usa solo días con producción de los dos inversores y medida de red completa. Con el antivertido operativo el vertido debería ser nulo: el que aparece medido es energía que salió a la red.'+contrastePdfTexto(),M,193,ancho,6);
 
     // Una página separada evita confundir el reparto de energía por periodo
     // con el ahorro económico de la factura indexada.
@@ -1806,7 +1901,7 @@ async function genPDF(){
     const pb=R.analysis.pb,px=M+164;
     pdfTitulo(doc,'Ahorro valorado del histórico',px,49);
     pdfTexto(doc,`Con IE, sin IVA: ${euros(pb.ahAcum)}\nDías valorados: ${pb.dias}\nInversión de referencia: ${euros(pb.inv)}\nRelación ahorro / inversión: ${Number.isFinite(pb.pct)?fd(pb.pct)+' %':'—'}\nSin proyección de plazo de retorno. Excedentes sin valorar.`,px,57,ancho-164,7.5);
-    pdfTitulo(doc,'Producción FV · importación horaria por validar',M,126);pdfTitulo(doc,'Autoconsumo y vertido medido (MWh)',M+mitad+6,126);
+    pdfTitulo(doc,'Producción FV e importación horaria de red',M,126);pdfTitulo(doc,'Autoconsumo y vertido medido (MWh)',M+mitad+6,126);
     await pdfChart(doc,'c5perfil',M,130,mitad,59);await pdfChart(doc,'c5curt',M+mitad+6,130,mitad,59);
 
     const meses=R.energia.monthly,porPagina=19;
@@ -1820,7 +1915,8 @@ async function genPDF(){
       if(inicio+porPagina>=meses.length){doc.setFont(undefined,'bold');doc.setTextColor(26,60,52);
         const vals=['TOTAL CUBIERTO',`${R.energia.coverage.pricedDays}/${R.energia.coverage.expectedDays}`,fn(R.energia.totals.pricedSelfKWh,1),fn(R.energia.totals.price,5),fn(R.tAE,2),fn(R.tAF,2),fn(R.tCash,2)];
         vals.forEach((v,j)=>doc.text(v,xs[j]+2,y+4));}
-      pdfTexto(doc,'* Cobertura parcial. Los importes incluyen solo días con balance completo y precio. — indica dato no disponible. No incluyen potencia contratada, alquileres, otros fijos ni compensación de excedentes.',M,190,ancho,6);
+      pdfTexto(doc,'* Cobertura parcial. Los importes incluyen solo días con balance completo y precio. — indica dato no disponible. No incluyen potencia contratada, alquileres, otros fijos ni compensación de excedentes.'
+        +contrasteFacturaPdfTexto(),M,186,ancho,6);
     }
     cerrar();doc.save(`Informe_FV_Gorraiz_${R.from.replace(/-/g,'')}_${R.to.replace(/-/g,'')}.pdf`);log('✓ PDF descargado');
   }catch(e){log('⚠ PDF: '+esc(e.message))}

@@ -17,6 +17,15 @@ Dashboard de producción, intercambio con la red y valoración económica del Ed
 
 El botón **Traer datos** consulta Solarman y KSTAR por conexiones independientes. La **descarga automática** de i-DE y Datadis sigue archivada en el código, sin consultas. El 19/10/2026 se validó una descarga real de KSTAR: 658,92 kWh importados, 0 kWh exportados, 74 kWh de autoconsumo comunicado y 287 registros del contador.
 
+### Contraste con la factura
+
+La factura trae los kWh que la distribuidora ha facturado en cada periodo, y salen del **mismo contador** que la curva horaria de i-DE: tienen que cuadrar. Como el `importKWh` de cada periodo ya está en la configuración de precios, el panel compara lo facturado con lo medido y avisa en pantalla y en el anexo del PDF, que es donde se valora.
+
+- Solo se comparan los periodos de factura **cubiertos por entero**. Un mes a medio cubrir siempre sale corto: eso son días que faltan, no un desvío, y tratarlo como tal sería una alarma falsa.
+- Se avisa cuando la diferencia pasa a la vez de 10 kWh y del 1 %. El umbral es más estrecho que el del contraste entre contadores porque aquí debería cuadrar casi al kWh.
+
+Es el tercer eje de validación, y el que cierra el círculo: producción contra sus propios totales diarios, red entre i-DE y KSTAR, y red contra lo que se paga.
+
 ### Contraste i-DE ↔ KSTAR
 
 Los ficheros horarios de i-DE **sí** se suben a mano, pero solo se usan por su **total diario**: la curva horaria no se dibuja como medida de intercambio, porque su reparto por horas no está validado contra el contador. Los dos aparatos miden la misma energía de red, así que sus totales diarios se comparan día a día.
