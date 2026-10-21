@@ -687,3 +687,46 @@ test('el resumen avisa de la discrepancia y del vertido apartado', () => {
   const t2=e.fiabilidadTexto('2026-09-01','2026-09-30',{coverage:{completeDays:1,expectedDays:30,pricedDays:0}});
   assert.match(t2,/vertido no contabilizado 40,0 kWh/);
 });
+
+// ── El vertido entra en las gráficas que lo ignoraban ──────────────────────
+test('el perfil horario de vertido separa tipos de día y no cuenta el anterior al corte', () => {
+  const d=dashboard();
+  // 2026-10-05 es lunes; el 10 sábado y el 11 domingo. El 2026-09-28 también es
+  // lunes, pero cae antes de CFG.vertidoDesde (2026-10-01).
+  d.setRaw({A:[],B:[],I:[
+    ...horasP('2026-10-05',[[13,5,20,'P4']]),
+    ...horasP('2026-10-10',[[13,2,30,'P6']]),
+    ...horasP('2026-10-11',[[13,1,40,'P6']]),
+    ...horasP('2026-09-28',[[13,5,99,'P4']])]});
+  const p=d.ideHorario('2026-09-01','2026-10-31');
+  close(p.vS[13],30);close(p.vD[13],40);
+  // Los dos lunes promedian, pero el de septiembre aporta cero, no 99: (20+0)/2.
+  close(p.vLV[13],10);
+  // La importación de ese mismo día sí cuenta entera: el corte es solo del vertido.
+  close(p.LV[13],5);
+  assert.equal(p.vLV[3],null,'una hora sin dato sigue siendo hueco, no cero');
+});
+
+test('la media por día de semana arrastra el vertido ya recortado del balance', () => {
+  const d=dashboard(),date='2026-10-05';          // lunes → índice 0
+  d.setGrid([grid(date,150,60)]);
+  const r=d.calcKPIs(production(d,date),d.procCons([]),{from:date,to:date});
+  close(r.weekly[0].export,60);
+  close(r.weekly[0].red,150);
+  assert.equal(r.weekly[1].export,null,'un día de la semana sin datos no se rellena con cero');
+  // Y el vertido excluido no reaparece por esta vía.
+  const anterior='2026-09-28';                     // también lunes, antes del corte
+  d.setGrid([grid(anterior,150,60)]);
+  const r2=d.calcKPIs(production(d,anterior),d.procCons([]),{from:anterior,to:anterior});
+  close(r2.weekly[0].export,0);
+});
+
+test('el donut reparte toda la energía, con el vertido como tercera porción', () => {
+  const d=dashboard(),date='2026-10-05';
+  d.setGrid([grid(date,150,60)]);
+  const r=d.calcKPIs(production(d,date),d.procCons([]),{from:date,to:date});
+  // production() da 400 kWh; 60 se vierten, así que 340 son autoconsumo.
+  close(r.tExport,60);close(r.tPV,340);close(r.tR,150);
+  // El total del donut ya no es el consumo: es consumo + vertido.
+  close(r.tPV+r.tR+r.tExport,r.tC+r.tExport);
+});

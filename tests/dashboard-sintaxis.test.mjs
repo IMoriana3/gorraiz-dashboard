@@ -43,3 +43,26 @@ test('las graficas entran en el PDF compuestas sobre blanco, no sobre el negro d
   // El mapa de calor si pinta su propio fondo oscuro y se queda en PNG.
   assert.match(html,/doc\.addImage\(cv\.toDataURL\('image\/png'\),'PNG'/);
 });
+test('las cuatro graficas que ignoraban el vertido ya lo pintan',()=>{
+  // Media por dia de semana: en pila aparte, porque importacion + autoconsumo
+  // ES el consumo y meter el vertido dentro rompe esa lectura.
+  assert.match(html,/\{label:'Vertido',data:R\.weekly\.map\(w=>w\.export\),backgroundColor:'#5c95cf',stack:'v'\}/);
+  assert.match(html,/\{label:'Autoconsumo',data:R\.weekly\.map\(w=>w\.pv\),backgroundColor:'#d4a039',stack:'a'\}/);
+  // Perfil horario: cada serie de red con su pareja de vertido, en discontinuo.
+  for(const s of ['vLV','vS','vD'])
+    assert.match(html,new RegExp("data:R\\.hpCons\\."+s+",borderColor:'#[0-9a-f]{6}',borderDash:\\[4,2\\]"),s);
+  // Donut de tres porciones.
+  assert.match(html,/labels:\['Autoconsumo','Importación','Vertido'\]/);
+  assert.match(html,/data:\[R\.tPV,R\.tR,R\.tExport\]/);
+  // Perfil de dia laborable de la pagina del historico.
+  assert.match(html,/data:an\.perfil\.map\(p=>p\.vert\)/);
+  // El nombre «Cobertura FV» se reserva para el recuadro del porcentaje: el
+  // donut ya no suma el consumo, asi que no puede llamarse igual.
+  assert.match(html,/<h4>Reparto de energía<\/h4>/);
+  assert.equal((html.match(/'Cobertura FV'/g)||[]).length,1,
+    'solo el KPI del porcentaje conserva el nombre');
+  // El corte del vertido tiene un unico juez, compartido por balance y perfil.
+  assert.match(html,/function vertidoCuenta\(date\)/);
+  assert.match(html,/if\(vertidoCuenta\(d\.date\)\)return d;/);
+  assert.match(html,/vertidoCuenta\(spcFecha\(dk\(r\.ts\)\)\)\?Math\.max\(0,r\.gen\):0/);
+});
