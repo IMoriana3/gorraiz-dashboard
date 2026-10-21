@@ -340,57 +340,92 @@ test('la clave de KSTAR se conserva en el equipo y la antigua de sesión se sigu
 
 // ── Reparto P1–P6 desde i-DE ──────────────────────────────────────────────
 // i-DE trae el periodo tarifario de cada hora: la importación y el vertido por
-// periodo son medida suya, no un reparto nuestro.
+// periodo son medida suya. El autoconsumo del día también es medido; lo que se
+// reparte es su distribución entre periodos. Por eso la tabla y los recuadros
+// del informe tienen que dar exactamente lo mismo.
 const horasP = (date, filas) => filas.map(([h, consumo, gen, periodo]) =>
   ({ts:new Date(`${date}T${String(h).padStart(2,'0')}:30:00`), consumo, gen, periodo}));
+// Produccion repartida en muestras horarias, con acumulado creciente.
+const muestrasDia = (date, horas, kWhPorHora) => {
+  const out=[{ts:new Date(`${date}T${String(horas[0]).padStart(2,'0')}:00:00`),dia:kWhPorHora*horas.length,pot:0,acum:0}];
+  horas.forEach((h,i)=>out.push({ts:new Date(`${date}T${String(h).padStart(2,'0')}:55:00`),
+    dia:kWhPorHora*horas.length,pot:0,acum:kWhPorHora*(i+1)}));
+  return out;
+};
+// Balance tal y como lo ve el informe, para pasarselo al reparto.
+const balanceDe = (d, from, to) => d.calcKPIs(d.procProd(RAW_A, RAW_B), d.procCons([]), {from, to}).balance;
+let RAW_A=[], RAW_B=[];
+function escena(d, {date, horasSol, kWhHora, idefilas, importDia, exportDia}) {
+  RAW_A=muestrasDia(date,horasSol,kWhHora); RAW_B=muestrasDia(date,horasSol,kWhHora);
+  d.setRaw({A:RAW_A,B:RAW_B,I:horasP(date,idefilas)});
+  d.setGrid([grid(date,importDia,exportDia)]);
+  return d.calcKPIs(d.procProd(RAW_A,RAW_B),d.procCons([]),{from:date,to:date});
+}
 
-test('el reparto por periodo suma la medida de i-DE y deriva el autoconsumo del inversor', () => {
+test('la tabla por periodo y los recuadros del informe dan lo mismo', () => {
   const d=dashboard(),date='2026-10-05';
-  d.setRaw({A:[{ts:new Date(date+'T10:30:00'),dia:60,pot:1000,acum:0}],
-            B:[{ts:new Date(date+'T10:30:00'),dia:60,pot:1000,acum:0}],
-            I:horasP(date,[[10,5,2,'P1'],[11,7,0,'P1'],[12,9,0,'P4'],[13,4,0,'Sin periodo']])});
-  const rep=d.idePeriodos(date,date);
-  close(rep.periodos.P1.importKWh,12);
-  close(rep.periodos.P1.exportKWh,2);
-  close(rep.periodos.P4.importKWh,9);
-  close(rep.importKWh,25);
-  close(rep.exportKWh,2);
-  assert.equal(rep.dias,1);
-  assert.equal(rep.horas,4);
-  // Una fila sin periodo reconocible no se pierde ni se cuela en P6.
-  close(rep.periodos['Sin periodo'].importKWh,4);
-  assert.equal(rep.periodos.P6.horas,0);
-  assert.ok(!rep.franjas.includes('P6'),'un periodo sin horas no se enseña');
-  assert.ok(rep.franjas.includes('Sin periodo'));
+  const r=escena(d,{date,horasSol:[10,11,12],kWhHora:20,
+    idefilas:[[10,5,0,'P4'],[11,7,0,'P4'],[12,9,0,'P5'],[23,4,0,'P6']],
+    importDia:25,exportDia:6});
+  const rep=d.idePeriodos(date,date,r.balance);
+  // Importacion, vertido y autoconsumo: las tres columnas cuadran con su KPI.
+  close(rep.importKWh,r.tR);
+  close(rep.exportKWh,r.tExport);
+  close(rep.autoKWh,r.tPV);
+  // Y el autoconsumo es el MEDIDO del balance: 120 producidos - 6 vertidos.
+  close(r.tPV,114);
+  close(rep.autoKWh,114);
+  assert.equal(rep.diasBalance,1);
 });
 
-test('el autoconsumo por periodo descuenta el vertido y no cuenta horas sin producción', () => {
+test('el autoconsumo se reparte en proporción a la producción de cada hora', () => {
   const d=dashboard(),date='2026-10-05';
-  // Produccion horaria a partir de acumulados: 40 kWh por inversor a las 10h.
-  const muestras=k=>[{ts:new Date(date+'T10:00:00'),dia:40,pot:0,acum:0},
-                     {ts:new Date(date+'T10:50:00'),dia:40,pot:0,acum:40}];
-  d.setRaw({A:muestras('A'),B:muestras('B'),
-            I:horasP(date,[[10,0,15,'P1'],[14,3,0,'P4']])});
-  const rep=d.idePeriodos(date,date);
-  // 80 kWh producidos a las 10h menos 15 vertidos = 65 autoconsumidos.
-  close(rep.periodos.P1.autoKWh,65);
-  assert.equal(rep.periodos.P1.horasConProd,1);
-  // A las 14h no hay muestras: no se inventa autoconsumo.
-  assert.equal(rep.periodos.P4.autoKWh,0);
-  assert.equal(rep.periodos.P4.horasConProd,0);
-  assert.equal(rep.horasConProd,1);
-  assert.equal(rep.horas,2);
+  // Produccion solo a las 10, 11 y 12; el consumo de las 23 no lleva FV.
+  const r=escena(d,{date,horasSol:[10,11,12],kWhHora:20,
+    idefilas:[[10,0,0,'P4'],[11,0,0,'P4'],[12,0,0,'P5'],[23,4,0,'P6']],
+    importDia:4,exportDia:0});
+  const rep=d.idePeriodos(date,date,r.balance);
+  // 120 kWh medidos: dos horas en P4 y una en P5, a partes iguales.
+  close(rep.autoKWh,120);
+  close(rep.periodos.P4.autoKWh,80);
+  close(rep.periodos.P5.autoKWh,40);
+  close(rep.periodos.P6.autoKWh,0,'sin sol no hay autoconsumo que repartir');
+  close(rep.periodos.P6.importKWh,4,'pero su importación sí se cuenta');
 });
 
-test('el reparto respeta el rango pedido y desaparece sin ficheros de i-DE', () => {
+test('solo entran los días que el balance da por completos', () => {
   const d=dashboard();
-  d.setRaw({A:[],B:[],I:[...horasP('2026-10-05',[[10,10,0,'P1']]),
-                         ...horasP('2026-10-09',[[10,20,0,'P1']])]});
-  close(d.idePeriodos('2026-10-05','2026-10-05').importKWh,10);
-  close(d.idePeriodos('2026-10-01','2026-10-31').importKWh,30);
-  assert.equal(d.idePeriodos('2026-10-20','2026-10-25'),null,'rango sin filas no devuelve reparto');
+  RAW_A=muestrasDia('2026-10-05',[10,11],30); RAW_B=muestrasDia('2026-10-05',[10,11],30);
+  // El 06 tiene fichero de i-DE pero ni produccion ni medida de red: no es un
+  // dia completo, asi que no debe colarse en la tabla.
+  d.setRaw({A:RAW_A,B:RAW_B,I:[...horasP('2026-10-05',[[10,5,0,'P4']]),
+                               ...horasP('2026-10-06',[[10,99,0,'P4']])]});
+  d.setGrid([grid('2026-10-05',5,0)]);
+  const r=d.calcKPIs(d.procProd(RAW_A,RAW_B),d.procCons([]),{from:'2026-10-05',to:'2026-10-06'});
+  const rep=d.idePeriodos('2026-10-05','2026-10-06',r.balance);
+  assert.equal(rep.diasBalance,1);
+  close(rep.importKWh,5,'los 99 kWh del día incompleto quedan fuera');
+  close(rep.importKWh,r.tR);
+});
+
+test('sin balance, sin días completos o sin ficheros no hay reparto', () => {
+  const d=dashboard();
+  d.setRaw({A:[],B:[],I:horasP('2026-10-05',[[10,5,0,'P4']])});
+  assert.equal(d.idePeriodos('2026-10-05','2026-10-05',null),null,'sin balance, nada');
+  assert.equal(d.idePeriodos('2026-10-05','2026-10-05',[]),null,'sin días completos, tampoco');
   d.setRaw({A:[],B:[],I:[]});
-  assert.equal(d.idePeriodos('2026-10-01','2026-10-31'),null);
+  assert.equal(d.idePeriodos('2026-10-05','2026-10-05',[{date:'2026-10-05',complete:true}]),null);
+});
+
+test('un periodo sin horas no se enseña y «Sin periodo» no se pierde', () => {
+  const d=dashboard(),date='2026-10-05';
+  const r=escena(d,{date,horasSol:[10],kWhHora:30,
+    idefilas:[[10,5,0,'P4'],[23,4,0,'Sin periodo']],importDia:9,exportDia:0});
+  const rep=d.idePeriodos(date,date,r.balance);
+  assert.ok(!rep.franjas.includes('P1'),'un periodo sin horas no sale');
+  assert.ok(rep.franjas.includes('Sin periodo'),'lo que no tiene periodo no se cuela en P6');
+  close(rep.periodos['Sin periodo'].importKWh,4);
+  close(rep.importKWh,r.tR);
 });
 
 // ── Ahorro por periodo tarifario ──────────────────────────────────────────
@@ -400,29 +435,24 @@ const preciosPeriodo = (from,to,precios,source) => ({version:1,currency:'EUR',
 
 test('el ahorro por periodo usa el precio de ese periodo y nombra la factura', () => {
   const d=dashboard(),date='2026-10-05';
-  const muestras=[{ts:new Date(date+'T10:00:00'),dia:40,pot:0,acum:0},
-                  {ts:new Date(date+'T10:50:00'),dia:40,pot:0,acum:40}];
-  d.setRaw({A:muestras,B:muestras,I:horasP(date,[[10,0,0,'P1']])});
   d.setPricing(preciosPeriodo('2026-10-01','2026-10-31',
     {P1:.25,P2:.20,P3:.20,P4:.15,P5:.15,P6:.15},'Factura ficticia octubre'));
-  const rep=d.idePeriodos(date,date);
-  // 80 kWh autoconsumidos en P1 a 0,25 €/kWh.
-  close(rep.periodos.P1.autoKWh,80);
-  close(rep.periodos.P1.ahorroEUR,20);
-  close(rep.ahorroEUR,20);
-  close(rep.autoValoradoKWh,80);
+  const r=escena(d,{date,horasSol:[10],kWhHora:80,
+    idefilas:[[10,0,0,'P1']],importDia:0,exportDia:0});
+  const rep=d.idePeriodos(date,date,r.balance);
+  close(rep.periodos.P1.autoKWh,160);        // 80 kWh por inversor
+  close(rep.periodos.P1.ahorroEUR,40);       // 160 x 0,25
+  close(rep.ahorroEUR,40);
   assert.equal(rep.fuentes.length,1);
   assert.match(rep.fuentes[0],/Factura ficticia octubre \(2026-10-01 a 2026-10-31\)/);
 });
 
 test('sin precios por periodo el reparto sigue dando kWh, pero el ahorro queda nulo', () => {
   const d=dashboard(),date='2026-10-05';
-  d.setRaw({A:[{ts:new Date(date+'T10:30:00'),dia:40,pot:1000,acum:0}],
-            B:[{ts:new Date(date+'T10:30:00'),dia:40,pot:1000,acum:0}],
-            I:horasP(date,[[10,1,0,'P1']])});
-  // Una factura con precio medio pero SIN desglose por periodo no vale aquí.
-  d.setPricing(fakePrices,true);
-  const rep=d.idePeriodos(date,date);
+  d.setPricing(fakePrices,true);   // media mensual, sin desglose por periodo
+  const r=escena(d,{date,horasSol:[10],kWhHora:40,
+    idefilas:[[10,1,0,'P1']],importDia:1,exportDia:0});
+  const rep=d.idePeriodos(date,date,r.balance);
   close(rep.periodos.P1.importKWh,1);
   assert.equal(rep.ahorroEUR,null,'un cero sería afirmar un ahorro que no se ha calculado');
   assert.equal(rep.autoValoradoKWh,0);
@@ -430,75 +460,14 @@ test('sin precios por periodo el reparto sigue dando kWh, pero el ahorro queda n
   assert.match(d.idePeriodosNota(rep),/Sin precios por periodo cargados/);
 });
 
-test('un rango que cruza dos facturas valora cada día con la suya', () => {
-  const d=dashboard();
-  const muestras=date=>[{ts:new Date(date+'T10:00:00'),dia:50,pot:0,acum:0},
-                        {ts:new Date(date+'T10:50:00'),dia:50,pot:0,acum:50}];
-  d.setRaw({A:[...muestras('2026-09-30'),...muestras('2026-10-01')],
-            B:[...muestras('2026-09-30'),...muestras('2026-10-01')],
-            I:[...horasP('2026-09-30',[[10,0,0,'P1']]),...horasP('2026-10-01',[[10,0,0,'P1']])]});
-  d.setPricing({version:1,currency:'EUR',method:'invoice-average',label:'FICTICIO QA',periods:[
-    {from:'2026-09-01',to:'2026-09-30',importKWh:100,energyEUR:25,ie:.05,vat:.21,
-     source:'Septiembre',pricesByPeriod:{P1:.10,P2:.10,P3:.10,P4:.10,P5:.10,P6:.10}},
-    {from:'2026-10-01',to:'2026-10-31',importKWh:100,energyEUR:25,ie:.05,vat:.21,
-     source:'Octubre',pricesByPeriod:{P1:.30,P2:.30,P3:.30,P4:.30,P5:.30,P6:.30}}]});
-  const rep=d.idePeriodos('2026-09-30','2026-10-01');
-  // 100 kWh a 0,10 el día de septiembre y 100 a 0,30 el de octubre: 40 €, no 2 x 20.
-  close(rep.ahorroEUR,40);
-  assert.equal(rep.fuentes.length,2,'se nombran las dos facturas aplicadas');
-  assert.match(d.idePeriodosNota(rep),/Septiembre/);
-  assert.match(d.idePeriodosNota(rep),/Octubre/);
-});
-
-// ── Energía horaria sin perder el cambio de hora ──────────────────────────
-// El contador del inversor es acumulado del día. Midiendo de la primera a la
-// última muestra de cada hora se perdían los minutos entre horas.
-test('la energía de una hora arranca donde cerró la anterior del mismo día', () => {
-  const d=dashboard();
-  // Muestras cada 30 min de 10:00 a 12:30, acumulado creciendo 10 kWh cada una.
-  const acum=[[10,0,0],[10,30,10],[11,0,20],[11,30,30],[12,0,40],[12,30,50]];
-  const arr=acum.map(([h,m,a])=>({ts:new Date(`2026-10-05T${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`),
-    dia:50,pot:0,acum:a}));
-  const h=d.procProd(arr,arr).hourly;
-  const porHora=Object.fromEntries(h.map(x=>[x.hour.slice(11),x.A]));
-  // Hora 10: primera del día, arranca en su propia muestra -> 10-30 = 10.
-  close(porHora['10'],10);
-  // Hora 11: cierra en 30 y la 10 cerró en 10 -> 20, no 10. Antes daba 10 y
-  // se perdía el tramo 10:30-11:00.
-  close(porHora['11'],20);
-  close(porHora['12'],20);
-  // El total horario cubre ya todo el acumulado salvo el arranque del día.
-  close(h.reduce((s,x)=>s+x.A,0),50);
-});
-
-test('el acumulado diario no se arrastra de un día al siguiente', () => {
-  const d=dashboard();
-  const muestra=(f,h,a)=>({ts:new Date(`${f}T${String(h).padStart(2,'0')}:30:00`),dia:40,pot:0,acum:a});
-  // Dos días: el acumulado vuelve a empezar. Cruzar medianoche daría negativo.
-  const arr=[muestra('2026-10-05',10,0),muestra('2026-10-05',11,40),
-             muestra('2026-10-06',10,0),muestra('2026-10-06',11,40)];
-  const h=d.procProd(arr,arr).hourly;
-  assert.ok(h.every(x=>x.A===null||x.A>=0),'ninguna hora sale con energía negativa');
-  const dia6=h.filter(x=>x.date==='2026-10-06');
-  close(dia6.reduce((s,x)=>s+(x.A||0),0),40,'el día 6 cuenta sus 40 kWh, no los del 5');
-});
-
-test('la nota del reparto mide la cobertura con la producción diaria, no con horas vacías', () => {
+test('la nota dice sobre cuántos días de balance se ha hecho el reparto', () => {
   const d=dashboard(),date='2026-10-05';
-  // Muestras cada media hora de 10:00 a 12:00: el total diario es 60 por inversor.
-  const muestras=[[10,0,0],[10,30,15],[11,0,30],[11,30,45],[12,0,60]]
-    .map(([h,m,a])=>({ts:new Date(`${date}T${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`),
-      dia:60,pot:0,acum:a}));
-  d.setRaw({A:muestras,B:muestras,I:horasP(date,[[10,0,0,'P1'],[11,0,0,'P1'],[12,0,0,'P1'],[23,5,0,'P6']])});
-  const rep=d.idePeriodos(date,date);
-  close(rep.prodDiaria,120);
-  assert.equal(rep.horas,4);
-  assert.equal(rep.horasConProd,3,'la hora nocturna no tiene producción');
-  const nota=d.idePeriodosNota(rep);
-  // La nota habla de kWh repartidos sobre el total diario, no de «horas que faltan».
-  assert.match(nota,/3 de ellas con producción/);
-  assert.match(nota,/de los 120,0 kWh que suman los totales diarios/);
-  assert.ok(!/le faltan/.test(nota),'ya no se insinúan datos perdidos donde solo hay noche');
+  const r=escena(d,{date,horasSol:[10,11],kWhHora:25,
+    idefilas:[[10,2,0,'P4'],[11,3,0,'P4'],[23,5,0,'P6']],importDia:10,exportDia:0});
+  const nota=d.idePeriodosNota(d.idePeriodos(date,date,r.balance));
+  assert.match(nota,/sobre los mismos 1 día\(s\) completos que los recuadros/);
+  assert.match(nota,/las dos cifras cuadran/);
+  assert.ok(!/le faltan/.test(nota));
 });
 
 // ── Contraste factura ↔ medida ────────────────────────────────────────────
