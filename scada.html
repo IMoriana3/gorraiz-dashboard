@@ -124,6 +124,9 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
 #contrastDailyRows td:nth-child(2),#contrastHourRows td:not(:first-child){text-align:right;font-variant-numeric:tabular-nums}
 #contrastShiftHint{margin:3px 14px;color:var(--dim)}
 @media(max-width:570px){.contrast-toolbar{align-items:stretch}.contrast-toolbar input[type=range]{width:100%}}
+
+#spcDownloadDate,#spcDownloadHasta{min-width:135px;max-width:150px}
+@media(max-width:570px){#spcDownloadDate,#spcDownloadHasta{min-width:0;max-width:160px}}
 </style>
 </head>
 <body><div class="frame">
@@ -163,9 +166,11 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
   <button id="reload" type="button">↻ Leer histórico común</button>
   <button id="pullHistory" type="button" title="Consulta el histórico central completo sin llamar a Solarman ni KSTAR">↓ Recuperar todo</button>
   <button id="pushHistory" type="button" title="Copia el histórico de este navegador en el archivo central sin descargar de proveedores">↑ Compartir copia local</button>
-  <label for="spcDownloadDate" class="muted tiny">Día SPC cerrado</label>
-  <input type="date" id="spcDownloadDate" title="Fecha independiente de los gráficos y de la selección Solarman">
-  <button id="fetchSPC" type="button" title="Consulta solo KSTAR del día cerrado elegido. No consume cuota Solarman.">↓ Descargar SPC</button>
+  <label for="spcDownloadDate" class="muted tiny">SPC desde</label>
+  <input type="date" id="spcDownloadDate" title="Primer día SPC del rango; independiente de Solarman">
+  <label for="spcDownloadHasta" class="muted tiny">Hasta</label>
+  <input type="date" id="spcDownloadHasta" title="Último día SPC cerrado del rango, máximo 14 días naturales inclusive">
+  <button id="fetchSPC" type="button" title="Descarga manual de KSTAR SPC hasta 14 días cerrados, un día por petición, omitiendo jornadas completas. No consume cuota Solarman.">↓ Descargar SPC por rango</button>
   <button id="updatePV" type="button" title="Solo Solarman: máximo 1 lote nuevo por hora para toda la instalación">↓ Descargar Solarman (1/h)</button>
   <label class="check" title="Optativo; una consulta a Solarman cada 60 minutos como máximo en este navegador. No consulta KSTAR."><input id="auto" type="checkbox"> Automático FV / 60 min</label>
   <label class="check" title="Muestra el consumo estimado = FV + importación - exportación solo en intervalos compatibles. Los relojes SPC/Solarman NO están validados y puedes desactivar este cálculo. No modifica datos ni informes."><input id="provisional" type="checkbox" checked> Consumo estimado (relojes SIN validar)</label>
@@ -198,7 +203,7 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
   <a href="./" title="Abre el informe para Comprobar SPC / Traer datos, solamente bajo autorización y cuenta de lectura">SPC: descarga manual ↗</a>
  </div>
  <div id="spcLag" class="spc-lag" role="status" hidden>
-  <p><strong id="spcLagText">SPC pendiente</strong> · <span class="muted tiny">La lectura pendiente se solicita solo al pulsar el botón y requiere una cuenta KSTAR de solo lectura. No se consulta Solarman.</span></p>
+  <p><strong id="spcLagText">SPC pendiente</strong> · <span class="muted tiny">Se puede recuperar por rango con el selector superior (máx. 14 días cerrados). Sin consultas a Solarman.</span></p>
   <button type="button" id="fetchPendingSPC" disabled>↓ Descargar día SPC pendiente</button>
  </div>
  <details class="coverage-detail" id="dailyCoverageDetail">
@@ -374,6 +379,6 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
    <p class="footnote">No hay funciones de mando sobre KSTAR ni confirmación de estado «en línea». Una muestra reciente o histórica no garantiza ausencia de averías.</p>
  </section>
 </main></div>
-<script type="module" src="./scada-app.mjs?v=20261022i"></script>
+<script type="module" src="./scada-app.mjs?v=20261022j"></script>
 </body>
 </html>
