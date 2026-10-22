@@ -3,6 +3,7 @@ import {spcBacklog,dailyCoverage,dailyPvInventory,pvDayDiagnosis} from './scada-
 import {contrastDay,contrastCsv} from './scada-contrast.mjs';
 import {signedExportKW,signedExportSeries} from './scada-grid-sign.mjs';
 import {coherentPowerSnapshot,independentLatestTimes} from './scada-snapshot.mjs';
+import {energySynoptic} from './scada-energy-synoptic.mjs';
 import {pullShared,pushShared,downloadSpcDay,downloadSpcRange} from './scada-sync.mjs';
 import {SCADA_POLL_MS,SCADA_QUOTA_KEY,SCADA_LOCK_NAME,quotaState,reserveAttempt} from './scada-quota.mjs';
 
@@ -383,6 +384,36 @@ function paintCoherentSnapshot(r){
  text('flowExp',kw(match?.signedExportKW));
  return match;
 }
+function paintEnergySynoptic(){
+ // La selección de energía es diaria/semanal, nunca la última muestra de kW.
+ // Días sin cobertura coincidente se excluyen del balance pero no del PV total.
+ const energy=energySynoptic(stored,{date:day,range,today:madridToday()});
+ const matched=energy.matched;
+ const span=energy.from===energy.to?energy.to:energy.from+' → '+energy.to;
+ text('energyScope',span+' · '+energy.comparableDays+'/'+energy.days+
+   ' días comparables');
+ text('energyMatchGen',kwh(matched.generation));
+ text('energyMatchSelf',kwh(matched.self));
+ text('energyMatchLoad',kwh(matched.load));
+ text('energyMatchImport',kwh(matched.import));
+ text('energyMatchExport',kwh(matched.export));
+ text('energySelectedPv',kwh(energy.generatedInPeriod));
+ text('energyPvCoverage','FV A+B reportada '+energy.generatedDays+'/'+energy.days+
+   ' días'+(energy.openDays?' · día en curso: parcial':''));
+ text('energyLifetimePv',kwh(energy.productionAccumulated.kwh));
+ text('energyLifetimeCoverage',energy.productionAccumulated.day?
+   'Contadores A+B al '+energy.productionAccumulated.day+' · alcance no auditado':
+   energy.productionAccumulated.status);
+ text('energyComparable','Balance sobre '+energy.comparableDays+'/'+energy.days+
+   ' día(s) con datos FV y SPC cerrados'+
+   (energy.excludedDayCount?' · '+energy.excludedDayCount+' rechazado(s) por balance incompatible':'')+'.');
+ text('energyExplanation',energy.explanation);
+ text('energySPCReported','Autoconsumo declarado por el portal SPC (referencia separada): '+
+   kwh(matched.spcDeclaredSelf)+
+   ' · no se supone idéntico a FV menos exportación.');
+ return energy;
+}
+
 function repaint(){
  if(!day)return;
  const r=buildSeries(stored,{date:day,range,allowProvisional:$('provisional').checked});
@@ -406,6 +437,7 @@ function repaint(){
  runContrast();
  updateDetailPanels(r,labels);
  const snapshot=paintCoherentSnapshot(r);
+ const energyReport=paintEnergySynoptic();
  text('invA',r.last.a?kw(r.last.a.value)+' · '+hh(r.last.a.key):'Sin lectura');
  text('invB',r.last.b?kw(r.last.b.value)+' · '+hh(r.last.b.key):'Sin lectura');
  setDevice('dotA','invA',r.last.a);setDevice('dotB','invB',r.last.b);

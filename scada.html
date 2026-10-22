@@ -138,6 +138,41 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
 #snapshotIndependent{border-top:1px solid #2c4850;margin-top:7px;padding-top:7px;color:#8fb0be;font-variant-numeric:tabular-nums}
 .snapshot-band[hidden]{display:none!important}
 .balance .meter .amount{font-size:11px}
+
+
+/* Potencia por casilla de 5 minutos y energía acumulada: dos sinópticos
+   físicamente diferenciados, sin mezclar kW instantáneos y kWh diarios. */
+.synoptic-duo{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;margin:0 0 11px;align-items:stretch}
+.synoptic-duo>.panel{min-height:366px}
+.synoptic-duo .flow{min-height:345px}
+.panels{grid-template-columns:minmax(0,2.15fr) minmax(245px,.88fr)}
+.panels .chartpanel{min-height:420px}
+.panels .rightcol{min-width:0}
+.energy-panel-content{display:flex;flex-direction:column;gap:12px;min-height:345px;justify-content:center}
+.energy-flow-nodes{display:grid;grid-template-columns:minmax(0,1fr) 19px minmax(0,1fr) 19px minmax(0,1fr);align-items:center;gap:3px}
+.energy-node{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;text-align:center;min-width:0;background:#1a3037;border:1px solid #3a5158;border-radius:9px;min-height:117px;padding:8px 5px}
+.energy-node-icon{font-size:23px;line-height:1.1;color:#b5e5d5}
+.energy-node-name{font-size:9px;color:#b4c9cc;letter-spacing:.02em}
+.energy-node strong{font:700 clamp(14px,1.6vw,20px)/1.2 'Space Grotesk',sans-serif;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--green)}
+.energy-node.energy-self strong{color:var(--cyan)}
+.energy-node.energy-load strong{color:var(--blue)}
+.energy-node small,.energy-production-totals small,.energy-grid-flows small{font-size:9px;color:var(--dim)}
+.energy-flow-arrow{text-align:center;color:var(--green);font-size:20px}
+.energy-grid-flows{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.energy-grid-flows>div{display:flex;flex-direction:column;background:#142b33;border:1px solid #324b56;border-radius:8px;padding:8px 10px;gap:2px;min-width:0}
+.energy-grid-flows span,.energy-production-totals span{color:#b6cdd1;font-size:10px}
+.energy-grid-flows strong{font:700 18px/1.2 'Space Grotesk',sans-serif}
+.energy-grid-flows .import{color:var(--red)}.energy-grid-flows .export{color:var(--yellow)}
+.energy-production-totals{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;border-top:1px solid #2b464e;padding-top:10px}
+.energy-production-totals>div{display:flex;flex-direction:column;gap:3px;min-width:0}
+.energy-production-totals strong{color:var(--green);font:700 19px/1.2 'Space Grotesk',sans-serif}
+.energy-coherence{margin:0;color:#e7d5ad;font-size:11px;font-weight:700}
+.energy-disclaimer,.energy-spc-self{font-size:10px;color:var(--dim);margin:0;line-height:1.45}
+.energy-spc-self{border-top:1px solid #29424a;padding-top:5px}
+@media(max-width:1310px){.panels{grid-template-columns:minmax(0,1.5fr) minmax(260px,.95fr)}}
+@media(max-width:980px){.synoptic-duo{grid-template-columns:1fr}.synoptic-duo>.panel{min-height:auto}.synoptic-duo .flow{min-height:275px}}
+@media(max-width:880px){.panels{grid-template-columns:1fr}.panels .rightcol{grid-column:auto}.synoptic-duo .flow{min-height:230px}}
+@media(max-width:570px){.energy-flow-nodes{grid-template-columns:minmax(0,1fr) 12px minmax(0,1fr) 12px minmax(0,1fr)}.energy-flow-arrow{font-size:15px}.energy-node{min-height:106px}.energy-node strong{font-size:13px}.energy-node-name{font-size:8px}.energy-grid-flows strong{font-size:16px}.energy-production-totals strong{font-size:16px}}
 </style>
 </head>
 <body><div class="frame">
@@ -249,9 +284,9 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
   <div class="card" style="--c:var(--yellow)"><div class="cap">↗ &nbsp; Exportación red (−)</div><div class="value number" id="powerExp">—</div><div class="sub" id="subExp">kW medio por intervalo</div></div>
  </div>
  <div id="empty">No hay muestras en este navegador para el periodo elegido. Importa o descarga los datos desde el <a href="./">informe Gorraiz</a> y vuelve a esta vista.</div>
- <div class="panels">
+ <div class="synoptic-duo" aria-label="Dos sinópticos independientes: potencia en kW y energía en kWh">
   <section class="panel">
-   <div class="ptop"><h2>Sinóptico de energía</h2><span class="muted tiny" id="synopticTime">Balance de una sola casilla · sin reloj validado</span></div>
+   <div class="ptop"><h2>Sinóptico de potencia · kW</h2><span class="muted tiny" id="synopticTime">Balance de una sola casilla · sin reloj validado</span></div>
    <div class="pbody flow">
     <div class="energy-row">
       <div class="device"><div class="symbol">▦</div><div class="name">CAMPO FV</div><div class="reading" id="flowGen">—</div></div>
@@ -269,7 +304,40 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
     <div class="muted tiny">Misma casilla nominal de cinco minutos para FV y SPC. El reloj físico de SPC no está contrastado; carga calculada, no medida. Flechas conceptuales.</div>
    </div>
   </section>
-  <section class="panel chartpanel">
+
+  <section class="panel energy-synoptic" aria-labelledby="energyHeading">
+   <div class="ptop"><h2 id="energyHeading">Sinóptico de energía generada y balance · kWh</h2>
+    <span class="muted tiny" id="energyScope">Datos del periodo seleccionado</span></div>
+   <div class="pbody energy-panel-content">
+    <div class="energy-flow-nodes" aria-label="Balance energético con periodos comparables">
+     <div class="energy-node energy-pv"><span class="energy-node-icon" aria-hidden="true">▦</span>
+      <span class="energy-node-name">FV GENERADA*</span><strong id="energyMatchGen">—</strong><small>Solarman A+B</small></div>
+     <div class="energy-flow-arrow" aria-hidden="true">→</div>
+     <div class="energy-node energy-self"><span class="energy-node-icon" aria-hidden="true">☀</span>
+      <span class="energy-node-name">FV AUTOCONSUMIDA*</span><strong id="energyMatchSelf">—</strong><small>FV − exportación</small></div>
+     <div class="energy-flow-arrow" aria-hidden="true">→</div>
+     <div class="energy-node energy-load"><span class="energy-node-icon" aria-hidden="true">⌂</span>
+      <span class="energy-node-name">CONSUMO DERIVADO*</span><strong id="energyMatchLoad">—</strong><small>FV + red neta</small></div>
+    </div>
+    <div class="energy-grid-flows" aria-label="Energía intercambiada con la red en días comparables">
+     <div><span>Importación de red (+)</span><strong class="import" id="energyMatchImport">—</strong><small>SPC · kWh</small></div>
+     <div><span>Exportación de red (+ kWh)</span><strong class="export" id="energyMatchExport">—</strong><small>SPC · kWh acumulados</small></div>
+    </div>
+    <div class="energy-production-totals">
+     <div><span>FV total · selección completa</span>
+      <strong id="energySelectedPv">—</strong>
+      <small id="energyPvCoverage">Días con FV identificada: —</small></div>
+     <div><span>FV acumulada histórica A+B</span>
+      <strong id="energyLifetimePv">—</strong>
+      <small id="energyLifetimeCoverage">Últimos contadores acumulados compatibles</small></div>
+    </div>
+    <p class="energy-coherence" id="energyComparable">Sin balance energético de días comparables.</p>
+    <p class="energy-disclaimer" id="energyExplanation">* Autoconsumo y consumo derivados, no mediciones independientes. El balance agrupa solo días completos y fuentes compatibles.</p>
+    <p class="energy-spc-self" id="energySPCReported">Autoconsumo comunicado por SPC (referencia separada): —</p>
+   </div>
+  </section>
+ </div>
+ <div class="panels">  <section class="panel chartpanel">
    <div class="ptop"><h2>Potencia · curvas por tramos de 5 minutos</h2><span class="muted tiny">kW · Madrid · <a href="#cotejo">Cotejar Solarman ↔ SPC ↗</a></span></div>
    <div class="chartbox"><canvas id="mainChart" aria-label="Curvas de generación, consumo, importación y exportación en kilovatios" role="img"></canvas></div>
   </section>
@@ -398,6 +466,6 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
    <p class="footnote">No hay funciones de mando sobre KSTAR ni confirmación de estado «en línea». Una muestra reciente o histórica no garantiza ausencia de averías.</p>
  </section>
 </main></div>
-<script type="module" src="./scada-app.mjs?v=20261022k"></script>
+<script type="module" src="./scada-app.mjs?v=20261022l"></script>
 </body>
 </html>

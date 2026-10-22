@@ -103,3 +103,17 @@ Las cuatro tarjetas superiores de **generación, consumo estimado, importación 
 **Separación física de magnitudes:** las tarjetas superiores muestran solo kW de una misma casilla. El **autoconsumo diario SPC en kWh** se ha trasladado a la sección «Balance de energía del último día seleccionado», fechada expresamente y basada en acumulados, junto a generación, importación, exportación y consumo derivado diarios. Ningún valor diario se confunde con potencia instantánea. El diseño conserva cuatro tarjetas equilibradas en escritorio y dos por fila en resoluciones reducidas.
 
 **Limitación deliberada:** mismo índice en rejilla de 5 min no prueba sincronización real entre relojes Solarman y SPC. FV es una muestra instantánea, mientras la potencia SPC es media del intervalo por diferencias de acumulados. Las tarjetas nunca se etiquetan como telemetría en vivo y no se modifica nada del Worker, de IndexedDB o de las cuotas de las APIs. Los registros originales y las curvas históricas permanecen inalterados.
+
+## Dos sinópticos independientes · potencia y energía
+
+La **vista general del SCADA** dispone de dos sinópticos diferenciados:
+
+**Sinóptico de potencia (kW).** Presenta la última casilla nominal de cinco minutos con ambas medidas FV A+B (potencia instantánea AC de Solarman) y los flujos de importación/exportación del SPC (medias por intervalo derivadas de contadores). Las cuatro tarjetas superiores utilizan exactamente la misma casilla; las últimas lecturas independientes, que pueden proceder de horas distintas, se muestran aparte. El signo de potencia de exportación es negativo. El consumo P_FV + P_import − P_export es una **estimación visual**, no una medida real y no implica relojes sincronizados. Si falta una fuente o el balance es incompatible, no se fabrica una instantánea.
+
+**Sinóptico de energía (kWh).** Utiliza energías diarias de origen: último valor diario de cada inversor Solarman (FV A+B) y resumen del día del SPC para importación y exportación. El consumo y la FV autoconsumida se derivan con E_consumo = E_FV + E_import − E_export y E_autoconsumida = E_FV − E_export; requieren una jornada cerrada con SPC conciliado, ambos inversores con energía diaria identificada y balance físicamente admisible. Los kWh exportados siguen positivos porque son magnitudes de contador.
+
+Si está seleccionada la vista de **7 días**, el balance de energía incluye **solo la intersección de días con FV A+B y SPC cerrado/conciliado**. La producción generada en toda la selección se informa también, pero en un recuadro separado y con su propio número de jornadas cubiertas: nunca se resta exportación de tres días a producción de siete. En el día en curso, la generación FV puede figurar como parcial, pero no forma parte de un balance diario cerrado.
+
+El mismo sinóptico informa el **último total acumulado A+B** si ambos inversores tienen un registro de energía acumulada de la misma jornada a menos de 30 minutos; se muestra como lectura del contador, no como producción histórica inferida a partir de una muestra parcial. Si no hay dos acumulados compatibles, el valor queda vacío y se explica por qué.
+
+La discrepancia entre el campo selfConsumptionKWh comunicado por el portal SPC y la energía FV autoconsumida derivada permanece como dato para contrastar; no se presume que los dos campos tengan el mismo alcance. El balance tampoco acredita sincronismo horario ni la ausencia de almacenamiento. Este cambio no agrega llamadas a Solarman/SPC, ni modifica los datos originales ni el control de cuotas.
