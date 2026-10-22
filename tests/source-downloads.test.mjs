@@ -23,7 +23,9 @@ function context({quota=false,range=false}={}){
  const testCtx=vm.createContext({
   Date,Number,Math,Promise,Error,Array,JSON,
   $:id=>tables[id],spcFecha:date=>/^\d{4}-\d{2}-\d{2}$/.test(date),
-  spcHoy:()=> '2026-10-22',SPC_FUENTES:[],
+  spcHoy:()=> '2026-10-22',
+  spcSumaDias:(d,n)=>new Date(Date.parse(d+'T00:00:00Z')+n*864e5).toISOString().slice(0,10),
+  SPC_FUENTES:[],
   API_ESTADO:{solarman:true,spc:true},
   estadoApi:async()=>{},pintaSpc:()=>{},chk:()=>{},fdmy:s=>s,fn:n=>String(n),
   kstarCfg:()=>({url:'https://qa-spc.workers.dev',key:'x'.repeat(30)}),
@@ -154,6 +156,6 @@ test('Informe: un día SPC con error no detiene los siguientes',async()=>{
  assert.equal(t.spcCalls,2);
  assert.equal(t.centralWrites,2);
  assert.match(t.tables.spcAccion.textContent,/1 errores/);
- assert.match(t.tables.spcAccion.textContent,/20\/10/);
+ assert.match(t.tables.spcAccion.textContent,/2026-10-20/);
  assert.match(t.tables.spcAccion.textContent,/2 días completos nuevos/);
 });
