@@ -121,6 +121,7 @@ try {
   await page.waitForFunction(()=>document.querySelector('#blankState')?.hidden===false);
   assert.match(await page.locator('#blankDetail').innerText(),/No hay muestras válidas/);
   await page.locator('.scada-nav [data-view-link="red"]').click();
+  await page.waitForFunction(()=>document.querySelector('#blankDetail')?.textContent.includes('No hay intervalos KSTAR'));
   assert.match(await page.locator('#blankDetail').innerText(),/No hay intervalos KSTAR/);
   await page.locator('#lastSpc').click();
   await page.waitForFunction(()=>document.querySelector('#day')?.value==='2026-10-19');
