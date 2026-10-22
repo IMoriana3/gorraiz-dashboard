@@ -37,6 +37,8 @@ jobs:
         run: |
           node --check energia.js
           node --check scada-data.mjs
+          node --check scada-units.mjs
+          node --check scada-preview/scada-data.mjs
           node --check scada-app.mjs
           node --check scada-sync.mjs
           node --check worker/shared-history.js
