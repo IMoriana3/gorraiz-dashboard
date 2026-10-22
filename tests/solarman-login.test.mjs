@@ -141,7 +141,7 @@ test('estado señala si se pegó una contraseña que parece SHA256 anterior',asy
 function simulaProveedor(t,{
   personalValido=true,orgValido=true,plantasPersonales=false,
   orgInfo=[{companyId:10865841,companyName:'Amixalan'}],
-  listaPersonalError=false,
+  listaPersonalError=false,potUnit='W',potValue='31500',
 }={}){
   const tokens=[],rutas=[];
   const reply=j=>new Response(JSON.stringify(j),{status:200,headers:{'content-type':'application/json'}});
@@ -171,7 +171,7 @@ function simulaProveedor(t,{
     if(path==='/device/v1.0/historical')
       return reply({success:true,paramDataList:[{
         collectTime:Math.floor(Date.parse('2026-10-19T12:00:00Z')/1000),
-        dataList:[{key:'APo_t1',value:'31500',unit:'W'},
+        dataList:[{key:'APo_t1',value:potValue,unit:potUnit},
           {key:'Et_ge0',value:'21372.1'},{key:'Etdy_ge1',value:'100.1'}]}]});
     throw new Error('Petición SOLARMAN no prevista: '+path);
   });
@@ -300,4 +300,14 @@ test('token personal válido sin permiso para listar plantas cambia a organizaci
   const response=await worker.fetch(prod(),base);
   assert.equal(response.status,200,await response.clone().text());
   assert.deepEqual(api.tokens.map(x=>x.orgId??null),[null,10865841]);
+});
+
+test('Solarman respetará APo_t1 en kW si el proveedor declara esa unidad explícita',async t=>{
+ const api=simulaProveedor(t,{potUnit:'kW',potValue:'34.5'});
+ const response=await worker.fetch(prod(),base);
+ assert.equal(response.status,200,await response.clone().text());
+ const data=await response.json();
+ assert.equal(data.A[0].pot,34.5);
+ assert.equal(data.A[0].potUnit,'kW');
+ assert.ok(api.rutas.includes('/device/v1.0/historical'));
 });
