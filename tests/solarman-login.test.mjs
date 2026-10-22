@@ -171,7 +171,7 @@ function simulaProveedor(t,{
     if(path==='/device/v1.0/historical')
       return reply({success:true,paramDataList:[{
         collectTime:Math.floor(Date.parse('2026-10-19T12:00:00Z')/1000),
-        dataList:[{key:'APo_t1',value:'31.5'},
+        dataList:[{key:'APo_t1',value:'31500',unit:'W'},
           {key:'Et_ge0',value:'21372.1'},{key:'Etdy_ge1',value:'100.1'}]}]});
     throw new Error('Petición SOLARMAN no prevista: '+path);
   });
@@ -196,6 +196,7 @@ test('regresión agosto: token personal sin orgId descubre Amixalan aun existien
   assert.equal(data.A.length,1);
   assert.equal(data.B.length,1);
   assert.equal(data.A[0].pot,31.5);
+  assert.equal(data.A[0].potUnit,'kW');
   assert.equal(data.A[0].acum,21372.1);
 });
 
