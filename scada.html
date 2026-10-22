@@ -112,6 +112,18 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
 .pv-day-audit{border:1px solid #5f6d73;border-left:3px solid #d3af60;border-radius:7px;background:#182a32;padding:10px 13px;margin:0 0 11px;color:#dce7e9;font-size:12px}
 .pv-day-audit strong{display:block;margin-bottom:3px;color:#f0dfb1}
 .pv-day-audit[hidden]{display:none}
+
+/* Cotejo FV / SPC: lectura exploratoria, sin sondeos ni cambios de histórico. */
+.contrast-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 14px 7px;font-size:12px}
+.contrast-toolbar label{color:#d0e6e9}
+.contrast-toolbar input[type=range]{width:min(280px,95%);accent-color:var(--cyan)}
+.contrast-toolbar output{color:#f2dc9f;font-weight:700;font-variant-numeric:tabular-nums}
+.contrast-toolbar button{padding:7px 10px}
+.contrast-table-scroll{max-height:395px;overflow:auto}
+.contrast-table-scroll thead{position:sticky;top:0;background:var(--card);z-index:1}
+#contrastDailyRows td:nth-child(2),#contrastHourRows td:not(:first-child){text-align:right;font-variant-numeric:tabular-nums}
+#contrastShiftHint{margin:3px 14px;color:var(--dim)}
+@media(max-width:570px){.contrast-toolbar{align-items:stretch}.contrast-toolbar input[type=range]{width:100%}}
 </style>
 </head>
 <body><div class="frame">
@@ -122,6 +134,7 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
  <a class="navitem" href="#planta" data-view-link="planta"><span aria-hidden="true">▦</span><span>Planta FV · 123,84 kWp</span></a>
  <a class="navitem" href="#inversores" data-view-link="inversores"><span aria-hidden="true">▤</span><span>2 × KSTAR G50KT</span></a>
  <a class="navitem" href="#red" data-view-link="red"><span aria-hidden="true">⇄</span><span>Red eléctrica</span></a>
+ <a class="navitem" href="#cotejo" data-view-link="cotejo"><span aria-hidden="true">≈</span><span>Contraste FV ↔ SPC</span></a>
  <a class="navitem" href="#historicos" data-view-link="historicos"><span aria-hidden="true">⌁</span><span>Históricos</span></a>
  <a class="navitem" href="#diagnostico" data-view-link="diagnostico"><span aria-hidden="true">⚠</span><span>Diagnóstico</span></a>
  <a class="navitem" href="./"><span aria-hidden="true">↩</span><span>Informes de Gorraiz</span></a>
@@ -133,6 +146,7 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
  <a class="navitem" href="#planta" data-view-link="planta"><span aria-hidden="true">▦</span><span>Planta FV · 123,84 kWp</span></a>
  <a class="navitem" href="#inversores" data-view-link="inversores"><span aria-hidden="true">▤</span><span>2 × KSTAR G50KT</span></a>
  <a class="navitem" href="#red" data-view-link="red"><span aria-hidden="true">⇄</span><span>Red eléctrica</span></a>
+ <a class="navitem" href="#cotejo" data-view-link="cotejo"><span aria-hidden="true">≈</span><span>Contraste FV ↔ SPC</span></a>
  <a class="navitem" href="#historicos" data-view-link="historicos"><span aria-hidden="true">⌁</span><span>Históricos</span></a>
  <a class="navitem" href="#diagnostico" data-view-link="diagnostico"><span aria-hidden="true">⚠</span><span>Diagnóstico</span></a>
  <a class="navitem" href="./"><span aria-hidden="true">↩</span><span>Informes de Gorraiz</span></a>
@@ -294,6 +308,56 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
    </div>
    <section class="panel"><div class="ptop"><h2>Importación y exportación · kW medios</h2><span class="muted tiny" id="redClock">Huso del medidor por verificar</span></div><div class="detail-chart"><canvas id="redDetailChart" aria-label="Curvas de importación y exportación"></canvas></div></section>
  </section>
+ <section id="view-cotejo" class="scada-view" data-view-panel="cotejo" aria-labelledby="head-cotejo" hidden>
+   <div class="view-head">
+    <h2 id="head-cotejo">Contraste · Solarman frente a KSTAR SPC01</h2>
+    <p>Se compara un solo día (el seleccionado arriba). Solarman mide potencia FV AC de A+B; SPC aporta medias de red derivadas de contadores. Una superposición plausible no demuestra que los relojes estén sincronizados.</p>
+   </div>
+   <section class="panel">
+    <div class="ptop"><h2>Superposición FV · importación · exportación</h2><span class="muted tiny">Casillas de 5 minutos · Madrid · sin interpolación</span></div>
+    <div class="contrast-toolbar">
+     <label for="contrastShift">Desfase exploratorio aplicado a SPC: <output id="contrastShiftValue" for="contrastShift">0 min</output></label>
+     <input id="contrastShift" type="range" min="-180" max="180" value="0" step="5">
+     <button id="contrastZero" type="button">Restablecer 0</button>
+     <label class="check"><input id="contrastLoad" type="checkbox"> Mostrar consumo calculado (no validado)</label>
+     <button id="contrastExport" type="button">Exportar CSV de contraste</button>
+    </div>
+    <p id="contrastShiftHint" class="detail-note">Desfase +5 min significa desplazar las medidas SPC 5 minutos hacia adelante respecto de Solarman; no corrige los registros originales.</p>
+    <div class="detail-chart large"><canvas id="contrastChart" aria-label="Comparativa Solarman y SPC a cinco minutos"></canvas></div>
+    <p id="contrastInterpretation" class="detail-note" role="status">Preparando cotejo local, sin consultas a proveedores.</p>
+   </section>
+   <div class="detail-grid stats-detail">
+     <div class="card" style="--c:var(--green)"><div class="cap">Casillas con generación FV</div><div class="value" id="contrastPvPoints">—</div><div class="sub">A+B válidos · de 288 por día</div></div>
+     <div class="card" style="--c:var(--red)"><div class="cap">Casillas con SPC válido</div><div class="value" id="contrastSpcPoints">—</div><div class="sub">Importación y exportación simultáneas</div></div>
+     <div class="card" style="--c:var(--cyan)"><div class="cap">Casillas comparables</div><div class="value" id="contrastMatched">—</div><div class="sub">Coincidencia nominal de marcas · no reloj validado</div></div>
+     <div class="card" style="--c:var(--yellow)"><div class="cap">Consumos negativos calculados</div><div class="value" id="contrastNegative">—</div><div class="sub">Señal de posible desfase / diferencias de medición</div></div>
+     <div class="card" style="--c:var(--green)"><div class="cap">Generación del día</div><div class="value" id="contrastEnergyPv">—</div><div class="sub">Solarman · acumulados diarios A+B</div></div>
+     <div class="card" style="--c:var(--red)"><div class="cap">Consumo diario derivado</div><div class="value" id="contrastEnergyLoad">—</div><div class="sub">FV + importación − exportación · condicional</div></div>
+   </div>
+   <div class="detail-grid">
+     <section class="panel">
+      <div class="ptop"><h2>Balance energético diario · kWh</h2><span class="muted tiny">Totales de origen, no integración de curvas</span></div>
+      <div class="coverage-table-wrap">
+       <table class="coverage-table" aria-label="Totales diarios comparados Solarman y SPC">
+        <thead><tr><th>Concepto</th><th>Energía</th><th>Procedencia</th></tr></thead>
+        <tbody id="contrastDailyRows"></tbody>
+       </table>
+      </div>
+      <p class="detail-note">El campo «autoconsumo» del portal SPC podría no tener exactamente el mismo alcance que FV menos exportación. La diferencia es orientativa, no constituye una prueba de precisión de los relojes.</p>
+     </section>
+     <section class="panel">
+      <div class="ptop"><h2>Resumen por hora</h2><span class="muted tiny">Potencias medias solo de muestras disponibles</span></div>
+      <div class="coverage-table-wrap contrast-table-scroll">
+       <table class="coverage-table" aria-label="Comparación horaria sin rellenar huecos">
+        <thead><tr><th>Hora</th><th>FV (kW)</th><th>Import. (kW)</th><th>Export. (kW)</th><th>Coinciden</th><th>Consumo calculado*</th></tr></thead>
+        <tbody id="contrastHourRows"></tbody>
+       </table>
+      </div>
+      <p class="detail-note">* El consumo de esta tabla solo aparece al activar «Mostrar consumo calculado (no validado)». Los promedios usan únicamente las muestras disponibles; no se asumen 12 intervalos completos por hora.</p>
+     </section>
+   </div>
+   <p class="footnote">El desfase SPC es únicamente una hipótesis visual y NO se guarda. No se modifica la hora de KSTAR, no se certifica el reloj ni se envían datos al proveedor. Para validar formalmente el consumo se necesita comprobar el reloj del medidor y del servidor frente a una referencia externa o una señal de potencia independiente.</p>
+ </section>
  <section id="view-historicos" class="scada-view" data-view-panel="historicos" aria-labelledby="head-historicos" hidden>
    <div class="view-head"><h2 id="head-historicos">Históricos · Comparación de señales</h2><p>El selector de fecha y los botones 24 h / 7 días de la parte superior filtran este gráfico sin consultar la API. Los huecos indican muestras ausentes; no se interpolan.</p></div>
    <section class="panel"><div class="ptop"><h2>Histórico de generación, consumo e intercambio</h2><span class="muted tiny" id="historyDates">—</span></div><div class="detail-chart large"><canvas id="historyChart" aria-label="Histórico de cuatro señales eléctricas"></canvas></div></section>
@@ -310,6 +374,6 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
    <p class="footnote">No hay funciones de mando sobre KSTAR ni confirmación de estado «en línea». Una muestra reciente o histórica no garantiza ausencia de averías.</p>
  </section>
 </main></div>
-<script type="module" src="./scada-app.mjs?v=20261022f"></script>
+<script type="module" src="./scada-app.mjs?v=20261022g"></script>
 </body>
 </html>
