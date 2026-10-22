@@ -1,5 +1,5 @@
 import {availableDays,buildSeries,numeric} from './scada-data.mjs';
-import {spcBacklog,dailyCoverage} from './scada-coverage.mjs';
+import {spcBacklog,dailyCoverage,dailyPvInventory,pvDayDiagnosis} from './scada-coverage.mjs';
 import {pullShared,pushShared,downloadSpcDay} from './scada-sync.mjs';
 import {SCADA_POLL_MS,SCADA_QUOTA_KEY,SCADA_LOCK_NAME,quotaState,reserveAttempt} from './scada-quota.mjs';
 
@@ -205,18 +205,23 @@ function paintCoverageByDay(r){
  for(const day of rows){
   if(day.spc)withSpc++;
   if(day.gapsInside)withGaps++;
+  const raw=dailyPvInventory(stored,day.date);
   const tr=document.createElement('tr');
   const status=day.status==='sin-descarga'?'Sin descargar':
     day.status==='spc-parcial'?'Día parcial':
     day.status==='spc-no-conciliado'?'Datos sin conciliar':'Con intervalos';
   const cells=[
-    day.date,String(day.a),String(day.b),String(day.paired),
-    String(day.gapsInside),String(day.spc),
+    day.date,String(day.a),String(day.b),
+    raw.A.raw+' / '+raw.B.raw,
+    raw.A.unverified+' / '+raw.B.unverified,
+    String(day.paired),String(day.gapsInside),String(day.spc),
     day.reason?status+' · '+day.reason:status];
   for(let i=0;i<cells.length;i++){
     const td=document.createElement('td');
     td.textContent=cells[i];
-    if(i===6&&day.status!=='spc-con-intervalos'||i===4&&day.gapsInside>0)
+    if(i===8&&day.status!=='spc-con-intervalos'||
+       i===4&&(raw.A.unverified+raw.B.unverified)>0||
+       i===6&&day.gapsInside>0)
       td.className='warn';
     tr.appendChild(td);
   }
@@ -224,6 +229,17 @@ function paintCoverageByDay(r){
  }
  text('coverageSummary','Huecos de curvas · '+rows.length+' día(s) · SPC '+withSpc+
    ' día(s) con intervalos · FV '+withGaps+' día(s) con huecos interiores');
+ const diagnosis=pvDayDiagnosis(stored,r,day);
+ const audit=$('pvDayAudit');
+ audit.replaceChildren();
+ audit.hidden=!diagnosis.message;
+ if(diagnosis.message){
+   const heading=document.createElement('strong');
+   heading.textContent='Solarman '+day+' · Diagnóstico sin llamadas API';
+   const note=document.createElement('span');
+   note.textContent=diagnosis.message;
+   audit.append(heading,note);
+ }
 }
 function updateBlankNotice(r){
  const v=location.hash.slice(1)||'general';
