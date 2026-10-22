@@ -747,7 +747,7 @@ export class SolarmanQuota {
             if(!days.has(date))days.set(date,[]);
             days.get(date).push(row);
           }
-          for(const [fecha,rows] of days)items.push({tipo:kind,fecha,rows});
+          for(const [fecha,rows] of days)items.push({tipo:kind,fecha,rows,unidadPotencia:'kW'});
         }
         if(items.length){
           try{
