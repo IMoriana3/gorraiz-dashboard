@@ -223,7 +223,8 @@ try {
   await page.waitForFunction(()=>document.querySelector('#sharedState')?.textContent.includes('Descarga SPC por rango finalizada') &&
     document.querySelector('#sharedState')?.textContent.includes('SPC 2026-10-16'));
   assert.deepEqual(kstarDates,['2026-10-18','2026-10-16','2026-10-17'],
-    'solo se consulta KSTAR de los días pendientes y uno por solicitud');
+    'solo se consulta KSTAR de los días pendientes y uno por solicitud. Estado: '+
+      await page.locator('#sharedState').innerText());
   assert.equal(kstarCalls,3);
   assert.ok(archive.has('S|2026-10-16')&&archive.has('S|2026-10-17'),
     'los días nuevos quedan en la misma base central');
