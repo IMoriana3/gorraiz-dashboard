@@ -22,7 +22,7 @@ const server=createServer((req,res)=>{
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const addr='http://127.0.0.1:'+server.address().port;
 const browser=await chromium.launch({headless:true});
-let requests=0,archiveReads=0,archiveWrites=0;const errors=[],archive=new Map();
+let requests=0,archiveReads=0,archiveWrites=0,kstarCalls=0;const errors=[],archive=new Map();
 try {
   const context=await browser.newContext({viewport:{width:1440,height:900},deviceScaleFactor:1});
   const page=await context.newPage();
@@ -40,6 +40,22 @@ try {
       meta:{fuente:'ficticia QA'}
     };
     return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(fake)});
+  });
+  await page.route('https://qa-kstar-scada.workers.dev/spc/intercambio',route=>{
+    kstarCalls++;
+    const data=route.request().postDataJSON();
+    const date=data.desde;
+    assert.equal(date,'2026-10-18','se consulta la fecha SPC independiente');
+    assert.equal(data.desde,data.hasta,'KSTAR solo consulta un día');
+    const body={rows:[
+       {saveTime:date+' 10:00:00',positiveActiveElec:100,reverseActiveElec:0},
+       {saveTime:date+' 10:05:00',positiveActiveElec:101,reverseActiveElec:0}],
+      daily:[{date,importKWh:1,exportKWh:0,selfConsumptionKWh:15}],
+      meta:{fuente:'spc',stationId:'2026032317114373',
+        meterId:'210261430F3060020000661',desde:date,hasta:date,
+        completo:true,actualizado:'2026-10-22T10:00:00Z',fetchedAt:'2026-10-22T10:00:00Z'}
+    };
+    return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(body)});
   });
   await page.route(/https:\/\/qa-scada-worker\.example\.invalid\/historico\/.*/,async route=>{
     const path=new URL(route.request().url()).pathname;
@@ -164,6 +180,33 @@ try {
     document.querySelector('#coverageSPC')?.textContent.includes('2026-10-19'));
   assert.ok(archiveReads>=2,'recupera del archivo central después de vaciar caché del equipo');
   assert.equal(requests,0,'recuperar histórico NO consulta Solarman');
+  // Conectar y usar KSTAR directamente desde SCADA, sin abrir el Informe.
+  assert.equal(await page.locator('#saveCentral').count(),1);
+  assert.equal(await page.locator('#saveSpc').count(),1);
+  await page.locator('#connections summary').click();
+  const originalArchiveReads=archiveReads;
+  await page.locator('#scadaSpcUrl').fill('https://qa-kstar-scada.workers.dev');
+  await page.locator('#scadaSpcKey').fill('CLAVE_FICTICIA_SPC_DE_PRUEBA_2026');
+  await page.locator('#saveSpc').click();
+  assert.equal(requests,0,'guardar configuración SPC no consulta Solarman');
+  assert.equal(kstarCalls,0,'guardar configuración SPC no consulta KSTAR');
+  assert.equal(archiveReads,originalArchiveReads,'guardar configuración no lee servidor');
+  await page.locator('#spcDownloadDate').fill('2026-10-18');
+  await page.locator('#spcDownloadDate').dispatchEvent('change');
+  await page.locator('#fetchSPC').click();
+  await page.waitForFunction(()=>document.querySelector('#sharedState')?.textContent.includes('SPC 2026-10-18'));
+  assert.equal(kstarCalls,1,'un clic SPC provoca una sola consulta KSTAR');
+  assert.equal(requests,0,'consultar SPC no consume Solarman');
+  assert.equal(archive.get('S|2026-10-18')?.payload?.meta?.completo,true,
+    'la descarga SPC se guardó en el archivo central');
+  // Repetir un día SPC completo no recontacta al proveedor.
+  await page.locator('#spcDownloadDate').fill('2026-10-18');
+  await page.locator('#fetchSPC').click();
+  assert.equal(kstarCalls,1,'el SPC completo no se vuelve a consultar');
+  await page.locator('#day').fill('2026-10-19');
+  await page.locator('#day').dispatchEvent('change');
+  assert.equal(requests,0);
+
   assert.match(await page.locator('#coverageA').innerText(),/2026-10-19/);
   assert.match(await page.locator('#coverageB').innerText(),/2026-10-19/);
   assert.match(await page.locator('#coverageSPC').innerText(),/2026-10-19/);

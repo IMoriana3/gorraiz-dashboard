@@ -191,21 +191,41 @@ export async function pushShared(){
 
 export async function downloadSpcDay(date){
  if(busy)return false;
- if(!date||date>=today()){notify('SPC solo admite un día cerrado anterior a hoy.');return false}
+ if(!date||date>=today()){notify('SPC solo admite un día cerrado anterior a hoy (Madrid).');return false}
+ // Si el día SPC ya está completo en IndexedDB no hacer otra solicitud HTTP.
+ const local=await readLocal().catch(()=>[]);
+ if(local.some(x=>x.tipo==='S'&&x.fecha===date&&x.payload?.meta?.completo===true)){
+   notify('SPC '+date+': día cerrado ya guardado. No se ha vuelto a consultar a KSTAR.');
+   return false;
+ }
  const url=localStorage.getItem('gorraiz_kstar_url_v1')||'';
  const key=localStorage.getItem('gorraiz_kstar_clave_v1')||
    sessionStorage.getItem('gorraiz_kstar_key_sesion_v1')||'';
- let worker;
+ let endpoint,headers;
  try{
-  worker=new URL(url);
-  if(worker.protocol!=='https:'||!worker.hostname.endsWith('.workers.dev')||worker.username||
-    worker.password||worker.search||worker.hash||key.length<24)throw Error('Configuración incompleta');
- }catch{notify('Configura el Worker KSTAR de prueba y su clave desde Informes.');return false}
+  if(url){
+   const worker=new URL(url);
+   if(worker.protocol!=='https:'||!worker.hostname.endsWith('.workers.dev')||worker.username||
+      worker.password||worker.search||worker.hash||worker.pathname!=='/'||key.length<24)
+      throw Error('Worker KSTAR aislado o su clave no son válidos.');
+   endpoint=worker.origin+'/spc/intercambio';
+   headers={'content-type':'application/json','X-KSTAR-Test-Key':key};
+  }else{
+   // Mismo proveedor desde el Worker central cuando este tenga SPC activado.
+   // No consulta jamás la ruta /produccion.
+   const main=settings();
+   endpoint=main.url+'/spc/intercambio';
+   headers={'content-type':'application/json','X-Panel-Key':main.key};
+  }
+ }catch(e){
+  notify('No se pudo preparar KSTAR: '+e.message+
+    '. Configura su Worker aislado o el Worker central con SPC de solo lectura.');
+  return false;
+ }
  busy=true;const btn=$('fetchSPC');if(btn)btn.disabled=true;
  try{
-  const response=await fetch(worker.origin+worker.pathname.replace(/\/$/,'')+'/spc/intercambio',{
-   method:'POST',cache:'no-store',
-   headers:{'content-type':'application/json','X-KSTAR-Test-Key':key},
+  const response=await fetch(endpoint,{
+   method:'POST',cache:'no-store',headers,
    body:JSON.stringify({desde:date,hasta:date})});
   const p=await response.json().catch(()=>({}));
   if(!response.ok)throw Error(p.error||('Respuesta SPC HTTP '+response.status));
@@ -215,7 +235,8 @@ export async function downloadSpcDay(date){
   await writeLocal([{tipo:'S',fecha:date,payload:p}]);
   try{
    const saved=await central('/historico/guardar',{items:[{tipo:'S',fecha:date,payload:p}]});
-   notify('SPC '+date+': '+p.rows.length+' muestras descargadas y '+saved.guardadas+' día guardado en el archivo compartido.');
+   if(saved.guardadas!==1)throw Error(saved.incidencias?.[0]?.motivo||'El archivo central no confirmó el día');
+   notify('SPC '+date+': '+p.rows.length+' muestras descargadas · día guardado en archivo compartido. Solarman no consultado.');
   }catch(e){notify('SPC '+date+' guardado localmente, pero no se pudo copiar al servidor: '+e.message)}
   return true;
  }catch(e){notify('No se pudo descargar SPC: '+e.message+'. Sin borrar histórico previo.');return false}
