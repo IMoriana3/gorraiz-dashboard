@@ -1,4 +1,5 @@
 import {availableDays,buildSeries,numeric} from './scada-data.mjs';
+import {spcBacklog,dailyCoverage} from './scada-coverage.mjs';
 import {pullShared,pushShared,downloadSpcDay} from './scada-sync.mjs';
 import {SCADA_POLL_MS,SCADA_QUOTA_KEY,SCADA_LOCK_NAME,quotaState,reserveAttempt} from './scada-quota.mjs';
 
@@ -183,6 +184,43 @@ function showSourceCoverage(){
  const button=$('lastSpc');
  button.disabled=!closed.length;
  button.dataset.date=closed.at(-1)||'';
+ const backlog=spcBacklog(stored,madridToday());
+ const lag=$('spcLag'),fetchPending=$('fetchPendingSPC');
+ lag.hidden=backlog.pendingCount===0;
+ fetchPending.disabled=backlog.pendingCount===0;
+ fetchPending.dataset.date=backlog.firstPending||'';
+ if(backlog.pendingCount){
+  text('spcLagText','SPC atrasado: último día completo '+backlog.lastComplete+
+   ' · faltan '+backlog.pendingCount+' día(s) cerrado(s) hasta '+backlog.lastClosed+'.');
+  text('fetchPendingSPC','↓ Descargar SPC del '+backlog.firstPending+' (manual)');
+ }
+}
+function paintCoverageByDay(r){
+ const rows=dailyCoverage(r,stored),body=$('coverageDayRows');
+ body.replaceChildren();
+ let withSpc=0,withGaps=0;
+ for(const day of rows){
+  if(day.spc)withSpc++;
+  if(day.gapsInside)withGaps++;
+  const tr=document.createElement('tr');
+  const status=day.status==='sin-descarga'?'Sin descargar':
+    day.status==='spc-parcial'?'Día parcial':
+    day.status==='spc-no-conciliado'?'Datos sin conciliar':'Con intervalos';
+  const cells=[
+    day.date,String(day.a),String(day.b),String(day.paired),
+    String(day.gapsInside),String(day.spc),
+    day.reason?status+' · '+day.reason:status];
+  for(let i=0;i<cells.length;i++){
+    const td=document.createElement('td');
+    td.textContent=cells[i];
+    if(i===6&&day.status!=='spc-con-intervalos'||i===4&&day.gapsInside>0)
+      td.className='warn';
+    tr.appendChild(td);
+  }
+  body.appendChild(tr);
+ }
+ text('coverageSummary','Huecos de curvas · '+rows.length+' día(s) · SPC '+withSpc+
+   ' día(s) con intervalos · FV '+withGaps+' día(s) con huecos interiores');
 }
 function updateBlankNotice(r){
  const v=location.hash.slice(1)||'general';
@@ -222,6 +260,7 @@ function repaint(){
   makeSeries('Exportación',r.series.export,paints.export)],labels);
 
  updateBlankNotice(r);
+ paintCoverageByDay(r);
  updateDetailPanels(r,labels);
  text('powerGen',kw(r.last.generation?.value));
  text('powerCons',kw(r.last.consumption?.value));
@@ -353,6 +392,16 @@ $('pullHistory').addEventListener('click',async()=>{await pullShared({all:true,d
 $('pushHistory').addEventListener('click',pushShared);
 $('fetchSPC').addEventListener('click',async()=>{
  if(await downloadSpcDay(day))await reload({keepDay:true,sinRed:true});
+});
+$('fetchPendingSPC').addEventListener('click',async()=>{
+ const date=$('fetchPendingSPC').dataset.date;
+ if(!date)return;
+ // El usuario ha pulsado expresamente: UNA consulta a KSTAR del día cerrado
+ // pendiente; no consulta Solarman ni activa ningún cron de SPC.
+ if(await downloadSpcDay(date)){
+  day=date;$('day').value=date;
+  await reload({keepDay:true,sinRed:true});
+ }
 });
 $('provisional').addEventListener('change',repaint);
 $('updatePV').addEventListener('click',()=>refreshPV());
