@@ -66,3 +66,19 @@ test('las cuatro graficas que ignoraban el vertido ya lo pintan',()=>{
   assert.match(html,/if\(vertidoCuenta\(d\.date\)\)return d;/);
   assert.match(html,/vertidoCuenta\(spcFecha\(dk\(r\.ts\)\)\)\?Math\.max\(0,r\.gen\):0/);
 });
+
+test('Informe y SCADA escriben FV/SPC en la misma base central sin forzar proveedor',()=>{
+  for(const id of ['zCompartido','btnCentroLeer','btnCentroSubir','centroEstado'])
+    assert.match(html,new RegExp('id="'+id+'"'),id);
+  for(const method of ['bajaHistoricoCompartido','subeHistoricoLocal','guardaDiaSpcCentral'])
+    assert.match(html,new RegExp('async function '+method+'\\('),method);
+  assert.match(html,/historico\/estado/);
+  assert.match(html,/historico\/datos/);
+  assert.match(html,/historico\/guardar/);
+  assert.match(html,/if\(separado\)await guardaDiaSpcCentral\(bl\[i\]\.desde,p\)/);
+  assert.match(html,/await guardaDiaSpcCentral\(dia,p\)/);
+  assert.match(html,/\.then\(\(\)=>bajaHistoricoCompartido\(\)\)/);
+  // Recuperar meses recientes no debe eliminar meses centrales ya importados.
+  assert.match(html,/const antes=PROD_FUENTES\[tipo\]\.find/);
+  assert.match(html,/const unidos=new Map/);
+});

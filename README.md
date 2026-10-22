@@ -4,7 +4,7 @@ Dashboard de producción, intercambio con la red y valoración económica del Ed
 
 **Panel:** https://imoriana3.github.io/gorraiz-dashboard/
 
-**SCADA Gorraiz (en desarrollo, PR #53):** [scada.html](scada.html). Incluye curvas de generación FV (Solarman), intercambio medio estimado por intervalos de contadores KSTAR y consumo horario condicionado a cruce de relojes. No es telemetría instantánea KSTAR; la adquisición manual de SPC y la seguridad HTTP siguen con los mismos límites. Consulta [contrato y pendientes del SCADA](docs/scada.md). **Actualizaciones:** Solarman a petición, con modo automático optativo y límite compartido de **un intento cada 60 minutos por navegador** (incluidos intentos manuales); ninguna petición al abrir. Cada actualización del Worker puede implicar varias llamadas internas a Solarman. En esta PR se añade un límite central de **un lote nuevo cada 60 minutos**, compartido entre equipos e informe gracias a un Durable Object SQLite; la cuota horaria de peticiones HTTP reales del proveedor requiere todavía medición y su coste anual es desconocido.
+**SCADA Gorraiz:** [scada.html](scada.html). Incluye curvas de generación FV (Solarman), intercambio medio estimado por intervalos de contadores KSTAR y consumo horario condicionado a cruce de relojes. No es telemetría instantánea KSTAR; la adquisición manual de SPC y la seguridad HTTP siguen con los mismos límites. Consulta [contrato y pendientes del SCADA](docs/scada.md). **Actualizaciones:** Solarman a petición, con modo automático optativo y límite compartido de **un intento cada 60 minutos por navegador** (incluidos intentos manuales); ninguna petición al abrir. Cada actualización del Worker puede implicar varias llamadas internas a Solarman. En esta PR se añade un límite central de **un lote nuevo cada 60 minutos**, compartido entre equipos e informe gracias a un Durable Object SQLite; la cuota horaria de peticiones HTTP reales del proveedor requiere todavía medición y su coste anual es desconocido.
 
 ## Fuentes
 
@@ -130,7 +130,7 @@ La apertura del panel recupera datos de IndexedDB y no inicia sesión en SPC. **
 
 ## Datos y despliegue
 
-Los ficheros originales y la configuración económica no se publican en este repositorio. Producción y SPC se conservan localmente en IndexedDB. El consumo cargado puede compartirse a través del KV del Worker; SPC tiene claves propias por día. La configuración económica permanece en `localStorage` y no se envía al Worker. Las credenciales de los proveedores se guardan como secretos de Cloudflare.
+Los ficheros originales y la configuración económica no se publican en este repositorio. **Informe y SCADA disponen de un histórico energético central único** para los inversores A/B y SPC, servido por el Worker y persistido en el Durable Object SQLite existente. Las descargas Solarman autorizadas se guardan durante el mismo lote y SPC se incorpora tras las descargas manuales. IndexedDB conserva una copia local; el histórico previo puede compartirse explícitamente desde cualquiera de las dos pantallas. El consumo de i-DE y las fuentes antiguas SPC en KV siguen conservándose sin sustitución. La configuración económica permanece en `localStorage` y no se envía al Worker. Las credenciales de proveedores se guardan como secretos de Cloudflare. Consulta [histórico compartido](docs/historico-compartido.md).
 
 El frontend utiliza HTML/JS, SheetJS, Chart.js, jsPDF y Open-Meteo. El código del Worker y su despliegue se describen en [worker/README.md](worker/README.md).
 

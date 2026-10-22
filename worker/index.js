@@ -10,6 +10,7 @@
 // de ficheros .xlsx, para que el resto del informe no se entere del cambio.
 // ═══════════════════════════════════════════════════════════════════════════
 import {periodo} from './periodos.js';
+import {writeHistory,readHistory,historyStatus} from './shared-history.js';
 import {spcIntercambio, spcDiagnostico, spcDatos, spcEstado, spcScheduled, safeSpcError} from './spc.js';
 
 const DATADIS='https://datadis.es';
@@ -668,6 +669,17 @@ export class SolarmanQuota {
     if(req.method!=='POST')return json({error:'Método no admitido.'},405);
     const b=await req.json().catch(()=>({}));
     const tipo=b.tipo,desde=b.desde,hasta=b.hasta,dia=b.dia;
+    // La consulta y la copia compartida NO consumen presupuesto Solarman.
+    // La misma instancia DO con SQLite conserva el orden entre clientes.
+    if(tipo==='historico_datos'||tipo==='historico_guardar'||tipo==='historico_estado'){
+      try{
+        if(tipo==='historico_estado')return json(await historyStatus(this.ctx.storage));
+        if(tipo==='historico_datos')return json(await readHistory(this.ctx.storage,desde,hasta));
+        return json(await writeHistory(this.ctx.storage,b.items,this.env));
+      }catch(e){
+        return json({error:e.message||'No se pudo usar el histórico compartido.'},400);
+      }
+    }
     if(tipo==='produccion'){
       if(!validoDia(desde)||!validoDia(hasta)||desde>hasta ||
          (Date.parse(hasta+'T00:00:00Z')-Date.parse(desde+'T00:00:00Z'))/864e5>19)
@@ -706,6 +718,30 @@ export class SolarmanQuota {
       const valor=tipo==='produccion'?
         await solarmanProduccion(this.env,desde,hasta):
         await solarmanDiagnostico(this.env,dia);
+      // Cada adquisición de producción se guarda una sola vez y la comparten
+      // informe/SCADA. No implica nuevas llamadas a Solarman.
+      if(tipo==='produccion'){
+        const items=[];
+        for(const kind of ['A','B']){
+          const days=new Map();
+          for(const row of Array.isArray(valor[kind])?valor[kind]:[]){
+            const date=typeof row.ts==='string'?row.ts.slice(0,10):'';
+            if(!/^\d{4}-\d{2}-\d{2}$/.test(date))continue;
+            if(!days.has(date))days.set(date,[]);
+            days.get(date).push(row);
+          }
+          for(const [fecha,rows] of days)items.push({tipo:kind,fecha,rows});
+        }
+        if(items.length){
+          try{
+            const stored=await writeHistory(this.ctx.storage,items,this.env);
+            valor.meta={...(valor.meta||{}),compartido:{guardadas:stored.guardadas,ok:true}};
+          }catch{
+            valor.meta={...(valor.meta||{}),compartido:{ok:false,
+              aviso:'La producción se ha descargado, pero no se ha podido guardar en el histórico compartido.'}};
+          }
+        }
+      }
       const serialized=JSON.stringify(valor);
       // Se cachea únicamente el último lote: sin crecimiento ilimitado.
       if(serialized.length<=SOLARMAN_CACHE_MAX){
@@ -804,6 +840,14 @@ export default{
       const b=req.method==='POST'?await req.json().catch(()=>({}))
         :Object.fromEntries(url.searchParams);
       const desde=b.desde,hasta=b.hasta;
+      if(ruta==='/historico/estado'||ruta==='/historico/datos'||ruta==='/historico/guardar'){
+        const onlyState=ruta==='/historico/estado';
+        if(!onlyState&&req.method!=='POST')return json({error:'Se requiere POST para esta operación.'},405,h);
+        if(onlyState&&req.method!=='GET')return json({error:'Se requiere GET para el estado.'},405,h);
+        return solarmanConCuota(env,onlyState?{tipo:'historico_estado'}:
+          ruta==='/historico/datos'?{tipo:'historico_datos',desde,hasta}:
+            {tipo:'historico_guardar',items:b.items},h);
+      }
       if(ruta==='/spc/intercambio')return json(await spcIntercambio(env,desde,hasta),200,h);
       if(ruta==='/spc/diagnostico')return json(await spcDiagnostico(env,b.dia),200,h);
       if(ruta==='/spc/datos')return json(await spcDatos(env,desde,hasta),200,h);

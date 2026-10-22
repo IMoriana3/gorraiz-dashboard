@@ -2,7 +2,7 @@
 
 ## Alcance implementado
 
-La vista `scada.html` lee el mismo IndexedDB `gorraiz_datos/fuentes` del generador de informes. No crea otra fuente de verdad. `scada-data.mjs` normaliza las series y `scada-app.mjs` representa el sinóptico y las gráficas. No se han modificado los Workers ni el informe PDF.
+El SCADA y el Informe comparten el **archivo central SQLite de Gorraiz** en el Worker, reutilizando el Durable Object `SOLARMAN_QUOTA`. `gorraiz_datos/fuentes` (IndexedDB) permanece como caché local, no como única fuente de verdad. `scada-data.mjs` normaliza las series, `scada-app.mjs` las representa y `scada-sync.mjs` recupera, copia y guarda el histórico. El informe PDF mantiene sus cálculos actuales. Contrato y límites: [histórico compartido](historico-compartido.md).
 
 | Señal visual | Origen | Tipo de dato |
 |---|---|---|
@@ -28,15 +28,15 @@ La instalación cuenta con **123,84 kWp DC** y **2 × 50 kW AC nominales**; el r
 
 ## Adquisición y límites de refresco
 
-- **Inicial:** IndexedDB local, que comparte el informe existente. Si no hay datos, no hay valores artificiales ni llamadas automáticas.
-- **Botón «Actualizar Solarman»:** `POST /produccion` para **un día** al Worker habitual, usando `X-Panel-Key` ya configurada en el informe; guarda únicamente dos claves `A|SCADA Solarman AAAA-MM-DD` y `B|...`. No vacía otras claves de IndexedDB.
+- **Inicial:** IndexedDB local y consulta al histórico central autorizado para recuperar días disponibles sin iniciar sesión en los proveedores. Si el servidor no responde, se mantiene la copia local. No se consulta Solarman ni KSTAR al abrir.
+- **Botón «Actualizar Solarman»:** `POST /produccion` para **un día** al Worker habitual, usando `X-Panel-Key` ya configurada en el informe; el Worker guarda automáticamente A/B en el archivo central durante el lote autorizado, y el SCADA actualiza su caché local. No vacía otras claves de IndexedDB.
 - **Control de cupo (22/10/2026):** **máximo un intento de actualizar Solarman cada 60 minutos por navegador/origen**, tanto manual como automático. Se guarda el momento del intento en `localStorage` **antes** de conectar; un error de red o proveedor no dispara reintentos inmediatos. Si no se puede guardar la reserva, se bloquea la consulta. El control se comparte entre pestañas y la reserva utiliza Web Locks cuando se encuentra disponible; sin soporte Web Locks no se habilita el modo automático.
 - **Automático FV:** *desactivado inicialmente*, opt-in cada 60 minutos y solo mientras permanezca la pestaña abierta y visible. Activarlo, abrir el SCADA, cambiar de día o recargar **no inicia una petición**.
 - **Cupo central (implementado en la PR):** el Worker distribuye **un único lote nuevo de Solarman cada 60 minutos** mediante `SOLARMAN_QUOTA`, un Durable Object SQLite con almacenamiento consistente. El cupo se comparte entre dispositivos y tanto `/produccion` como `/solarman/diagnostico`; cada reserva se persiste **antes** de llamar al proveedor. Si el DO no existe o no está disponible, **no se llama a Solarman** (503). Con cuota agotada se devuelve 429 y `Retry-After`. El último lote exitoso se conserva una hora y se puede devolver desde caché sin usar la API.
 - **Implicación operativa del cupo:** el informe existente conserva sus cálculos y archivos, pero **una descarga nueva de varios rangos necesitará separar los lotes como mínimo una hora**. El SCADA puede utilizar el mismo resultado de caché cuando coincide exactamente el rango. No existe excepción para peticiones manuales del informe, para evitar que otro navegador eluda el límite.
 - **Precisión del cupo:** **un lote/hora no equivale a una petición HTTP/hora**. Un lote incluye login y consultas de histórico de ambos G50KT; confirmar el consumo de llamadas internas y el presupuesto anual real de Solarman antes de activar la actualización automática en producción. No se puede garantizar un único request upstream con la API actual.
 - **Despliegue de la cuota:** requiere provisionar el nuevo Durable Object (`[exports.SolarmanQuota]`, almacenamiento SQLite) al desplegar el Worker canónico de `worker/wrangler.toml`. Las previews del Worker no cuentan con acceso a secretos ni KV de producción; si no tienen binding, la adquisición falla cerrada. No desplegar sobre producción hasta las pruebas finales.
-- **KSTAR:** únicamente histórico de **días cerrados**, previamente descargado desde el informe. No se consulta KSTAR desde la vista SCADA, ni se activa cron. La conexión SPC por HTTP hacia el proveedor sigue sin cifrado, de modo que no se autoriza un sondeo en tiempo real sin solucionar primero ese riesgo.
+- **KSTAR:** histórico de días cerrados desde `Comprobar SPC / Traer datos` en Informe o desde el nuevo botón manual `SPC día cerrado` en SCADA. Se sube al mismo archivo central sin una nueva petición al proveedor. **Nunca** hay descarga SPC automática ni cron, porque Cloudflare → proveedor continúa con riesgo HTTP sin cifrar. Usar cuenta de solo lectura limitada.
 - No se envían claves por URL, ni se almacenan contraseñas de proveedor en este código.
 
 ## Pendientes para tiempo real auténtico

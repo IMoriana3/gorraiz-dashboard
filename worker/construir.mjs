@@ -10,8 +10,11 @@ const spc=readFileSync(new URL('./spc.js',import.meta.url),'utf8')
   .replace(/^export\s*\{[^}]*\};?\s*$/gm,'')
   .replace(/^export\s+(?=(?:async\s+)?function\b|const\b|let\b|class\b)/gm,'')
   .trim();
+const sharedHistory=readFileSync(new URL('./shared-history.js',import.meta.url),'utf8')
+  .replace(/^export\s+(?=(?:async\s+)?function\b|const\b|let\b|class\b)/gm,'')
+  .trim();
 const idx=readFileSync(new URL('./index.js',import.meta.url),'utf8')
-  .replace(/^import\s*\{[^}]*\}\s*from\s*['"]\.\/(?:periodos|spc)\.js['"];?\s*$/gm,'')
+  .replace(/^import\s*\{[^}]*\}\s*from\s*['"]\.\/(?:periodos|spc|shared-history)\.js['"];?\s*$/gm,'')
   .trim();
 
 const cab=`// ═══════════════════════════════════════════════════════════════════════════
@@ -22,7 +25,7 @@ const cab=`// ══════════════════════
 // ═══════════════════════════════════════════════════════════════════════════
 
 `;
-writeFileSync(new URL('./bundle.js',import.meta.url),cab+per+'\n\n'+spc+'\n\n'+idx+'\n');
+writeFileSync(new URL('./bundle.js',import.meta.url),cab+per+'\n\n'+spc+'\n\n'+sharedHistory+'\n\n'+idx+'\n');
 console.log('bundle.js generado');
 
 const prueba = readFileSync(new URL('./kstar-prueba.js',import.meta.url),'utf8')

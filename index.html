@@ -167,8 +167,8 @@ input[type=file]{display:none}
     <div class="uz" id="zB" onclick="$('fB').click()"><h3>📂 Inversor B — Ficheros de producción (.xlsx)</h3><p>Selecciona uno o varios ficheros .xlsx del Inversor B</p><div class="st" id="stB"></div><input type="file" id="fB" accept=".xlsx" multiple></div>
     <div class="uz" id="zI" onclick="$('fI').click()"><h3>📂 Importación de red · i-DE (.xlsx)</h3><p>Ficheros horarios de i-DE (hoja "Horarias"). Se unen sin duplicar los días repetidos. Se usan por su <b>total diario</b>, que se contrasta con el contador KSTAR.</p><div class="st" id="stI"></div><div class="fl" id="flI"></div><input type="file" id="fI" accept=".xlsx" multiple></div>
     <div class="az" id="zAuto">
-      <h3>⚡ Descarga automática</h3>
-      <p>Trae producción FV de Solarman e importación/exportación de KSTAR SPC01. La descarga automática de i-DE/Datadis sigue archivada; sus ficheros se suben a mano arriba.</p>
+      <h3>⚡ Descarga manual de datos</h3>
+      <p>«Traer datos» consulta Solarman (máximo un lote nuevo por hora en el Worker central) y SPC, únicamente para días cerrados y cuando exista su conexión de lectura. Ambos se guardan en el mismo histórico central de Gorraiz; no se inicia ninguna descarga al abrir la página. i-DE/Datadis siguen sin consulta automática.</p>
       <div class="row">
         <label>Desde:</label><input type="date" id="aDesde">
         <label>Hasta:</label><input type="date" id="aHasta">
@@ -179,6 +179,16 @@ input[type=file]{display:none}
       <div class="st" id="stAuto"></div>
       <div class="fl" id="memo"></div>
       <div class="cfg" id="cfgAuto"></div>
+    </div>
+    <div class="az" id="zCompartido">
+      <h3>Histórico compartido · Informe + SCADA</h3>
+      <p>Un único almacenamiento central para los dos inversores y el SPC. Se conservan las copias de este navegador; leer o guardar aquí no consulta Solarman ni KSTAR.</p>
+      <div class="row">
+        <button class="btn btn2" id="btnCentroLeer" type="button" onclick="bajaHistoricoCompartido({todo:true})" style="padding:6px 12px;font-size:11px">↻ Recuperar del servidor</button>
+        <button class="btn btn2" id="btnCentroSubir" type="button" onclick="subeHistoricoLocal()" style="padding:6px 12px;font-size:11px">↑ Compartir histórico ya guardado</button>
+        <a href="./scada.html" class="hint">Abrir SCADA ↗</a>
+      </div>
+      <div id="centroEstado" class="hint" role="status">Pendiente de consultar la base común.</div>
     </div>
     <div class="az" id="zSpc">
       <div class="spc-head"><h3>Intercambio de red · KSTAR SPC01</h3><button class="btn btn2" id="btnSpc" onclick="comprobarSpc()" disabled>Comprobar SPC</button></div>
@@ -786,7 +796,7 @@ async function comprobarSpc(){
     if(!separado&&p.ok!==true)throw new Error(p.error||'SPC no ha confirmado la consulta.');
     const n=separado?p.rows.length:p.registros||0;
     const completo=separado?p.meta.completo:p.complete;
-    if(separado)incorporaSpc(p,{desde:dia,hasta:dia});
+    if(separado){incorporaSpc(p,{desde:dia,hasta:dia});await guardaDiaSpcCentral(dia,p);}
     SPC_PRUEBA={ok:true,actualizado:p.meta?.actualizado||p.actualizado||new Date().toISOString()};
     $('spcAccion').textContent=`KSTAR: ${fn(n)} lecturas. ${completo?'Día cerrado guardado en el navegador.':'Día parcial, aún no válido para el balance.'}`;
   }catch(e){SPC_PRUEBA={ok:false,error:e.message};$('spcAccion').innerHTML=`<span class="err">No se pudo comprobar SPC: ${esc(e.message)}</span>`}
@@ -1441,6 +1451,109 @@ async function apiCall(ruta,body){
   if(!r.ok)throw new Error(j.error||('HTTP '+r.status));
   return j;
 }
+// HISTÓRICO CENTRAL Gorraiz: único archivo energético del informe y del SCADA.
+// Solo copia datos del Worker y del IndexedDB. Jamás inicia sesiones con
+// Solarman o KSTAR; las peticiones de proveedores siguen en botones separados.
+let HIST_CENTRO_OCUPADO=false;
+function centroMensaje(msg){$('centroEstado').textContent=msg}
+function centroDiasRango(fechas){
+ const result=[],sorted=[...new Set(fechas.filter(spcFecha))].sort();
+ for(let i=0;i<sorted.length;){
+   const first=sorted[i],max=spcSumaDias(first,30);let j=i;
+   while(j+1<sorted.length&&sorted[j+1]<=max)j++;
+   result.push({desde:first,hasta:sorted[j]});i=j+1;
+ }
+ return result;
+}
+async function bajaHistoricoCompartido({todo=false}={}){
+ const cfg=apiCfg();
+ if(HIST_CENTRO_OCUPADO)return;
+ if(!cfg.url||!cfg.key){centroMensaje('Guarda primero la conexión del Worker principal. No se ha consultado ningún proveedor.');return}
+ HIST_CENTRO_OCUPADO=true;$('btnCentroLeer').disabled=true;
+ try{
+  const estado=await apiCall('/historico/estado');
+  const fechas=[...new Set([...(estado.dias?.A||[]),...(estado.dias?.B||[]),...(estado.dias?.S||[])])].sort();
+  if(!fechas.length){centroMensaje('El archivo común aún no contiene días. Puedes compartir los registros que tiene este navegador.');return}
+  const ultima=fechas.at(-1),primera=todo?fechas[0]:spcSumaDias(ultima,-44);
+  const seleccion=fechas.filter(d=>d>=primera),bloques=centroDiasRango(seleccion);
+  const nuevas={A:[],B:[]};let nS=0,dias=0;
+  for(const rango of bloques){
+   const r=await apiCall('/historico/datos',rango);
+   for(const f of r.fuentes||[]){
+    if(f.tipo==='S'&&f.payload){
+     if(ponFuenteSpc(f.fecha,f.payload,true))nS++;
+    }else if(['A','B'].includes(f.tipo)&&Array.isArray(f.rows)){
+     nuevas[f.tipo].push(...f.rows.map(x=>({...x,ts:new Date(x.ts)})).filter(x=>Number.isFinite(+x.ts)));
+    }
+   }
+   dias++;
+  }
+  // El histórico remoto se coloca antes de las fuentes locales: si se ha
+  // descargado una corrección más reciente en este equipo, prevalece la local.
+  // Recuperar 45 días NO puede borrar otros meses remotos ya importados.
+  for(const tipo of ['A','B']){
+   if(nuevas[tipo].length){
+    const nombre='Histórico central Gorraiz';
+    const antes=PROD_FUENTES[tipo].find(x=>x.nombre===nombre)?.rows||[];
+    const unidos=new Map([...antes,...nuevas[tipo]].map(r=>[+r.ts,r]));
+    PROD_FUENTES[tipo]=[{nombre,rows:[...unidos.values()].sort((a,b)=>a.ts-b.ts)},
+      ...PROD_FUENTES[tipo].filter(x=>x.nombre!==nombre)];
+    mergeProd(tipo);
+   }
+  }
+  if(nS||nuevas.A.length||nuevas.B.length)await guardaFuentes();
+  pintaSpc();pintaMemoria();
+  centroMensaje('Base común leída sin llamadas a proveedores: '+nuevas.A.length+
+    ' muestras A, '+nuevas.B.length+' muestras B, '+nS+' días SPC nuevos/actualizados. '+
+    (todo?'Todo el archivo disponible.':'Últimos 45 días; usa «Recuperar del servidor» para el resto.'));
+ }catch(e){centroMensaje('Base compartida no disponible: '+e.message+
+   '. Se mantiene intacto el histórico del navegador.')}
+ finally{HIST_CENTRO_OCUPADO=false;$('btnCentroLeer').disabled=false}
+}
+function fuentesLocalesParaServidor(){
+ const por=new Map(),put=(tipo,fecha,rows)=>{const id=tipo+'|'+fecha;
+  if(!por.has(id))por.set(id,{tipo,fecha,rows:[]});
+  por.get(id).rows.push(...rows)};
+ for(const tipo of ['A','B']){
+  RAW[tipo].forEach(r=>{
+   if(!(r.ts instanceof Date)||!Number.isFinite(+r.ts))return;
+   const fecha=dk(r.ts);if(spcFecha(fecha))put(tipo,fecha,[r]);
+  });
+ }
+ for(const f of SPC_FUENTES){
+  if(!spcFecha(f.date)||!f.meta||f.meta.fuente!=='spc')continue;
+  por.set('S|'+f.date,{tipo:'S',fecha:f.date,payload:f});
+ }
+ return [...por.values()].sort((a,b)=>a.fecha.localeCompare(b.fecha)||a.tipo.localeCompare(b.tipo));
+}
+async function subeHistoricoLocal(){
+ const cfg=apiCfg();
+ if(HIST_CENTRO_OCUPADO)return;
+ if(!cfg.url||!cfg.key){centroMensaje('Configura primero el Worker principal.');return}
+ const items=fuentesLocalesParaServidor();
+ if(!items.length){centroMensaje('No hay registros FV/SPC locales que compartir.');return}
+ HIST_CENTRO_OCUPADO=true;$('btnCentroSubir').disabled=true;
+ let enviados=0;
+ try{
+  for(let i=0;i<items.length;i+=12){
+   const packet=items.slice(i,i+12);
+   const r=await apiCall('/historico/guardar',{items:packet});
+   enviados+=r.guardadas||0;
+   centroMensaje('Compartiendo copia local: '+enviados+' de '+items.length+' días/equipos. Sin consultas a proveedores.');
+  }
+  centroMensaje('Sincronización completada: '+enviados+' conjuntos FV/SPC guardados en la base común. Disponible desde el SCADA y otros navegadores configurados.');
+ }catch(e){centroMensaje('Sincronización parcial: '+enviados+'/'+items.length+
+   '. '+e.message+'. Las copias locales se mantienen; puedes reintentar.')}
+ finally{HIST_CENTRO_OCUPADO=false;$('btnCentroSubir').disabled=false}
+}
+async function guardaDiaSpcCentral(fecha,payload){
+ if(!apiCfg().url||!apiCfg().key)return;
+ try{
+  await apiCall('/historico/guardar',{items:[{tipo:'S',fecha,payload}]});
+  centroMensaje('SPC '+fecha+' guardado también en el histórico central. Sin consultas adicionales a KSTAR.');
+ }catch(e){centroMensaje('SPC '+fecha+' permanece local, pero no se pudo compartir: '+e.message)}
+}
+
 let API_ESTADO=null;
 async function estadoApi(){
   const c=apiCfg();if(!c.url){API_ESTADO=null;$('hintAuto').textContent=kstarCfg().url?'KSTAR independiente; Solarman pendiente':'sin configurar';pintaSpc();return}
@@ -1582,6 +1695,7 @@ async function traerDatos(){
           const n=incorporaSpc(p,bl[i]);
           if(!n)throw new Error(p.meta&&p.meta.completo===false?'respuesta parcial; se conserva el día completo guardado':'sin datos válidos para este día');
           guardados+=n;
+          if(separado)await guardaDiaSpcCentral(bl[i].desde,p);
           if(p.meta&&(p.meta.completo===false||p.meta.sinHistorico))parciales++;
         }catch(e){fallos.push(`${fdmy(bl[i].desde)}: ${e.message}`)}
       }
@@ -1614,7 +1728,8 @@ async function traerDatos(){
   ['aDesde','aHasta'].forEach(id=>$(id).addEventListener('change',pintaSpc));
   // El estado tiene que llegar antes de mirar el almacén compartido.
   // Leer /spc/datos solo recupera caché; no inicia sesión en el portal SPC.
-  estadoApi().then(()=>cargaFuentes()).then(()=>bajaDatos()).then(()=>cargaCacheSpc()).then(()=>sugiereRango());
+  estadoApi().then(()=>cargaFuentes()).then(()=>bajaDatos()).then(()=>cargaCacheSpc())
+    .then(()=>bajaHistoricoCompartido()).then(()=>sugiereRango());
 })();
 
 // ── Processing ──

@@ -38,6 +38,8 @@ jobs:
           node --check energia.js
           node --check scada-data.mjs
           node --check scada-app.mjs
+          node --check scada-sync.mjs
+          node --check worker/shared-history.js
           node --check scada-quota.mjs
           node --check worker/index.js
           node --check worker/spc.js
@@ -114,6 +116,27 @@ jobs:
                   time.sleep(1)
           else:
               raise AssertionError('workerd no inició; revisar /tmp/gorraiz-workerd.log')
+          # Probar el histórico SQLite real del DO (sin llamadas a proveedores).
+          api='http://127.0.0.1:8799'
+          def call(path,method='POST',data=None):
+              request=urllib.request.Request(api+path,
+                headers=headers,method=method,
+                data=json.dumps(data).encode() if data is not None else None)
+              with urllib.request.urlopen(request,timeout=15) as r:
+                  assert r.status==200, r.status
+                  return json.load(r)
+          day='2026-10-19'
+          sample={'items':[{'tipo':'A','fecha':day,'rows':[{
+              'ts':day+'T10:05:00','pot':22.5,'acum':2000,'dia':14.2}]}]}
+          saved=call('/historico/guardar',data=sample)
+          assert saved['guardadas']==1,saved
+          data=call('/historico/datos',data={'desde':day,'hasta':day})
+          assert len(data['fuentes'])==1,data
+          assert data['fuentes'][0]['rows'][0]['pot']==22.5,data
+          overview=call('/historico/estado',method='GET')
+          assert overview['cobertura']['A']['dias']>=1,overview
+          assert data['meta']['proveedorConsultado'] is False,data
+          print('workerd SQLite: guardar, leer y cobertura de la base común; 0 consultas a proveedor.')
           PY
 
   scada-chromium:
