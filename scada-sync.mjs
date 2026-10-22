@@ -1,3 +1,5 @@
+import {normalizeSourcePower} from './scada-units.mjs';
+
 // Acceso a archivo común para el SCADA (mismo Durable Object que Informe).
 // Lectura/guardado NO consulta Solarman ni el proveedor KSTAR; SPC solo se
 // consulta desde downloadSpcDay(), siempre tras un clic explícito.
@@ -111,7 +113,26 @@ function madridDay(v){
 export async function pushShared(){
  if(busy)return;
  busy=true;const btn=$('pushHistory');if(btn)btn.disabled=true;
- let uploaded=0;
+ let uploaded=0,unverified=0;
+ const failures=[];
+ async function pushBlock(items){
+  try{
+   const res=await central('/historico/guardar',{items});
+   uploaded+=res.guardadas||0;
+   unverified+=res.pendientesPotencia||0;
+   notify('Archivo central: '+uploaded+' conjuntos migrados; '+unverified+
+     ' potencias sin unidad validada. Datos locales intactos.');
+  }catch(e){
+   if(items.length>1&&!/PANEL_KEY|clave de panel|SOLARMAN_QUOTA|coordinador central|credencial/i.test(e.message)){
+    const middle=Math.floor(items.length/2);
+    await pushBlock(items.slice(0,middle));
+    await pushBlock(items.slice(middle));
+    return;
+   }
+   if(items.length>1)throw e;
+   failures.push(items[0].tipo+' '+items[0].fecha+': '+e.message);
+  }
+ }
  try{
   const data=await readLocal(),group=new Map();
   for(const f of data){
@@ -123,24 +144,36 @@ export async function pushShared(){
     const date=madridDay(row.ts);
     if(!date)continue;
     const key=f.tipo+'|'+date;
-    if(!group.has(key))group.set(key,{tipo:f.tipo,fecha:date,rows:new Map()});
+    if(!group.has(key))group.set(key,{tipo:f.tipo,fecha:date,unidadPotencia:'kW',rows:new Map()});
     const stamp=row.ts instanceof Date?row.ts.toISOString():String(row.ts);
-    group.get(key).rows.set(stamp,{ts:stamp,pot:row.pot,acum:row.acum,dia:row.dia});
+    const power=normalizeSourcePower(f,row.pot);
+    const previous=group.get(key).rows.get(stamp);
+    const measurement={ts:stamp,pot:power.pot,acum:row.acum??null,dia:row.dia??null};
+    const unverifiedRaw=power.potSinValidar??row.potSinValidar??null;
+    if(unverifiedRaw!==null&&power.pot===null)measurement.potSinValidar=unverifiedRaw;
+    group.get(key).rows.set(stamp,previous?{
+      ...previous,...measurement,
+      pot:measurement.pot??previous.pot??null,
+      acum:measurement.acum??previous.acum??null,
+      dia:measurement.dia??previous.dia??null
+    }:measurement);
    }
   }
   const items=[...group.values()].map(v=>v.rows instanceof Map?
     {...v,rows:[...v.rows.values()]}:v);
   if(!items.length){notify('No hay lecturas FV/SPC locales que subir.');return}
   items.sort((a,b)=>a.fecha.localeCompare(b.fecha));
-  for(let i=0;i<items.length;i+=12){
-   const res=await central('/historico/guardar',{items:items.slice(i,i+12)});
-   uploaded+=res.guardadas||0;
-   notify('Compartiendo datos locales en el archivo central: '+uploaded+'/'+items.length+'.');
-  }
-  notify('Sincronización completada: '+uploaded+' días/equipos compartidos. Sin llamar a Solarman ni SPC.');
- }catch(e){notify('Sincronización parcial '+uploaded+': '+e.message+'. Datos locales conservados.')}
- finally{busy=false;if(btn)btn.disabled=false}
+  for(let i=0;i<items.length;i+=12)await pushBlock(items.slice(i,i+12));
+  notify('Migración terminada: '+uploaded+'/'+items.length+' conjuntos guardados, '+
+    failures.length+' pendientes de revisión y '+unverified+' potencias sin unidad fiable. '+
+    (failures.length?'Primera incidencia: '+failures[0]+'. ':'')+
+    'No se ha consultado Solarman ni SPC.');
+ }catch(e){
+  notify('Migración interrumpida por error general tras '+uploaded+
+    ' conjuntos: '+e.message+'. Puedes reintentar; no se ha borrado nada.');
+ }finally{busy=false;if(btn)btn.disabled=false}
 }
+
 export async function downloadSpcDay(date){
  if(busy)return false;
  if(!date||date>=today()){notify('SPC solo admite un día cerrado anterior a hoy.');return false}

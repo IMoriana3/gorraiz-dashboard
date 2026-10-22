@@ -1,3 +1,5 @@
+import {normalizeSourcePower} from './scada-units.mjs';
+
 // Gorraiz SCADA: funciones puras, sin acceso a Workers ni credenciales.
 // La generación Solarman (APo_t1) es potencia AC; los kW de red de KSTAR
 // se ESTIMAN por delta de contadores kWh / tiempo, nunca con totalActivePower
@@ -65,7 +67,7 @@ function inverterMap(items,type,days){
       if(!Number.isFinite(timestamp)||timestamp<oldest||timestamp>newest)continue;
       const stamp=invStamp(row.ts);
       if(!stamp||!allowed.has(stamp.date))continue;
-      const n=numeric(row.pot),daily=numeric(row.dia);
+      const n=normalizeSourcePower(source,row.pot).pot,daily=numeric(row.dia);
       const oldDaily=dayEnergy.get(stamp.date);
       if(daily!==null&&daily>=0&&daily<=1000&&
          (!oldDaily||priority>oldDaily.priority||priority===oldDaily.priority&&daily>oldDaily.value)){

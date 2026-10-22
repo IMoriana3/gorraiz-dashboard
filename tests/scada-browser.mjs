@@ -97,8 +97,8 @@ try {
         positiveActiveElec:100+imp,reverseActiveElec:10+exp});
     }
     const entries=[
-      {id:'A|Fichero QA',tipo:'A',nombre:'SINTÉTICO QA A',rows:A},
-      {id:'B|Fichero QA',tipo:'B',nombre:'SINTÉTICO QA B',rows:B},
+      {id:'A|Fichero QA',tipo:'A',nombre:'SINTÉTICO QA A',unidadPotencia:'kW',rows:A},
+      {id:'B|Fichero QA',tipo:'B',nombre:'SINTÉTICO QA B',unidadPotencia:'kW',rows:B},
       {id:'S|'+date,tipo:'S',fecha:date,payload:{date,rows,
         daily:[{date,importKWh:imp,exportKWh:exp,
           selfConsumptionKWh:produccionA+produccionB-exp}],
@@ -142,7 +142,7 @@ try {
   assert.equal(requests,0,'abrir el SCADA no debe consumir ninguna llamada API');
   // Ambos paneles usan las mismas rutas de archivo, sin consultar proveedores.
   await page.locator('#pushHistory').click();
-  await page.waitForFunction(()=>document.querySelector('#sharedState')?.textContent.includes('Sincronización completada'));
+  await page.waitForFunction(()=>document.querySelector('#sharedState')?.textContent.includes('Migración terminada'));
   assert.ok(archiveWrites>=1);
   assert.equal(archive.size,3,'se comparten inversores A/B y SPC');
   await page.evaluate(async()=>{

@@ -536,6 +536,23 @@ function smValor(lista,claves,nombres){
   }
   return 0;
 }
+// APo_t1 (Total AC Output Power, Active) está publicado en W en
+// SOLARMAN. Conservar explícitamente la unidad al normalizar; las tarjetas
+// del SCADA, los simuladores y el histórico central trabajan en kW.
+// Si el proveedor declara kW para otro firmware, respetar esa unidad.
+// No inferir una potencia cero por ausencia de una lectura.
+function smPotenciaKw(lista){
+  const l=Array.isArray(lista)?lista:[];
+  const campo=l.find(it=>String(it.key||'').toLowerCase()==='apo_t1')||
+    l.find(it=>/^total ac output power(?: \(active\))?$/i.test(String(it.name||'')));
+  if(!campo||campo.value===null||campo.value===undefined||campo.value==='')return null;
+  const valor=Number(campo.value);
+  if(!Number.isFinite(valor))return null;
+  const unidad=String(campo.unit||'W').replace(/\s/g,'').toUpperCase();
+  if(unidad==='KW')return valor;
+  if(unidad==='W')return valor/1000;
+  return null;
+}
 // Solarman solo sirve un día por llamada, así que un rango son muchas. En fila
 // el Worker acaba tardando tanto que la conexión se corta y el navegador
 // devuelve un escueto "Failed to fetch"; en tandas paralelas va sobrado. La
@@ -563,7 +580,7 @@ async function smHistorico(env,tk,sn,desde,hasta,base){
     const l=fr.dataList||[];
     if(!fr.collectTime)continue;
     out.push({ts:horaLocal(new Date(+fr.collectTime*1000)),
-      pot:smValor(l,['APo_t1'],['total ac output power','total ac output power (active)']),
+      pot:smPotenciaKw(l),potUnit:'kW',
       acum:smValor(l,['Et_ge0'],['cumulative production','cumulative production (active)']),
       dia:smValor(l,['Etdy_ge1'],['daily production','daily production (active)'])});
   }
@@ -730,7 +747,7 @@ export class SolarmanQuota {
             if(!days.has(date))days.set(date,[]);
             days.get(date).push(row);
           }
-          for(const [fecha,rows] of days)items.push({tipo:kind,fecha,rows});
+          for(const [fecha,rows] of days)items.push({tipo:kind,fecha,rows,unidadPotencia:'kW'});
         }
         if(items.length){
           try{
