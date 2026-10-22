@@ -60,3 +60,20 @@ node --check scada-quota.mjs
 La CI también conserva la compilación / dry-run de Workers, sin despliegue. Abre `scada.html` desde el enlace **SCADA** del informe una vez fusionada la PR; mientras esté en borrador, usar una preview de la rama y comprobar que el navegador muestra las muestras existentes.
 
 **Humo de interfaz:** `node tests/scada-browser.mjs` tras instalar Playwright/Chromium y Chart.js; exclusivamente fixtures ficticios. La CI publica `scada-gorraiz-qa-capturas` con pantallas escritorio y móvil.
+
+
+## Contraste técnico FV / SPC · 21/10/2026 y otros días
+
+La nueva pestaña **Contraste FV ↔ SPC** trabaja exclusivamente con el histórico recuperado en el navegador. No consulta a Solarman ni a KSTAR y utiliza el día seleccionado en la parte superior (aunque la vista general esté en siete días).
+
+**Señales:** FV representa la suma AC de los inversores A+B obtenida de muestras Solarman en kW. Importación y exportación son potencias medias estimadas mediante diferencias de contadores acumulados SPC. Estos valores de red no equivalen exactamente a una muestra instantánea de Solarman. No se interpolan huecos ni saltos de contadores.
+
+**Consumo inferido:** potencia de consumo = potencia FV + importación SPC − exportación SPC. No es una medida independiente. Solo aparece en la curva y tabla horaria después de activar «Mostrar consumo calculado (no validado)». Consumos calculados inferiores a -0,2 kW se contabilizan como incidencias y se dejan vacíos en la curva, sin inventar consumos positivos.
+
+**Desfase horario:** el slider permite trasladar el reloj *visual* de SPC entre −180 y +180 minutos en pasos de cinco minutos. «SPC +5 minutos» dibuja una lectura original de SPC 09:55 junto a la hora FV 10:00. El ajuste no altera IndexedDB, el Worker, los ficheros, los timestamps ni la marca de huso verificado. Los tramos desplazados fuera de los límites del día se dejan vacíos y no se arrastran de días vecinos. Un desplazamiento visual que reduzca anomalías no acredita por sí solo la sincronización real.
+
+**Balances del día:** FV A+B procede de sus acumulados diarios Solarman; importación y exportación proceden del resumen diario de SPC. El consumo diario derivado se calcula únicamente cuando existen los tres totales y la jornada SPC es completa. También se presenta el autoconsumo FV calculado (FV menos exportación) y la diferencia con el campo autoconsumo del portal KSTAR. Esta diferencia solo es orientativa mientras no se valide el significado del campo, el alcance de ambos medidores y si existe almacenamiento.
+
+**Limitación importante:** la identidad del balance es algebraica y no constituye por sí sola una validación de los relojes. Es necesario cotejar la hora UTC de Solarman y el reloj/configuración SPC frente a una referencia externa, y de ser posible una señal de potencia independiente. Los días de cambio horario de verano requieren tratamiento particular de los intervalos de 23 o 25 horas; los 288 intervalos nominales no deben interpretarse como cobertura real completa de esos días.
+
+**CSV:** se exportan las casillas horarias de 5 minutos con kW, desfase exploratorio y marca «relojes certificados: NO». Si la casilla de visualización del consumo está desmarcada, la columna de consumo inferido se entrega vacía. No se descargan ni envían datos adicionales al proveedor.
