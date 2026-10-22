@@ -31,7 +31,7 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
 .check{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--dim)}
 .check input{accent-color:#4bd5aa}
 #notice{margin:0 0 13px;padding:9px 13px;background:#192c32;border:1px solid #345461;border-radius:9px;color:#c0d2d4;font-size:11px}
-.cards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px}
 .card,.panel{border:1px solid #293f49;border-radius:11px;background:linear-gradient(145deg,#172a33,#101e25);min-width:0}
 .card{padding:12px 14px;position:relative;overflow:hidden;border-top:2px solid var(--c)}
 .card .cap{color:#b2c5c9;font-size:11px;display:flex;gap:8px;align-items:center;white-space:nowrap}
@@ -52,12 +52,12 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
 .rightcol{display:flex;flex-direction:column;gap:11px}
 .equipment{padding:4px 13px}.equipment .item{display:flex;gap:10px;align-items:center;justify-content:space-between;border-bottom:1px solid #29424a;padding:9px 1px;font-size:11px}.equipment .item:last-child{border:0}.equipment .item .label{display:flex;align-items:center;gap:7px;min-width:0}.equipment .item .read{color:#acd4df;text-align:right;font-size:10px}
 .alarms{padding:9px 13px;color:#c2d3d4;font-size:11px}.alarms p{margin:4px 0 9px}.alarms p:last-child{margin-bottom:4px}
-.balance{padding:11px 14px}.meter{display:grid;grid-template-columns:105px 1fr 82px;gap:9px;align-items:center;margin:10px 0;font-size:10px}.meter .bar{height:7px;background:#2f434b;border-radius:20px;overflow:hidden}.meter .fill{height:100%;border-radius:20px;background:var(--bar);width:0}.meter .amount{text-align:right;font-variant-numeric:tabular-nums;color:#c9e4e7}
+.balance{padding:11px 14px}.meter{display:grid;grid-template-columns:minmax(135px,185px) minmax(80px,1fr) 96px;gap:9px;align-items:center;margin:10px 0;font-size:10px}.meter .bar{height:7px;background:#2f434b;border-radius:20px;overflow:hidden}.meter .fill{height:100%;border-radius:20px;background:var(--bar);width:0}.meter .amount{text-align:right;font-variant-numeric:tabular-nums;color:#c9e4e7}
 .footnote{margin-top:12px;color:#9ab4b7;font-size:11px;line-height:1.6}
 #empty{display:none;margin:15px 0;border:1px dashed #4e6872;padding:20px;border-radius:10px;background:#142730;color:#b8cdd1}
-@media(max-width:1310px){.panels{grid-template-columns: minmax(275px,1fr) minmax(350px,1.5fr)}.rightcol{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr}.cards{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:1310px){.panels{grid-template-columns: minmax(275px,1fr) minmax(350px,1.5fr)}.rightcol{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:880px){.frame{grid-template-columns:1fr}aside{display:none}main{padding:0 12px 20px}.panels{grid-template-columns:1fr}.rightcol{grid-column:auto}.charts{grid-template-columns:1fr 1fr}.flow{min-height:265px}.chartbox{height:325px}.card .value{font-size:24px}}
-@media(max-width:570px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.rightcol,.charts{grid-template-columns:1fr}.meter{grid-template-columns:95px 1fr 65px}.topright{gap:8px}.device{min-height:95px}.device .reading{font-size:14px}.energy-row{grid-template-columns:minmax(0,1fr) 18px minmax(0,1fr) 18px minmax(0,1fr)}.arrow{font-size:17px}}
+@media(max-width:570px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.rightcol,.charts{grid-template-columns:1fr}.meter{grid-template-columns:minmax(94px,1fr) minmax(55px,1fr) 77px;gap:6px}.topright{gap:8px}.device{min-height:95px}.device .reading{font-size:14px}.energy-row{grid-template-columns:minmax(0,1fr) 18px minmax(0,1fr) 18px minmax(0,1fr)}.arrow{font-size:17px}}
 
 /* Navegación real: enlaces accesibles, vistas independientes y móvil. */
 .scada-view[hidden]{display:none!important}
@@ -127,6 +127,17 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
 
 #spcDownloadDate,#spcDownloadHasta{min-width:135px;max-width:150px}
 @media(max-width:570px){#spcDownloadDate,#spcDownloadHasta{min-width:0;max-width:160px}}
+
+/* Un único instante para todas las tarjetas de potencia y el sinóptico.
+   La fecha/hora de otras fuentes se indica aparte, sin mezclarlas. */
+.snapshot-band{border:1px solid #426069;background:#182d34;border-radius:10px;padding:12px 14px;margin:0 0 11px}
+.snapshot-topline{display:flex;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap}
+.snapshot-topline strong{font:700 13px 'Space Grotesk',sans-serif;color:#d5f7e9;font-variant-numeric:tabular-nums}
+.snapshot-flag{font-size:10px;color:#f3daa3;border:1px solid #695b36;background:#302c20;border-radius:20px;padding:3px 8px;white-space:nowrap}
+.snapshot-band p{margin:6px 0 0;color:#acc4c9;font-size:11px;line-height:1.6}
+#snapshotIndependent{border-top:1px solid #2c4850;margin-top:7px;padding-top:7px;color:#8fb0be;font-variant-numeric:tabular-nums}
+.snapshot-band[hidden]{display:none!important}
+.balance .meter .amount{font-size:11px}
 </style>
 </head>
 <body><div class="frame">
@@ -223,17 +234,24 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
   <span id="blankDetail">Consulta la cobertura de Solarman y SPC que aparece arriba. Los datos ausentes no se sustituyen por cero.</span>
  </div>
  <section id="view-general" class="scada-view" data-view-panel="general" aria-label="Vista general del SCADA">
- <div class="cards" aria-label="Potencias del instante seleccionado">
+ <div class="snapshot-band" role="status" aria-label="Instante coherente del balance de potencia">
+  <div class="snapshot-topline">
+   <strong id="snapshotTitle">Comprobando la última casilla FV + SPC coincidente…</strong>
+   <span class="snapshot-flag" id="snapshotFlag">HISTÓRICO · RELOJ SIN VALIDAR</span>
+  </div>
+  <p id="snapshotExplanation">Las cuatro tarjetas y el sinóptico mostrarán un único intervalo nominal de cinco minutos, no las últimas marcas independientes.</p>
+  <p id="snapshotIndependent">Últimas lecturas independientes: comprobando horas…</p>
+ </div>
+ <div class="cards" aria-label="Potencias de una sola casilla temporal">
   <div class="card" style="--c:var(--green)"><div class="cap">☀ &nbsp; Generación total</div><div class="value number" id="powerGen">—</div><div class="sub" id="subGen">kW · Solarman</div></div>
   <div class="card" style="--c:var(--blue)"><div class="cap">⌂ &nbsp; Consumo estimado</div><div class="value number" id="powerCons">—</div><div class="sub" id="subCons">Cálculo provisional FV + import. − export.</div></div>
   <div class="card" style="--c:var(--red)"><div class="cap">↙ &nbsp; Importación red</div><div class="value number" id="powerImp">—</div><div class="sub" id="subImp">kW medio por intervalo</div></div>
   <div class="card" style="--c:var(--yellow)"><div class="cap">↗ &nbsp; Exportación red (−)</div><div class="value number" id="powerExp">—</div><div class="sub" id="subExp">kW medio por intervalo</div></div>
-  <div class="card" style="--c:var(--cyan)"><div class="cap">◉ &nbsp; Autoconsumo diario</div><div class="value number" id="powerSelf">—</div><div class="sub">kWh SPC · no es potencia</div></div>
  </div>
  <div id="empty">No hay muestras en este navegador para el periodo elegido. Importa o descarga los datos desde el <a href="./">informe Gorraiz</a> y vuelve a esta vista.</div>
  <div class="panels">
   <section class="panel">
-   <div class="ptop"><h2>Sinóptico de energía</h2><span class="muted tiny">Lecturas de fuentes independientes</span></div>
+   <div class="ptop"><h2>Sinóptico de energía</h2><span class="muted tiny" id="synopticTime">Balance de una sola casilla · sin reloj validado</span></div>
    <div class="pbody flow">
     <div class="energy-row">
       <div class="device"><div class="symbol">▦</div><div class="name">CAMPO FV</div><div class="reading" id="flowGen">—</div></div>
@@ -248,7 +266,7 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
       <div><div class="muted tiny">Importación media</div><strong class="import" id="flowImp">—</strong></div>
       <div><div class="muted tiny">Exportación media (−)</div><strong class="export" id="flowExp">—</strong></div>
     </div>
-    <div class="muted tiny">Los valores no son simultáneos si sus relojes no están validados. Las flechas son conceptuales.</div>
+    <div class="muted tiny">Misma casilla nominal de cinco minutos para FV y SPC. El reloj físico de SPC no está contrastado; carga calculada, no medida. Flechas conceptuales.</div>
    </div>
   </section>
   <section class="panel chartpanel">
@@ -276,11 +294,12 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
   <section class="panel"><div class="ptop"><h2>Intercambio con red</h2><span class="muted tiny">Importación (+) · exportación (−) kW medios</span></div><div class="smallbox"><canvas id="gridChart"></canvas></div></section>
  </div>
  <section class="panel" style="margin-top:11px">
-  <div class="ptop"><h2>Balance de energía del último día seleccionado</h2><span class="muted tiny">kWh acumulados · fuentes identificadas</span></div>
+  <div class="ptop"><h2>Balance de energía del último día seleccionado</h2><span class="muted tiny" id="dailyBalanceDay">kWh acumulados · fuentes identificadas</span></div>
   <div class="balance">
    <div class="meter" style="--bar:var(--green)"><span>Generación FV</span><span class="bar"><span class="fill" id="barGen"></span></span><span class="amount" id="dailyGen">—</span></div>
    <div class="meter" style="--bar:var(--blue)"><span>Consumo diario derivado (kWh)</span><span class="bar"><span class="fill" id="barCons"></span></span><span class="amount" id="dailyCons">—</span></div>
    <div class="meter" style="--bar:var(--yellow)"><span>Vertido a red</span><span class="bar"><span class="fill" id="barExp"></span></span><span class="amount" id="dailyExp">—</span></div>
+   <div class="meter" style="--bar:var(--cyan)"><span>Autoconsumo SPC (kWh)</span><span class="bar"><span class="fill" id="barSelf"></span></span><span class="amount" id="dailySelf">—</span></div>
    <div class="meter" style="--bar:var(--red)"><span>Importación</span><span class="bar"><span class="fill" id="barImp"></span></span><span class="amount" id="dailyImp">—</span></div>
    <p class="footnote">Exportación como flujo de potencia = negativa en las curvas y sinóptico; los kWh exportados de contador se conservan positivos. Consumo estimado = generación FV + importación − exportación, solo con FV de A+B y SPC en la misma casilla (relojes todavía sin validar). El resultado es exploratorio, no consumo medido ni validación de relojes. El consumo diario en kWh utiliza acumulados del día cerrado, no suma de puntos instantáneos. Generación = inversor A + B, ambos con medida. Consumo diario = generación + importación − exportación, solo si hay balance del mismo día y perímetro. Las potencias de red son medias por intervalo obtenidas de contadores acumulados conciliados con el resumen KSTAR. No se usa <code>totalActivePower</code> hasta validar unidades/CT y signo. El refresco de gráficos no llama a APIs. La actualización automática optativa consulta Solarman cada 60 minutos como máximo en este navegador y está apagada de inicio; tampoco consulta al abrir el SCADA. El botón manual utiliza el mismo límite. Una actualización puede consumir varias llamadas internas de la API Solarman, por lo que no se interpreta «1/h» como una única petición al proveedor. KSTAR continúa manual, para días cerrados y sin cron.</p>
   </div>
@@ -379,6 +398,6 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
    <p class="footnote">No hay funciones de mando sobre KSTAR ni confirmación de estado «en línea». Una muestra reciente o histórica no garantiza ausencia de averías.</p>
  </section>
 </main></div>
-<script type="module" src="./scada-app.mjs?v=20261022j"></script>
+<script type="module" src="./scada-app.mjs?v=20261022k"></script>
 </body>
 </html>
