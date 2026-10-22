@@ -47,7 +47,7 @@ function provider(t,{fail=false,delay=0}={}){
      return reply({success:true,deviceListItems:[{deviceSn:'INV-A',deviceId:1},{deviceSn:'INV-B',deviceId:2}]});
    if(pathname==='/device/v1.0/historical')
      return reply({success:true,paramDataList:[{collectTime:Math.floor(Date.parse('2026-10-19T12:00:00Z')/1000),
-       dataList:[{key:'APo_t1',value:'21.3'},{key:'Et_ge0',value:'3021.2'},{key:'Etdy_ge1',value:'74.2'}]}]});
+       dataList:[{key:'APo_t1',value:'21300',unit:'W'},{key:'Et_ge0',value:'3021.2'},{key:'Etdy_ge1',value:'74.2'}]}]});
    if(pathname==='/account/v1.0/info')
      return reply({success:true,orgInfoList:[{companyId:10865841,companyName:'Amixalan'}]});
    throw new Error('Ruta externa inesperada: '+pathname);
