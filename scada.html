@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SCADA · Gorraiz</title><link rel="icon" href="favicon.svg">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{color-scheme:dark;--bg:#0f1a16;--panel:#162420;--stroke:#2b4036;--gold:#d4a039;--text:#e8e6e0;--dim:#a1b5a5;--good:#65c6a1}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px system-ui,sans-serif}
+header{padding:18px max(20px,calc((100vw - 1200px)/2));background:#14221d;border-bottom:1px solid var(--stroke);display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+a{color:var(--good)}h1{font-size:23px;margin:0}small,.muted{color:var(--dim)}main{max-width:1240px;margin:auto;padding:20px}
+.toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:18px}input,button{padding:9px 12px;background:#1d3028;border:1px solid var(--stroke);border-radius:8px;color:var(--text)}button{cursor:pointer}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.card,.stage{background:var(--panel);border:1px solid var(--stroke);border-radius:14px;padding:18px}.label{color:var(--dim);font-size:12px}.value{font-weight:700;font-variant-numeric:tabular-nums;font-size:27px;margin:8px 0}.unit{font-size:13px;color:var(--dim)}
+.flow{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:12px;align-items:center;margin:18px 0}.flow .stage{text-align:center;min-height:135px}.arrow{font-size:24px;color:var(--gold)}
+.section{margin-top:18px}.chart{height:315px;position:relative}.warn{color:#f0c57b}.tag{display:inline-block;font-size:12px;border:1px solid var(--stroke);padding:5px 9px;border-radius:99px}
+@media(max-width:750px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.flow{grid-template-columns:1fr;}.arrow{transform:rotate(90deg);text-align:center}.chart{height:270px}.value{font-size:22px}}
+</style></head><body>
+<header><div><h1>SCADA · Gorraiz</h1><small>Factiun · KSTAR SPC01 · Consulta histórica, sin funciones de mando</small></div><a href="./">← Informe de autoconsumo</a></header>
+<main><div class="toolbar"><label for="day">Día registrado</label><input id="day" type="date"><button id="reload">Recargar almacenamiento</button><span class="tag" id="source">Sin lectura</span></div>
+<p id="status" role="status" class="muted">Leyendo el histórico local…</p>
+<section class="stats" aria-label="Resumen de energía">
+<div class="card"><div class="label">Importación desde red</div><div class="value" id="import">—</div><span class="unit">kWh/día</span></div>
+<div class="card"><div class="label">Exportación a red</div><div class="value" id="export">—</div><span class="unit">kWh/día</span></div>
+<div class="card"><div class="label">Autoconsumo comunicado por SPC</div><div class="value" id="self">—</div><span class="unit">kWh/día</span></div>
+<div class="card"><div class="label">Muestras SPC</div><div class="value" id="samples">—</div><span class="unit">registros del día</span></div></section>
+<section class="flow" aria-label="Esquema energético conceptual">
+<div class="stage"><div class="label">RED ELÉCTRICA</div><div class="value" id="grid">—</div><div class="muted">Intercambio diario medido</div></div>
+<div class="arrow" aria-hidden="true">↔</div>
+<div class="stage"><div class="label">KSTAR SPC01</div><div class="value">Medidor</div><div class="muted">Importación / exportación</div></div>
+<div class="arrow" aria-hidden="true">↔</div>
+<div class="stage"><div class="label">INSTALACIÓN</div><div class="value" id="local">—</div><div class="muted">Autoconsumo comunicado</div></div>
+</section>
+<section class="card section"><div class="label">Histórico diario disponible en este navegador</div><div class="chart"><canvas id="history"></canvas></div></section>
+<p class="muted">Las flechas representan el perímetro de medida, no flujos eléctricos instantáneos. Los valores son acumulados del día, no potencias en tiempo real. No se deduce producción ni consumo a partir de acumulados incompatibles. El SCADA lee IndexedDB sin acceder a claves ni contraseñas de los Workers.</p>
+</main><script>
+'use strict';
+const $=id=>document.getElementById(id);const nf=new Intl.NumberFormat('es-ES',{maximumFractionDigits:2});
+let days=[],chart;
+function number(v){if(v===null||v===undefined||v==='')return null;const n=Number(v);return Number.isFinite(n)?n:null}
+function fmt(v){return v===null?'—':nf.format(v)}
+function load(){
+ return new Promise((resolve,reject)=>{
+  const request=indexedDB.open('gorraiz_datos',1);
+  request.onupgradeneeded=()=>{if(!request.result.objectStoreNames.contains('fuentes'))request.result.createObjectStore('fuentes',{keyPath:'id'})};
+  request.onerror=()=>reject(request.error);
+  request.onsuccess=()=>{
+   const db=request.result,tx=db.transaction('fuentes','readonly'),q=tx.objectStore('fuentes').getAll();
+   q.onsuccess=()=>{db.close();resolve((q.result||[]).filter(x=>x.tipo==='S'&&x.payload))};
+   q.onerror=()=>{db.close();reject(q.error)};
+  };
+ });
+}
+function render(){
+ const d=days.find(x=>x.date===$('day').value),daily=d?.daily?.find(x=>x.date===d.date);
+ $('import').textContent=fmt(number(daily?.importKWh));
+ $('export').textContent=fmt(number(daily?.exportKWh));
+ $('self').textContent=fmt(number(daily?.selfConsumptionKWh));
+ $('samples').textContent=d?fmt(d.rows?.length||0):'—';
+ $('grid').textContent=daily?'↓ '+fmt(number(daily.importKWh))+' / ↑ '+fmt(number(daily.exportKWh)):'—';
+ $('local').textContent=fmt(number(daily?.selfConsumptionKWh))+' kWh';
+ $('source').textContent=d?'SPC · '+(d.meta?.completo===true?'día completo':'integridad sin confirmar'):'Sin datos';
+ $('status').textContent=d?'Día '+d.date+' · histórico local, no lectura en directo.':'No hay datos SPC guardados para esta fecha.';
+}
+async function refresh(){
+ try{
+  const stored=await load();days=stored.map(x=>({...x.payload,date:x.fecha})).sort((a,b)=>a.date.localeCompare(b.date));
+  const desired=$('day').value;if(days.length){$('day').min=days[0].date;$('day').max=days.at(-1).date;$('day').value=days.some(x=>x.date===desired)?desired:days.at(-1).date}
+  else {$('status').textContent='Sin datos KSTAR locales. Abre el informe principal y utiliza «Traer datos» antes de consultar el SCADA.'}
+  render();const ds=days.map(d=>d.daily?.find(x=>x.date===d.date));
+  chart?.destroy();if(typeof Chart==='undefined')return;
+  chart=new Chart($('history'),{type:'bar',data:{labels:days.map(d=>d.date),datasets:[
+   {label:'Importación (kWh)',data:ds.map(x=>number(x?.importKWh)),backgroundColor:'#d4a039'},
+   {label:'Exportación (kWh)',data:ds.map(x=>number(x?.exportKWh)),backgroundColor:'#65c6a1'}]},
+   options:{maintainAspectRatio:false,responsive:true,plugins:{legend:{labels:{color:'#e8e6e0'}}},scales:{x:{ticks:{color:'#a1b5a5',maxTicksLimit:10},grid:{color:'#2b4036'}},y:{beginAtZero:true,ticks:{color:'#a1b5a5'},grid:{color:'#2b4036'}}}}});
+ }catch(e){$('status').textContent='No se pudo abrir el histórico local: '+e.message}
+}
+$('day').addEventListener('change',render);$('reload').addEventListener('click',refresh);refresh();
+</script></body></html>
