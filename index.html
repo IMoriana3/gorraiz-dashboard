@@ -445,9 +445,10 @@ function chk(){$('btnGo').disabled=!(RAW.A.length||RAW.B.length)}
 // es una fuente, y se combinan por marca de tiempo. Antes cada origen pisaba al
 // otro, así que descargar un rango borraba los .xlsx ya cargados y al revés.
 let PROD_FUENTES={A:[],B:[]};
-function ponFuenteProd(k,nombre,rows){
+function ponFuenteProd(k,nombre,rows,unidadPotencia=null){
   PROD_FUENTES[k]=PROD_FUENTES[k].filter(f=>f.nombre!==nombre);
-  PROD_FUENTES[k].push({nombre:nombre,rows:rows});
+  PROD_FUENTES[k].push({nombre:nombre,rows:rows,
+    ...(unidadPotencia?{unidadPotencia}:{})});
   mergeProd(k);
 }
 function mergeProd(k){
@@ -1384,7 +1385,8 @@ function guardaFuentes(){
         IBR_FILES.forEach(f=>entries.push({id:'I|'+f.name,tipo:'I',nombre:f.name,rows:f.rows}));
         ['A','B'].forEach(k=>PROD_FUENTES[k].forEach(f=>
           entries.push({id:k+'|'+f.nombre,tipo:k,nombre:f.nombre,rows:f.rows,
-            ...(f.updatedAt?{updatedAt:f.updatedAt}:{})})));
+            ...(f.updatedAt?{updatedAt:f.updatedAt}:{}),
+            ...(f.unidadPotencia?{unidadPotencia:f.unidadPotencia}:{})})));
         SPC_FUENTES.forEach(f=>entries.push({id:'S|'+f.date,tipo:'S',fecha:f.date,payload:f}));
         for(const source of entries){
           if(source.tipo==='I'){st.put(source);continue}
@@ -1410,7 +1412,8 @@ async function cargaFuentes(){
     todo.forEach(f=>{
       if(f.tipo==='I')IBR_FILES.push({name:f.nombre,size:0,dias:0,rows:f.rows});
       else if(f.tipo==='S'&&f.payload)ponFuenteSpc(f.fecha,f.payload);
-      else if(PROD_FUENTES[f.tipo])PROD_FUENTES[f.tipo].push({nombre:f.nombre,rows:f.rows,updatedAt:f.updatedAt});
+      else if(PROD_FUENTES[f.tipo])PROD_FUENTES[f.tipo].push({nombre:f.nombre,rows:f.rows,
+        updatedAt:f.updatedAt,unidadPotencia:f.unidadPotencia});
     });
     mergeIBR();mergeProd('A');mergeProd('B');
     log(`Recuperados datos guardados: ${fn(RAW.I.length)} reg de consumo, ${fn(RAW.A.length+RAW.B.length)} de producción`);
@@ -1566,7 +1569,8 @@ async function bajaHistoricoCompartido({todo=false}={}){
     const nombre='Histórico central Gorraiz';
     const antes=PROD_FUENTES[tipo].find(x=>x.nombre===nombre)?.rows||[];
     const unidos=new Map([...antes,...nuevas[tipo]].map(r=>[+r.ts,r]));
-    PROD_FUENTES[tipo]=[{nombre,rows:[...unidos.values()].sort((a,b)=>a.ts-b.ts)},
+    PROD_FUENTES[tipo]=[{nombre,unidadPotencia:'kW',
+      rows:[...unidos.values()].sort((a,b)=>a.ts-b.ts)},
       ...PROD_FUENTES[tipo].filter(x=>x.nombre!==nombre)];
     mergeProd(tipo);
    }
@@ -1580,21 +1584,62 @@ async function bajaHistoricoCompartido({todo=false}={}){
    '. Se mantiene intacto el histórico del navegador.')}
  finally{HIST_CENTRO_OCUPADO=false;$('btnCentroLeer').disabled=false}
 }
+function unidadPotenciaLocal(f){
+ // Solo se declaran unidades si la fuente ofrece prueba de procedencia.
+ if(['W','kW','desconocida'].includes(f.unidadPotencia))return f.unidadPotencia;
+ const nombre=String(f.nombre||'');
+ // Las primeras versiones de nuestro Worker conservaron APo_t1 sin
+ // normalizar: ese campo de SOLARMAN está documentado en W.
+ if(/^Solarman(?:\s|$)|^SCADA Solarman(?:\s|$)/i.test(nombre))return 'W';
+ // El histórico central ya contiene potencias estandarizadas en kW.
+ if(/^Histórico central Gorraiz$|^Compartido(?:\s|$)/i.test(nombre))return 'kW';
+ // En los XLSX viejos se descartó el encabezado con unidad al importar.
+ // No cabe afirmar si el número en 'Ficheros' era W o kW; conservar bruto.
+ return 'desconocida';
+}
+function fuenteDiaNormalizada(tipo,f,r){
+ if(!(r.ts instanceof Date)||!Number.isFinite(+r.ts))return null;
+ const fecha=dk(r.ts),unidad=unidadPotenciaLocal(f);
+ if(!spcFecha(fecha))return null;
+ const pot=r.pot===null||r.pot===undefined||r.pot===''?null:Number(r.pot);
+ let convertido=Number.isFinite(pot)?(unidad==='W'?pot/1000:pot):null;
+ if(unidad==='desconocida'||convertido!==null&&(convertido<0||convertido>65))convertido=null;
+ const row={ts:r.ts.toISOString(),pot:convertido,acum:r.acum??null,dia:r.dia??null};
+ // No se pierde la medida original: queda para revisar si el XLSX antiguo
+ // tenía unidad no identificable o detectamos un valor físicamente anómalo.
+ if(convertido===null&&Number.isFinite(pot))row.potSinValidar=pot;
+ if(convertido===null&&r.potSinValidar!==undefined)
+   row.potSinValidar=r.potSinValidar;
+ return{fecha,row};
+}
 function fuentesLocalesParaServidor(){
- const por=new Map(),put=(tipo,fecha,rows)=>{const id=tipo+'|'+fecha;
-  if(!por.has(id))por.set(id,{tipo,fecha,rows:[]});
-  por.get(id).rows.push(...rows)};
+ const por=new Map();
+ const añadir=(tipo,fecha,row)=>{
+  const key=tipo+'|'+fecha;
+  if(!por.has(key))por.set(key,{tipo,fecha,unidadPotencia:'kW',rows:new Map()});
+  const previous=por.get(key).rows.get(row.ts);
+  // Una fuente con unidad desconocida nunca debe sustituir la potencia
+  // correcta de otra. Se conservan acumulados válidos y potencia original.
+  const merged=previous?{...previous,...row,
+    pot:row.pot??previous.pot??null,
+    acum:row.acum??previous.acum??null,dia:row.dia??previous.dia??null}:row;
+  por.get(key).rows.set(row.ts,merged);
+ };
  for(const tipo of ['A','B']){
-  RAW[tipo].forEach(r=>{
-   if(!(r.ts instanceof Date)||!Number.isFinite(+r.ts))return;
-   const fecha=dk(r.ts);if(spcFecha(fecha))put(tipo,fecha,[r]);
-  });
+  for(const fuente of PROD_FUENTES[tipo]){
+   for(const row of fuente.rows||[]){
+    const item=fuenteDiaNormalizada(tipo,fuente,row);
+    if(item)añadir(tipo,item.fecha,item.row);
+   }
+  }
  }
  for(const f of SPC_FUENTES){
   if(!spcFecha(f.date)||!f.meta||f.meta.fuente!=='spc')continue;
   por.set('S|'+f.date,{tipo:'S',fecha:f.date,payload:f});
  }
- return [...por.values()].sort((a,b)=>a.fecha.localeCompare(b.fecha)||a.tipo.localeCompare(b.tipo));
+ return [...por.values()].map(x=>x.rows instanceof Map?
+   {...x,rows:[...x.rows.values()].sort((a,b)=>a.ts.localeCompare(b.ts))}:x)
+   .sort((a,b)=>a.fecha.localeCompare(b.fecha)||a.tipo.localeCompare(b.tipo));
 }
 async function subeHistoricoLocal(){
  const cfg=apiCfg();
@@ -1603,19 +1648,40 @@ async function subeHistoricoLocal(){
  const items=fuentesLocalesParaServidor();
  if(!items.length){centroMensaje('No hay registros FV/SPC locales que compartir.');return}
  HIST_CENTRO_OCUPADO=true;$('btnCentroSubir').disabled=true;
- let enviados=0;
- try{
-  for(let i=0;i<items.length;i+=12){
-   const packet=items.slice(i,i+12);
-   const r=await apiCall('/historico/guardar',{items:packet});
-   enviados+=r.guardadas||0;
-   centroMensaje('Compartiendo copia local: '+enviados+' de '+items.length+' días/equipos. Sin consultas a proveedores.');
+ let enviados=0,pendientes=0;
+ const rechazados=[];
+ // Si hay un día con metadatos erróneos, probar una sola fuente y continuar;
+ // no paralizar una migración de cientos de días por ese único registro.
+ async function enviarGrupo(packet){
+  try{
+   const response=await apiCall('/historico/guardar',{items:packet});
+   enviados+=response.guardadas||0;
+   pendientes+=response.pendientesPotencia||0;
+   centroMensaje('Migración segura: '+enviados+'/'+items.length+' conjuntos guardados, '+
+     rechazados.length+' rechazados, '+pendientes+' potencias sin unidad verificada. Sin consultas a proveedores.');
+  }catch(e){
+   if(packet.length>1&&!/credencial|PANEL_KEY|clave de panel|coordinador central|SOLARMAN_QUOTA/i.test(e.message)){
+    const mid=Math.floor(packet.length/2);
+    await enviarGrupo(packet.slice(0,mid));
+    await enviarGrupo(packet.slice(mid));
+    return;
+   }
+   if(packet.length>1)throw e;
+   rechazados.push(packet[0].tipo+' '+packet[0].fecha+': '+e.message);
   }
-  centroMensaje('Sincronización completada: '+enviados+' conjuntos FV/SPC guardados en la base común. Disponible desde el SCADA y otros navegadores configurados.');
- }catch(e){centroMensaje('Sincronización parcial: '+enviados+'/'+items.length+
-   '. '+e.message+'. Las copias locales se mantienen; puedes reintentar.')}
- finally{HIST_CENTRO_OCUPADO=false;$('btnCentroSubir').disabled=false}
+ }
+ try{
+  for(let i=0;i<items.length;i+=12)await enviarGrupo(items.slice(i,i+12));
+  centroMensaje('Migración finalizada: '+enviados+'/'+items.length+' conjuntos compartidos; '+
+    rechazados.length+' pendientes de revisar; '+pendientes+' lecturas de potencia sin unidad fiable. '+
+    (rechazados.length?'Primera incidencia: '+rechazados[0]+'. ':'')+
+    'Los originales siguen guardados. Ninguna llamada adicional a Solarman ni a KSTAR.');
+ }catch(e){
+  centroMensaje('Migración detenida por conexión o autenticación: '+enviados+'/'+items.length+
+    ' conjuntos guardados. '+e.message+'. Puedes reintentar sin borrar los originales.');
+ }finally{HIST_CENTRO_OCUPADO=false;$('btnCentroSubir').disabled=false}
 }
+
 async function guardaDiaSpcCentral(fecha,payload){
  if(!apiCfg().url||!apiCfg().key)return;
  try{
@@ -1725,7 +1791,8 @@ async function traerDatos(){
       const nombre=`Solarman ${fdmy(desde)} → ${fdmy(hasta)}`;
       ['A','B'].forEach(k=>{if(p[k]&&p[k].length){
         n++;ponFuenteProd(k,nombre,
-          p[k].map(r=>({ts:new Date(r.ts),pot:r.pot,acum:r.acum,dia:r.dia})).sort((x,y)=>x.ts-y.ts));
+          p[k].map(r=>({ts:new Date(r.ts),pot:r.pot,acum:r.acum,dia:r.dia})).sort((x,y)=>x.ts-y.ts),
+          'kW');
       }});
       if(!n)throw new Error('no ha devuelto ningún registro en ese rango');
       algo=true;
