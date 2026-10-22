@@ -149,18 +149,23 @@ try {
       imp:document.getElementById('powerImp').textContent,
       exp:document.getElementById('powerExp').textContent,
       cons:document.getElementById('powerCons').textContent,
-      series:chart.data.datasets.map(d=>({label:d.label,nonNull:d.data.filter(v=>v!==null).length})),
+      series:chart.data.datasets.map(d=>({label:d.label,nonNull:d.data.filter(v=>v!==null).length,
+        min:Math.min(...d.data.filter(v=>v!==null))})),
       labels:chart.data.labels.length}
   });
   const value=v=>Number(v.replace(/[^0-9,-]/g,'').replace(',','.'));
   const generation=value(reading.gen),consumption=value(reading.cons);
   const imported=value(reading.imp),exported=value(reading.exp);
   assert.ok(generation>0&&consumption>0,'potencias sintéticas válidas');
-  assert.ok(imported>=0&&exported>=0,'intercambio no negativo');
-  assert.ok(Math.abs(generation+imported-exported-consumption)<0.3,
-    'identidad consumo = generación + importación - exportación');
+  assert.ok(imported>=0&&exported<=0,'importación positiva / exportación negativa en tarjetas');
+  assert.ok(Math.abs(generation+imported+exported-consumption)<0.3,
+    'identidad consumo = generación + importación + exportación con signo negativo');
   assert.equal(reading.series.length,4);
   assert.ok(reading.series.every(x=>x.nonNull>=60),JSON.stringify(reading));
+  assert.ok(reading.series[3].min<0,'la curva amarilla de exportación debe caer bajo cero');
+  assert.match(reading.series[1].label,/SIN VALIDAR/,'consumo provisional claramente etiquetado');
+  assert.equal(await page.locator('#provisional').isChecked(),true,
+    'solicitud del usuario: mostrar estimación provisional por defecto');
   assert.equal(reading.labels,288);
   assert.equal(requests,0,'abrir el SCADA no debe consumir ninguna llamada API');
   // Ambos paneles usan las mismas rutas de archivo, sin consultar proveedores.
@@ -256,7 +261,17 @@ try {
    const c=Chart.getChart(document.getElementById('contrastChart'));
    return c.data.datasets.map(d=>d.label)
   });
-  assert.equal(comparison.length,3,'la demanda no aparece sin autorización');
+  assert.equal(comparison.length,4,'el usuario solicitó visualizar consumo estimado por defecto');
+  assert.match(comparison[3],/NO VALIDADO/);
+  assert.equal(await page.locator('#contrastLoad').isChecked(),true);
+  const minExport=await page.locator('#contrastChart').evaluate(el=>{
+    const chart=Chart.getChart(el);return Math.min(...chart.data.datasets[2].data.filter(v=>v!==null));
+  });
+  assert.ok(minExport<0,'exportación negativa en el gráfico de contraste');
+  await page.locator('#contrastLoad').uncheck();
+  assert.equal(await page.locator('#contrastChart').evaluate(el=>
+    Chart.getChart(el).data.datasets.length),3,
+    'el usuario puede ocultar consumo provisional sin perder datos');
   await page.locator('#contrastShift').evaluate(el=>{
    el.value='5';el.dispatchEvent(new Event('input',{bubbles:true}));
   });
