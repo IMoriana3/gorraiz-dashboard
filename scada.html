@@ -124,12 +124,16 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
   <button id="today" type="button">Hoy</button>
   <button id="one" aria-pressed="true" type="button">24 h</button>
   <button id="seven" aria-pressed="false" type="button">7 días</button>
-  <button id="reload" type="button">↻ Leer histórico</button>
+  <button id="reload" type="button">↻ Leer histórico común</button>
+  <button id="pullHistory" type="button" title="Consulta el histórico central completo sin llamar a Solarman ni KSTAR">↓ Recuperar todo</button>
+  <button id="pushHistory" type="button" title="Copia el histórico de este navegador en el archivo central sin descargar de proveedores">↑ Compartir copia local</button>
+  <button id="fetchSPC" type="button" title="Solo a petición: consulta UN día cerrado al Worker aislado KSTAR y lo guarda en el archivo compartido. Requiere cuenta SPC de lectura limitada.">↓ SPC día cerrado</button>
   <button id="updatePV" type="button" title="Máximo un intento por hora en este navegador, compartido con el modo automático">↓ Actualizar Solarman (1/h)</button>
   <label class="check" title="Optativo; una consulta a Solarman cada 60 minutos como máximo en este navegador. No consulta KSTAR."><input id="auto" type="checkbox"> Automático FV / 60 min</label>
   <label class="check" title="Permite el cálculo aproximado del consumo con relojes SPC/Solarman sin conciliar; nunca afecta a los informes."><input id="provisional" type="checkbox"> Cruce horario provisional</label>
  </div>
- <div id="rateInfo" class="muted tiny" style="padding:0 0 12px" role="status">Controlando cupo horario de Solarman…</div>
+ <div id="rateInfo" class="muted tiny" style="padding:0 0 6px" role="status">Controlando cupo horario de Solarman…</div>
+ <div id="sharedState" class="muted tiny" role="status" style="padding:0 0 10px">Base común de Gorraiz: pendiente de sincronización. Leer esta base no consume cupo de Solarman ni consultas KSTAR.</div>
  <div class="coverage-sources" aria-label="Cobertura del almacenamiento local">
   <div class="coverage-source"><strong>Solarman · Inversor A</strong><span id="coverageA">Comprobando memoria…</span></div>
   <div class="coverage-source"><strong>Solarman · Inversor B</strong><span id="coverageB">Comprobando memoria…</span></div>
