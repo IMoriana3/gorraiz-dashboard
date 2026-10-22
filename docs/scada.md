@@ -117,3 +117,11 @@ Si está seleccionada la vista de **7 días**, el balance de energía incluye **
 El mismo sinóptico informa el **último total acumulado A+B** si ambos inversores tienen un registro de energía acumulada de la misma jornada a menos de 30 minutos; se muestra como lectura del contador, no como producción histórica inferida a partir de una muestra parcial. Si no hay dos acumulados compatibles, el valor queda vacío y se explica por qué.
 
 La discrepancia entre el campo selfConsumptionKWh comunicado por el portal SPC y la energía FV autoconsumida derivada permanece como dato para contrastar; no se presume que los dos campos tengan el mismo alcance. El balance tampoco acredita sincronismo horario ni la ausencia de almacenamiento. Este cambio no agrega llamadas a Solarman/SPC, ni modifica los datos originales ni el control de cuotas.
+
+## Diagnóstico local de huecos de Solarman A/B
+
+En «Huecos de curvas» se añade una tabla para **el día seleccionado** (también si la gráfica general muestra siete días). Reproduce el criterio de casilla de cinco minutos que utiliza `buildSeries` para crear la curva total FV. Delimita la ventana desde la primera hasta la última casilla con potencia válida simultánea de ambos inversores, **sin contar la noche como hueco**.
+
+Cada hueco queda clasificado como ausencia de fila válida A/B, falta de los dos, lectura existente sin potencia validada o presencia de filas de energía sin potencia. Se marcan como **posibles** diferencias de casilla cuando existe una medida válida del inversor que falta en ±5 minutos; esta proximidad NO demuestra desincronización.
+
+La tabla presenta hasta 80 huecos y «Exportar diagnóstico CSV» descarga todas las incidencias del día, con el estado de cada inversor, **sin consumir llamadas a Solarman ni SPC**. Solo inspecciona la copia del navegador recuperada del histórico central; «sin fila» no significa que el inversor o la plataforma de origen dejaran de medir. Para atribuir el corte al firmware, datalogger, nube o ingestión hace falta consultar el registro original de Solarman con trazabilidad temporal. No se interpolan huecos, no se modifica IndexedDB ni se alteran acumulados de energía.
