@@ -10,7 +10,7 @@
 // de ficheros .xlsx, para que el resto del informe no se entere del cambio.
 // ═══════════════════════════════════════════════════════════════════════════
 import {periodo} from './periodos.js';
-import {writeHistory,readHistory,historyStatus} from './shared-history.js';
+import {writeHistory,readHistory,historyStatus,validateHistory} from './shared-history.js';
 import {spcIntercambio, spcDiagnostico, spcDatos, spcEstado, spcScheduled, safeSpcError} from './spc.js';
 
 const DATADIS='https://datadis.es';
@@ -688,9 +688,11 @@ export class SolarmanQuota {
     const tipo=b.tipo,desde=b.desde,hasta=b.hasta,dia=b.dia;
     // La consulta y la copia compartida NO consumen presupuesto Solarman.
     // La misma instancia DO con SQLite conserva el orden entre clientes.
-    if(tipo==='historico_datos'||tipo==='historico_guardar'||tipo==='historico_estado'){
+    if(tipo==='historico_datos'||tipo==='historico_guardar'||
+       tipo==='historico_estado'||tipo==='historico_validar'){
       try{
         if(tipo==='historico_estado')return json(await historyStatus(this.ctx.storage));
+        if(tipo==='historico_validar')return json(validateHistory(b.items,this.env));
         if(tipo==='historico_datos')return json(await readHistory(this.ctx.storage,desde,hasta));
         return json(await writeHistory(this.ctx.storage,b.items,this.env));
       }catch(e){
@@ -857,12 +859,14 @@ export default{
       const b=req.method==='POST'?await req.json().catch(()=>({}))
         :Object.fromEntries(url.searchParams);
       const desde=b.desde,hasta=b.hasta;
-      if(ruta==='/historico/estado'||ruta==='/historico/datos'||ruta==='/historico/guardar'){
+      if(ruta==='/historico/estado'||ruta==='/historico/datos'||
+         ruta==='/historico/guardar'||ruta==='/historico/validar'){
         const onlyState=ruta==='/historico/estado';
         if(!onlyState&&req.method!=='POST')return json({error:'Se requiere POST para esta operación.'},405,h);
         if(onlyState&&req.method!=='GET')return json({error:'Se requiere GET para el estado.'},405,h);
         return solarmanConCuota(env,onlyState?{tipo:'historico_estado'}:
           ruta==='/historico/datos'?{tipo:'historico_datos',desde,hasta}:
+            ruta==='/historico/validar'?{tipo:'historico_validar',items:b.items}:
             {tipo:'historico_guardar',items:b.items},h);
       }
       if(ruta==='/spc/intercambio')return json(await spcIntercambio(env,desde,hasta),200,h);
