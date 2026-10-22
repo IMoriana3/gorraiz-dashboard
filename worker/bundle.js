@@ -1,8 +1,8 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // GENERADO AUTOMÁTICAMENTE — no editar a mano.
-// Es index.js + periodos.js + spc.js, para pegarlo en el editor web
-// de Cloudflare cuando no se puede usar wrangler desde el equipo.
-// Para regenerarlo tras cambiar cualquiera de ellos: node construir.mjs
+// Es index.js + periodos.js + spc.js y shared-history.js; para pegarlo
+// en el editor de Cloudflare cuando no se puede usar Wrangler.
+ // Para regenerarlo: node construir.mjs
 // ═══════════════════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════════
@@ -593,7 +593,7 @@ async function spcScheduled(env, options = {}) {
 const HISTORY_PREFIX='energia:v1:';
 const HISTORY_MAX_DAYS=31;
 const HISTORY_MAX_ITEMS=93;
-const MAX_SAMPLES=600; // por equipo y día (incluye repeticiones de captura)
+const MAX_SAMPLES=2500; // submuestreo o 30 s: máximo condicionado al tamaño 1,8 MB
 const MAX_SPC=600;
 const MAX_TEXT=1_800_000; // margen bajo el máximo de valores del DO
 const types=new Set(['A','B','S']);
@@ -629,42 +629,46 @@ function normalizedTime(value){
 const limited=v=>typeof v==='string'?v.slice(0,90):'';
 function sanitizeInv(input,source){
  if(!Array.isArray(source.rows)||source.rows.length>MAX_SAMPLES||source.rows.length===0)
-   throw new Error('El día FV no contiene una lista válida de hasta 600 muestras.');
- const date=input.fecha;
- const out=new Map();
- const provided=source.unidadPotencia??source.potUnit??null;
- if(provided!==null&&!['W','kW','desconocida'].includes(provided))
-   throw new Error('Unidad de potencia no reconocida. Indica W, kW o desconocida.');
- let quarantined=0;
+   throw new Error('Muestras FV ausentes o más de 2.500 en un día; conservar local y revisar el formato.');
+ const date=input.fecha,out=new Map();
+ let units=source.unidadPotencia??source.potUnit??null;
+ if(!['W','kW','desconocida',null].includes(units))units='desconocida';
+ const rejected={fecha:0,potencia:0,energia:0,acumulado:0};
  for(const row of source.rows){
-   if(!row||typeof row!=='object')throw new Error('Muestra FV inválida.');
+   if(!row||typeof row!=='object'){rejected.fecha++;continue}
    const ts=normalizedTime(row.ts);
-   if(!ts||ts.slice(0,10)!==date)throw new Error('Marca FV fuera del día de origen.');
-   const rawPot=number(row.pot),acum=number(row.acum),dia=number(row.dia);
-   if(acum!==null&&(acum<0||acum>1e9))throw new Error('Acumulado inversor inválido.');
-   if(dia!==null&&(dia<0||dia>1000))throw new Error('Energía diaria inversor inválida.');
-   // El origen puede tener la potencia en W (Solarman APo_t1) o kW.
-   // Si la unidad no está acreditada, NUNCA convertir silenciosamente.
-   // Las lecturas sospechosas se guardan en cuarentena para auditarlas,
-   // sin detener toda la migración y sin dibujarlas como kW.
-   let pot=rawPot;
-   if(provided==='W')pot=rawPot===null?null:rawPot/1000;
-   if(provided==='desconocida')pot=null;
+   if(!ts||ts.slice(0,10)!==date){rejected.fecha++;continue}
+   const rawPot=number(row.pot),rawDia=number(row.dia),rawAcum=number(row.acum);
+   const dia=rawDia!==null&&rawDia>=0&&rawDia<=1000?rawDia:null;
+   const acum=rawAcum!==null&&rawAcum>=0&&rawAcum<=1e9?rawAcum:null;
+   let pot=units==='W'?(rawPot===null?null:rawPot/1000):
+     units==='desconocida'?null:rawPot;
    if(pot!==null&&(pot<0||pot>65))pot=null;
-   let unverified=number(row.potSinValidar);
-   if(pot===null&&rawPot!==null)unverified=rawPot;
-   if(unverified!==null&&pot===null)quarantined++;
-   if(pot===null&&acum===null&&dia===null&&unverified===null)continue;
+   const anomalousPot=number(row.potSinValidar)??(pot===null?rawPot:null);
+   const anomalousDia=number(row.diaSinValidar)??(dia===null?rawDia:null);
+   const anomalousAcum=number(row.acumSinValidar)??(acum===null?rawAcum:null);
+   // Nunca se descarta un día completo por un valor de energía sospechoso.
+   // Los originales se conservan para un contraste posterior, sin mostrarlos
+   // en cálculos SCADA ni inferir automáticamente su unidad.
    const clean={ts,pot,acum,dia};
-   if(unverified!==null&&pot===null)clean.potSinValidar=unverified;
+   if(pot===null&&anomalousPot!==null){clean.potSinValidar=anomalousPot;rejected.potencia++}
+   if(dia===null&&anomalousDia!==null){clean.diaSinValidar=anomalousDia;rejected.energia++}
+   if(acum===null&&anomalousAcum!==null){clean.acumSinValidar=anomalousAcum;rejected.acumulado++}
+   if(pot===null&&acum===null&&dia===null&&
+      !('potSinValidar'in clean)&&!('diaSinValidar'in clean)&&!('acumSinValidar'in clean))continue;
    out.set(ts,clean);
  }
- if(!out.size)throw new Error('Sin muestras FV útiles.');
- return {tipo:input.tipo,fecha:date,rows:[...out.values()].sort((a,b)=>a.ts.localeCompare(b.ts)),
-   origen:'datos-compartidos',unidadPotencia:'kW',
-   controlPotencia:{unidadRecibida:provided||'no-declarada',
-     muestrasSinVerificar:quarantined},
-   updatedAt:new Date().toISOString()};
+ if(!out.size)throw new Error('Ninguna muestra FV con fecha y hora compatibles con '+date+
+   '; registros descartados por fecha: '+rejected.fecha);
+ const rows=[...out.values()].sort((a,b)=>a.ts.localeCompare(b.ts));
+ return {tipo:input.tipo,fecha:date,rows,origen:'datos-compartidos',
+   unidadPotencia:'kW',controlPotencia:{
+     unidadRecibida:units||'no-declarada',
+     muestrasSinVerificar:rows.filter(r=>r.pot===null&&r.potSinValidar!==undefined).length,
+     energiaSinVerificar:rows.filter(r=>r.dia===null&&r.diaSinValidar!==undefined).length,
+     acumuladosSinVerificar:rows.filter(r=>r.acum===null&&r.acumSinValidar!==undefined).length,
+     marcasFueraDeDia:rejected.fecha
+   },updatedAt:new Date().toISOString()};
 }
 
 const isoTime=v=>typeof v==='string'&&Number.isFinite(Date.parse(v))?
@@ -741,45 +745,79 @@ function combine(old,received){
    rows.set(row.ts,prev?{ts:row.ts,
      pot:row.pot??prev.pot,acum:row.acum??prev.acum,dia:row.dia??prev.dia,
      ...(row.potSinValidar!==undefined||prev.potSinValidar!==undefined?
-       {potSinValidar:row.potSinValidar??prev.potSinValidar}:{})}:row);
+       {potSinValidar:row.potSinValidar??prev.potSinValidar}:{}),
+     ...(row.diaSinValidar!==undefined||prev.diaSinValidar!==undefined?
+       {diaSinValidar:row.diaSinValidar??prev.diaSinValidar}:{}),
+     ...(row.acumSinValidar!==undefined||prev.acumSinValidar!==undefined?
+       {acumSinValidar:row.acumSinValidar??prev.acumSinValidar}:{})}:row);
  }
  const all=[...rows.values()].sort((a,b)=>a.ts.localeCompare(b.ts));
  const merged={...received,rows:all,
    controlPotencia:{...received.controlPotencia,
-     muestrasSinVerificar:all.filter(r=>r.pot===null&&r.potSinValidar!==undefined).length}};
+     muestrasSinVerificar:all.filter(r=>r.pot===null&&r.potSinValidar!==undefined).length,
+     energiaSinVerificar:all.filter(r=>r.dia===null&&r.diaSinValidar!==undefined).length,
+     acumuladosSinVerificar:all.filter(r=>r.acum===null&&r.acumSinValidar!==undefined).length}};
  if(merged.rows.length>MAX_SAMPLES||JSON.stringify(merged).length>MAX_TEXT)
    throw new Error('El histórico del día excede el límite de tamaño.');
  return merged;
 }
+function historyIssue(source,error){
+ return {tipo:types.has(source?.tipo)?source.tipo:'?',
+   fecha:dateOK(source?.fecha)?source.fecha:'fecha-invalida',
+   motivo:String(error?.message||'No se ha podido validar el objeto').slice(0,220)};
+}
+// Validación seca. No toca el almacén ni llama a proveedores. Permite
+// comprobar los datos originales ANTES de iniciar cientos de escrituras.
+function validateHistory(items,env){
+ if(!Array.isArray(items)||!items.length||items.length>HISTORY_MAX_ITEMS)
+   throw new Error('La validación admite entre 1 y 93 fuentes');
+ const issues=[],accepted=[];
+ for(const source of items){
+   try{const clean=normalizeHistoryItem(source,env);
+     accepted.push({tipo:clean.tipo,fecha:clean.fecha,filas:clean.tipo==='S'?
+       clean.payload.rows.length:clean.rows.length,
+       potenciaSinValidar:clean.controlPotencia?.muestrasSinVerificar||0,
+       energiaSinValidar:clean.controlPotencia?.energiaSinVerificar||0});
+   }catch(e){issues.push(historyIssue(source,e))}
+ }
+ return {version:'migracion-v3',ok:issues.length===0,
+   validas:accepted.length,rechazadas:issues.length,aceptadas:accepted,
+   incidencias:issues.slice(0,30),consultaProveedor:false};
+}
 async function writeHistory(storage,items,env){
  if(!Array.isArray(items)||items.length<1||items.length>HISTORY_MAX_ITEMS)
    throw new Error('Cantidad inválida de fuentes para almacenar.');
- const incoming=items.map(i=>normalizeHistoryItem(i,env));
+ const results=[],issues=[];
  const seen=new Set();
- for(const item of incoming){
-   const id=historyKey(item.tipo,item.fecha);
-   if(seen.has(id))throw new Error('Lote con origen y día repetidos.');
-   seen.add(id);
+ for(const source of items){
+   try{
+     const item=normalizeHistoryItem(source,env);
+     const key=historyKey(item.tipo,item.fecha);
+     if(seen.has(key))throw new Error('Origen y fecha repetidos en el mismo lote');
+     seen.add(key);
+     const result=await storage.transaction(async tx=>{
+       const previous=await tx.get(key);
+       const next=combine(previous,item);
+       if(JSON.stringify(next).length>MAX_TEXT)
+         throw new Error('Límite de almacenamiento diario superado (1,8 MB).');
+       if(JSON.stringify(next)!==JSON.stringify(previous))await tx.put(key,next);
+       return {tipo:item.tipo,fecha:item.fecha,
+         muestras:item.tipo==='S'?next.payload.rows.length:next.rows.length,
+         completo:item.tipo==='S'?next.payload.meta.completo:true,
+         pendientesPotencia:item.tipo==='S'?0:(next.controlPotencia?.muestrasSinVerificar||0),
+         pendientesEnergia:item.tipo==='S'?0:(next.controlPotencia?.energiaSinVerificar||0)};
+     });
+     results.push(result);
+   }catch(e){issues.push(historyIssue(source,e))}
  }
- const results=[];
- for(const source of incoming){
-   const key=historyKey(source.tipo,source.fecha);
-   const result=await storage.transaction(async tx=>{
-     const previous=await tx.get(key);
-     const next=combine(previous,source);
-     if(JSON.stringify(next).length>MAX_TEXT)
-       throw new Error('Límite de almacenamiento diario superado.');
-     if(JSON.stringify(next)!==JSON.stringify(previous))await tx.put(key,next);
-     return{tipo:source.tipo,fecha:source.fecha,
-       muestras:source.tipo==='S'?next.payload.rows.length:next.rows.length,
-       completo:source.tipo==='S'?next.payload.meta.completo:true,
-       pendientesPotencia:source.tipo==='S'?0:(next.controlPotencia?.muestrasSinVerificar||0)};
-   });
-   results.push(result);
- }
- return{ok:true,guardadas:results.length,fuentes:results,
-   pendientesPotencia:results.reduce((n,r)=>n+(r.pendientesPotencia||0),0)};
+ return {version:'migracion-v3',ok:issues.length===0,
+   guardadas:results.length,rechazadas:issues.length,
+   incidencias:issues.slice(0,30),fuentes:results,
+   pendientesPotencia:results.reduce((n,r)=>n+(r.pendientesPotencia||0),0),
+   pendientesEnergia:results.reduce((n,r)=>n+(r.pendientesEnergia||0),0),
+   consultaProveedor:false};
 }
+
 async function readHistory(storage,desde,hasta){
  if(!dateOK(desde)||!dateOK(hasta)||desde>hasta)throw new Error('Rango de fechas inválido.');
  const total=(Date.parse(hasta+'T00:00:00Z')-Date.parse(desde+'T00:00:00Z'))/864e5+1;
@@ -803,7 +841,7 @@ async function historyStatus(storage){
    if(m&&dateOK(m[2]))out[m[1]].push(m[2]);
  }
  for(const type of ['A','B','S'])out[type].sort();
- return{ok:true,dias:out,cobertura:Object.fromEntries(Object.entries(out).map(([k,v])=>[k,{
+ return{ok:true,version:'migracion-v3',dias:out,cobertura:Object.fromEntries(Object.entries(out).map(([k,v])=>[k,{
    dias:v.length,desde:v[0]||null,hasta:v.at(-1)||null
  }])),proveedorConsultado:false};
 }
@@ -1497,9 +1535,11 @@ export class SolarmanQuota {
     const tipo=b.tipo,desde=b.desde,hasta=b.hasta,dia=b.dia;
     // La consulta y la copia compartida NO consumen presupuesto Solarman.
     // La misma instancia DO con SQLite conserva el orden entre clientes.
-    if(tipo==='historico_datos'||tipo==='historico_guardar'||tipo==='historico_estado'){
+    if(tipo==='historico_datos'||tipo==='historico_guardar'||
+       tipo==='historico_estado'||tipo==='historico_validar'){
       try{
         if(tipo==='historico_estado')return json(await historyStatus(this.ctx.storage));
+        if(tipo==='historico_validar')return json(validateHistory(b.items,this.env));
         if(tipo==='historico_datos')return json(await readHistory(this.ctx.storage,desde,hasta));
         return json(await writeHistory(this.ctx.storage,b.items,this.env));
       }catch(e){
@@ -1666,12 +1706,14 @@ export default{
       const b=req.method==='POST'?await req.json().catch(()=>({}))
         :Object.fromEntries(url.searchParams);
       const desde=b.desde,hasta=b.hasta;
-      if(ruta==='/historico/estado'||ruta==='/historico/datos'||ruta==='/historico/guardar'){
+      if(ruta==='/historico/estado'||ruta==='/historico/datos'||
+         ruta==='/historico/guardar'||ruta==='/historico/validar'){
         const onlyState=ruta==='/historico/estado';
         if(!onlyState&&req.method!=='POST')return json({error:'Se requiere POST para esta operación.'},405,h);
         if(onlyState&&req.method!=='GET')return json({error:'Se requiere GET para el estado.'},405,h);
         return solarmanConCuota(env,onlyState?{tipo:'historico_estado'}:
           ruta==='/historico/datos'?{tipo:'historico_datos',desde,hasta}:
+            ruta==='/historico/validar'?{tipo:'historico_validar',items:b.items}:
             {tipo:'historico_guardar',items:b.items},h);
       }
       if(ruta==='/spc/intercambio')return json(await spcIntercambio(env,desde,hasta),200,h);
