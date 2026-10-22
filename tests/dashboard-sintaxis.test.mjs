@@ -167,7 +167,11 @@ test('si un solo día falla el resto de la migración continúa y se conserva lo
  const start=html.indexOf('function unidadPotenciaLocal(');
  const end=html.indexOf('async function guardaDiaSpcCentral(',start);
  assert.ok(start>=0&&end>start);
- const elements={btnCentroSubir:{disabled:false},unidadXlsxLegacy:{value:'desconocida'}};
+ const elements={
+  btnCentroSubir:{disabled:false},btnCentroDiagnostico:{disabled:false},
+  unidadXlsxLegacy:{value:'desconocida'},
+  centroInformeMigracion:{textContent:''},centroDetalles:{open:false}
+ };
  const messages=[],sent=[];
  const dateArray=Array.from({length:597},(_,i)=>new Date(Date.parse('2025-03-04T00:00:00Z')+i*864e5).toISOString().slice(0,10));
  const context=vm.createContext({
@@ -182,10 +186,18 @@ test('si un solo día falla el resto de la migración continúa y se conserva lo
    },
    centroMensaje:msg=>messages.push(msg),HIST_CENTRO_OCUPADO:false,
    apiCall:async(route,body)=>{
+     if(route==='/historico/validar'){
+       const rejected=body.items.filter(s=>s.fecha==='2026-01-10');
+       return {version:'migracion-v3',
+         validas:body.items.length-rejected.length,
+         rechazadas:rejected.length,
+         incidencias:rejected.map(s=>({tipo:s.tipo,fecha:s.fecha,
+           motivo:'Hora incompatible'}))};
+     }
      assert.equal(route,'/historico/guardar');
-     if(body.items.some(s=>s.fecha==='2026-01-10'))throw Error('Día con marca corrupta');
      sent.push(...body.items);
-     return{guardadas:body.items.length,pendientesPotencia:0}
+     return{version:'migracion-v3',guardadas:body.items.length,
+       rechazadas:0,pendientesPotencia:0,pendientesEnergia:0,incidencias:[]}
    }
  });
  vm.runInContext(html.slice(start,end),context);
@@ -193,6 +205,8 @@ test('si un solo día falla el resto de la migración continúa y se conserva lo
  assert.equal(sent.length,596,'guardar 596/597 sin detenerse en el primer lote');
  assert.equal(sent[0].rows[0].pot,35,'las W se guardan como kW');
  assert.match(messages.at(-1),/596\/597/);
- assert.match(messages.at(-1),/1 pendientes de revisar/);
+ assert.match(messages.at(-1),/1 rechazados/);
+ assert.match(elements.centroInformeMigracion.textContent,/2026-01-10: Hora incompatible/);
+ assert.equal(elements.centroDetalles.open,true);
  assert.equal(elements.btnCentroSubir.disabled,false,'el botón queda habilitado tras migrar');
 });
