@@ -6,6 +6,7 @@ on:
       - "index.html"
       - "scada.html"
       - "scada-*.mjs"
+      - "scada-preview/**"
       - "energia.js"
       - "worker/**"
       - "tests/**"
