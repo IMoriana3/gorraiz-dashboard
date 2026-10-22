@@ -208,9 +208,10 @@ input[type=file]{display:none}
     <div class="az" id="zSpc">
       <div class="spc-head"><h3>Intercambio de red · KSTAR SPC01</h3><button class="btn btn2" id="btnSpc" onclick="comprobarSpc()" disabled>Reconsultar SPC (manual)</button></div>
       <div class="row" style="align-items:center;gap:10px;flex-wrap:wrap;padding:8px 0">
-        <label for="spcDiaManual"><strong>Día SPC cerrado:</strong></label><input id="spcDiaManual" type="date">
-        <button class="btn btn2" id="btnSpcSolo" type="button" onclick="descargarSoloSpc()" style="padding:7px 12px;font-size:11px">↓ Descargar solo SPC</button>
-        <span class="hint">Un día por clic · sin Solarman</span>
+        <label for="spcDiaManual"><strong>SPC desde:</strong></label><input id="spcDiaManual" type="date">
+        <label for="spcHastaManual"><strong>Hasta:</strong></label><input id="spcHastaManual" type="date">
+        <button class="btn btn2" id="btnSpcSolo" type="button" onclick="descargarSoloSpc()" style="padding:7px 12px;font-size:11px">↓ Descargar SPC del rango</button>
+        <span class="hint">Máximo 14 días cerrados, inclusive · omite días completos · solo KSTAR</span>
       </div>
       <div class="cfg" id="cfgKstar"></div>
       <div class="st" id="spcEstado" role="status">Estado de SPC sin comprobar.</div>
@@ -786,14 +787,19 @@ function pintaSpc(){
   else mensaje.textContent='SPC configurado'+(est.spcUnencryptedTransport?' · HTTP SIN CIFRAR':'')+' · conexión pendiente de comprobar.';
   $('btnSpc').disabled=SPC_OCUPADO||!(kstarListo||est.spc);
   // La fecha SPC es independiente del selector de Solarman.
-  const spcInput=$('spcDiaManual'),spcButton=$('btnSpcSolo');
+  const spcInput=$('spcDiaManual'),spcHasta=$('spcHastaManual'),
+    spcButton=$('btnSpcSolo');
   const yesterday=spcSumaDias(spcHoy('Europe/Madrid'),-1);
   const last=SPC_FUENTES.filter(f=>f.meta?.completo===true && f.date<=yesterday)
     .map(f=>f.date).sort().at(-1);
   const next=last?spcSumaDias(last,1):yesterday;
-  spcInput.max=yesterday;
-  if(!spcInput.dataset.manualChoice)spcInput.value=next<=yesterday?next:yesterday;
+  spcInput.max=yesterday;spcHasta.max=yesterday;
+  if(!spcInput.dataset.manualChoice){
+    spcInput.value=next<=yesterday?next:yesterday;
+  }
+  if(!spcHasta.dataset.manualChoice)spcHasta.value=spcInput.value;
   spcButton.disabled=SPC_OCUPADO;
+  $('btnSpc').disabled=SPC_OCUPADO||!(kstarListo||est.spc);
 
   const dias=getSpcDaily(),fechas=SPC_FUENTES.map(f=>f.date),n=fechas.length;
   $('spcDias').textContent=n?fn(n):'—';
@@ -1942,6 +1948,11 @@ async function traerDatos(){
   pintaKstarCfg();
   $('spcDiaManual').addEventListener('change',()=>{
     $('spcDiaManual').dataset.manualChoice='1';
+    if(!$('spcHastaManual').dataset.manualChoice)
+      $('spcHastaManual').value=$('spcDiaManual').value;
+  });
+  $('spcHastaManual').addEventListener('change',()=>{
+    $('spcHastaManual').dataset.manualChoice='1';
   });
   iniciaPrecios();
   ['aDesde','aHasta'].forEach(id=>$(id).addEventListener('change',pintaSpc));
