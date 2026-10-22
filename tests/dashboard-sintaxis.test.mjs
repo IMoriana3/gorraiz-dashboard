@@ -82,3 +82,56 @@ test('Informe y SCADA escriben FV/SPC en la misma base central sin forzar provee
   assert.match(html,/const antes=PROD_FUENTES\[tipo\]\.find/);
   assert.match(html,/const unidos=new Map/);
 });
+
+test('guardar fuentes no borra entradas nuevas escritas desde otra pestaña',()=>{
+  const start=html.indexOf('function guardaFuentes(){');
+  const end=html.indexOf('async function cargaFuentes(){',start);
+  assert.ok(start>=0&&end>start);
+  const code=html.slice(start,end);
+  assert.doesNotMatch(code,/st\.clear\(\)/,'guardar una fuente no debe vaciar IndexedDB');
+  assert.match(code,/st\.get\(source\.id\)/,'debe conciliar contra el registro más nuevo');
+  assert.match(code,/mezclaFuenteLocal\(request\.result,source\)/);
+  // Olvidar todo sigue siendo una acción explícita separada.
+  assert.match(html,/async function olvidaTodo\(\)\{[\s\S]*?objectStore\(DB_STORE\)\.clear\(\)/);
+});
+test('la conciliación IndexedDB mantiene puntos FV recién descargados por SCADA',()=>{
+  const start=html.indexOf('function mezclaFuenteLocal(');
+  const end=html.indexOf('function guardaFuentes(){',start);
+  assert.ok(start>=0&&end>start);
+  const merge=vm.runInNewContext(html.slice(start,end)+'\nmezclaFuenteLocal',{Date,Map});
+  const yesterday='2026-10-20';
+  const old={
+    id:'A|Compartido '+yesterday,tipo:'A',nombre:'Compartido '+yesterday,
+    updatedAt:'2026-10-22T12:00:00Z',
+    rows:[{ts:new Date(yesterday+'T08:00:00Z'),pot:22,dia:15,acum:100},
+          {ts:new Date(yesterday+'T08:05:00Z'),pot:25,dia:20,acum:105}]
+  };
+  const stale={
+    id:old.id,tipo:'A',nombre:old.nombre,
+    rows:[{ts:new Date(yesterday+'T08:00:00Z'),pot:11,dia:null,acum:null},
+          {ts:new Date(yesterday+'T07:55:00Z'),pot:19,dia:11,acum:90}]
+  };
+  const result=merge(old,stale);
+  assert.equal(result.rows.length,3,'conservar muestras antiguas y nuevas');
+  const byTime=t=>result.rows.find(r=>+new Date(r.ts)===+new Date(yesterday+'T'+t+'Z'));
+  assert.equal(byTime('08:00:00').pot,22,'la fuente SCADA más reciente manda');
+  assert.equal(byTime('08:05:00').pot,25,'no perder la muestra nueva');
+  assert.equal(byTime('07:55:00').pot,19,'añadir tramo anterior disponible');
+  const newer={...stale,updatedAt:'2026-10-22T13:00:00Z'};
+  const corrected=merge(old,newer);
+  assert.equal(corrected.rows.find(r=>+new Date(r.ts)===+new Date(yesterday+'T08:00:00Z')).pot,11);
+  assert.equal(corrected.rows.find(r=>+new Date(r.ts)===+new Date(yesterday+'T08:00:00Z')).dia,15,
+    'los valores nulos de una fuente no borran acumulados válidos');
+});
+test('SPC completo más reciente nunca se sobrescribe con día parcial ni versión vieja',()=>{
+  const start=html.indexOf('function mezclaFuenteLocal('),end=html.indexOf('function guardaFuentes(){',start);
+  const merge=vm.runInNewContext(html.slice(start,end)+'\nmezclaFuenteLocal',{Date,Map});
+  const existing={tipo:'S',fecha:'2026-10-20',payload:{
+    rows:[{saveTime:'2026-10-20 10:00:00'}],
+    meta:{completo:true,fetchedAt:'2026-10-22T10:00:00Z'}}};
+  const partial={tipo:'S',fecha:'2026-10-20',payload:{
+    rows:[],meta:{completo:false,fetchedAt:'2026-10-22T11:00:00Z'}}};
+  assert.strictEqual(merge(existing,partial),existing);
+  const old={...partial,payload:{rows:[],meta:{completo:true,fetchedAt:'2026-10-21T11:00:00Z'}}};
+  assert.strictEqual(merge(existing,old),existing);
+});
