@@ -97,8 +97,8 @@ try {
         positiveActiveElec:100+imp,reverseActiveElec:10+exp});
     }
     const entries=[
-      {id:'A|Fichero QA',tipo:'A',nombre:'SINTÉTICO QA A',rows:A},
-      {id:'B|Fichero QA',tipo:'B',nombre:'SINTÉTICO QA B',rows:B},
+      {id:'A|Fichero QA',tipo:'A',nombre:'SINTÉTICO QA A',unidadPotencia:'kW',rows:A},
+      {id:'B|Fichero QA',tipo:'B',nombre:'SINTÉTICO QA B',unidadPotencia:'kW',rows:B},
       {id:'S|'+date,tipo:'S',fecha:date,payload:{date,rows,
         daily:[{date,importKWh:imp,exportKWh:exp,
           selfConsumptionKWh:produccionA+produccionB-exp}],
