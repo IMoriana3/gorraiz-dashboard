@@ -90,6 +90,20 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
 .blank-notice{padding:13px;border:1px dashed #5d7883;border-radius:9px;background:#1a2d35;color:#e2ecef;margin-bottom:12px;font-size:12px}
 .blank-notice strong{display:block;font-size:13px;margin-bottom:3px}
 [hidden]{display:none!important}
+
+.spc-lag{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#2b281e;border:1px solid #77613b;border-radius:9px;padding:11px 13px;margin-bottom:11px;font-size:12px}
+.spc-lag strong{color:#f7dcab}
+.spc-lag p{margin:0;flex:1;min-width:230px}
+.spc-lag button{background:#443922;border-color:#8c7645}
+.coverage-detail{background:var(--card);border:1px solid var(--stroke);border-radius:9px;margin-bottom:12px;padding:9px 12px}
+.coverage-detail summary{cursor:pointer;font-size:12px;font-weight:700;color:#c6e4e7}
+.coverage-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:11px;text-align:left}
+.coverage-table th,.coverage-table td{padding:6px 9px;border-bottom:1px solid #2a414a;white-space:nowrap;font-variant-numeric:tabular-nums}
+.coverage-table th{color:#a8c1c7;font-weight:700}
+.coverage-table td.warn{color:#edc479}
+.coverage-detail .foot{font-size:11px;color:var(--dim);margin:9px 0 0}
+.coverage-table-wrap{overflow-x:auto}
+@media(max-width:580px){.coverage-table th,.coverage-table td{padding:6px}}
 </style>
 </head>
 <body><div class="frame">
@@ -141,6 +155,20 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
   <button type="button" id="lastSpc" disabled title="Selecciona el último día SPC ya guardado; no consume API">Ver último SPC</button>
   <a href="./" title="Abre el informe para Comprobar SPC / Traer datos, solamente bajo autorización y cuenta de lectura">SPC: descarga manual ↗</a>
  </div>
+ <div id="spcLag" class="spc-lag" role="status" hidden>
+  <p><strong id="spcLagText">SPC pendiente</strong> · <span class="muted tiny">La lectura pendiente se solicita solo al pulsar el botón y requiere una cuenta KSTAR de solo lectura. No se consulta Solarman.</span></p>
+  <button type="button" id="fetchPendingSPC" disabled>↓ Descargar día SPC pendiente</button>
+ </div>
+ <details class="coverage-detail" id="dailyCoverageDetail">
+  <summary id="coverageSummary">Huecos de las curvas · cobertura por día</summary>
+  <div class="coverage-table-wrap">
+   <table class="coverage-table">
+    <thead><tr><th>Fecha</th><th>Solarman A</th><th>Solarman B</th><th>A+B simultáneos</th><th>Huecos interiores FV</th><th>SPC (intervalos)</th><th>Estado SPC</th></tr></thead>
+    <tbody id="coverageDayRows"></tbody>
+   </table>
+  </div>
+  <p class="foot">Recuentos de intervalos de 5 minutos con potencia válida. «Huecos interiores FV» son intervalos ausentes entre la primera y última medida conjunta del día; no cuentan las horas nocturnas. Sin valores inventados ni interpolación. SPC no se actualiza automáticamente.</p>
+ </details>
  <p id="notice" role="status">Leyendo señales guardadas…</p>
  <div id="blankState" class="blank-notice" role="status" hidden>
   <strong>Sin curvas completas para la selección</strong>
