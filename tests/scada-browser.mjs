@@ -45,10 +45,17 @@ try {
     const path=new URL(route.request().url()).pathname;
     const body=route.request().method()==='POST'?route.request().postDataJSON():{};
     const json=obj=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(obj)});
+    if(path==='/historico/validar'){
+      const items=body.items||[];
+      return json({version:'migracion-v3',ok:true,validas:items.length,
+        rechazadas:0,incidencias:[],
+        aceptadas:items.map(x=>({tipo:x.tipo,fecha:x.fecha,filas:x.rows?.length||x.payload?.rows?.length||0}))});
+    }
     if(path==='/historico/guardar'){
       archiveWrites++;
       for(const item of body.items||[])archive.set(item.tipo+'|'+item.fecha,item);
-      return json({ok:true,guardadas:(body.items||[]).length});
+      return json({version:'migracion-v3',ok:true,guardadas:(body.items||[]).length,
+        rechazadas:0,incidencias:[],pendientesPotencia:0,pendientesEnergia:0});
     }
     if(path==='/historico/estado'){
       archiveReads++;
@@ -142,7 +149,7 @@ try {
   assert.equal(requests,0,'abrir el SCADA no debe consumir ninguna llamada API');
   // Ambos paneles usan las mismas rutas de archivo, sin consultar proveedores.
   await page.locator('#pushHistory').click();
-  await page.waitForFunction(()=>document.querySelector('#sharedState')?.textContent.includes('Migración terminada'));
+  await page.waitForFunction(()=>document.querySelector('#sharedState')?.textContent.includes('Migración v3 finalizada'));
   assert.ok(archiveWrites>=1);
   assert.equal(archive.size,3,'se comparten inversores A/B y SPC');
   await page.evaluate(async()=>{
