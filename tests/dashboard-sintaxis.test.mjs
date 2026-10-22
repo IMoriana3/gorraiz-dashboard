@@ -169,7 +169,7 @@ test('si un solo día falla el resto de la migración continúa y se conserva lo
  assert.ok(start>=0&&end>start);
  const elements={btnCentroSubir:{disabled:false},unidadXlsxLegacy:{value:'desconocida'}};
  const messages=[],sent=[];
- const dateArray=Array.from({length:40},(_,i)=>new Date(Date.parse('2026-01-01T00:00:00Z')+i*864e5).toISOString().slice(0,10));
+ const dateArray=Array.from({length:597},(_,i)=>new Date(Date.parse('2025-03-04T00:00:00Z')+i*864e5).toISOString().slice(0,10));
  const context=vm.createContext({
    Date,Map,Number,Promise,
    $:id=>elements[id],spcFecha:()=>true,
@@ -190,9 +190,9 @@ test('si un solo día falla el resto de la migración continúa y se conserva lo
  });
  vm.runInContext(html.slice(start,end),context);
  await vm.runInContext('subeHistoricoLocal()',context);
- assert.equal(sent.length,39,'guardar 39/40 sin detenerse en el primer lote');
+ assert.equal(sent.length,596,'guardar 596/597 sin detenerse en el primer lote');
  assert.equal(sent[0].rows[0].pot,35,'las W se guardan como kW');
- assert.match(messages.at(-1),/39\/40/);
+ assert.match(messages.at(-1),/596\/597/);
  assert.match(messages.at(-1),/1 pendientes de revisar/);
  assert.equal(elements.btnCentroSubir.disabled,false,'el botón queda habilitado tras migrar');
 });
