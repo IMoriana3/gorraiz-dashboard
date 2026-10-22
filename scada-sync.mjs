@@ -201,17 +201,31 @@ export async function downloadSpcDay(date){
  const url=localStorage.getItem('gorraiz_kstar_url_v1')||'';
  const key=localStorage.getItem('gorraiz_kstar_clave_v1')||
    sessionStorage.getItem('gorraiz_kstar_key_sesion_v1')||'';
- let worker;
+ let endpoint,headers;
  try{
-  worker=new URL(url);
-  if(worker.protocol!=='https:'||!worker.hostname.endsWith('.workers.dev')||worker.username||
-    worker.password||worker.search||worker.hash||key.length<24)throw Error('Configuración incompleta');
- }catch{notify('Configura el Worker KSTAR y su clave en «Conexiones» del SCADA o en Informes.');return false}
+  if(url){
+   const worker=new URL(url);
+   if(worker.protocol!=='https:'||!worker.hostname.endsWith('.workers.dev')||worker.username||
+      worker.password||worker.search||worker.hash||worker.pathname!=='/'||key.length<24)
+      throw Error('Worker KSTAR aislado o su clave no son válidos.');
+   endpoint=worker.origin+'/spc/intercambio';
+   headers={'content-type':'application/json','X-KSTAR-Test-Key':key};
+  }else{
+   // Mismo proveedor desde el Worker central cuando este tenga SPC activado.
+   // No consulta jamás la ruta /produccion.
+   const main=settings();
+   endpoint=main.url+'/spc/intercambio';
+   headers={'content-type':'application/json','X-Panel-Key':main.key};
+  }
+ }catch(e){
+  notify('No se pudo preparar KSTAR: '+e.message+
+    '. Configura su Worker aislado o el Worker central con SPC de solo lectura.');
+  return false;
+ }
  busy=true;const btn=$('fetchSPC');if(btn)btn.disabled=true;
  try{
-  const response=await fetch(worker.origin+worker.pathname.replace(/\/$/,'')+'/spc/intercambio',{
-   method:'POST',cache:'no-store',
-   headers:{'content-type':'application/json','X-KSTAR-Test-Key':key},
+  const response=await fetch(endpoint,{
+   method:'POST',cache:'no-store',headers,
    body:JSON.stringify({desde:date,hasta:date})});
   const p=await response.json().catch(()=>({}));
   if(!response.ok)throw Error(p.error||('Respuesta SPC HTTP '+response.status));
