@@ -1,7 +1,26 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import worker from '../worker/index.js';
+import realWorker, {SolarmanQuota} from '../worker/index.js';
+
+// En las pruebas se inyecta un namespace DO de memoria, sin credenciales ni
+// contacto con Cloudflare. La entrada pública SIEMPRE usa el coordinador.
+const worker={
+  async fetch(req,env){
+    const memory=new Map();
+    const storage={
+      async get(k){return memory.get(k)},
+      async put(k,v){memory.set(k,v)},
+      async transaction(fn){return fn(storage)}
+    };
+    const quota=new SolarmanQuota({storage},env);
+    const namespace={
+      idFromName(name){assert.equal(name,'gorraiz-solarman-global-v1');return name},
+      get(){return{fetch(url,init){return quota.fetch(new Request(url,init))}}}
+    };
+    return realWorker.fetch(req,{...env,SOLARMAN_QUOTA:namespace});
+  }
+};
 
 const base={
   PANEL_KEY:'fictional-panel-key-123456789',
