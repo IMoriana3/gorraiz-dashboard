@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {spcBacklog,dailyCoverage} from '../scada-coverage.mjs';
+import {spcBacklog,dailyCoverage,dailyPvInventory,pvDayDiagnosis} from '../scada-coverage.mjs';
 import {buildSeries} from '../scada-data.mjs';
 const day='2026-10-20';
 const spc=(date,complete=true)=>({tipo:'S',fecha:date,payload:{meta:{completo:complete},rows:[]}});
@@ -49,4 +49,55 @@ test('huecos interiores de FV no incluyen la noche y SPC ausente se distingue',(
  assert.equal(coverage[0].gapsInside,1,'un intervalo de 5 min intermedio ausente');
  assert.equal(coverage[0].spc,0);
  assert.equal(coverage[0].status,'sin-descarga');
+});
+
+test('21/10 con SPC y sin filas originales FV: no afirmar potencia no validada',()=>{
+ const date='2026-10-21';
+ const spcOnly={tipo:'S',fecha:date,payload:{meta:{completo:true},rows:[]}};
+ const data=[spcOnly],result=buildSeries(data,{date});
+ const diagnostics=pvDayDiagnosis(data,result,date);
+ assert.equal(diagnostics.kind,'not-downloaded');
+ assert.equal(diagnostics.inventory.A.raw,0);
+ assert.equal(diagnostics.inventory.B.raw,0);
+ assert.match(diagnostics.message,/No constan filas originales FV/);
+});
+test('21/10 con potencia en cuarentena: distinguir de ausencia de descarga',()=>{
+ const date='2026-10-21';
+ const mk=(tipo,power)=>({tipo,unidadPotencia:'kW',origen:'datos-compartidos',
+   rows:[{ts:date+'T12:00:00+02:00',pot:null,potSinValidar:power,dia:160,acum:2300},
+         {ts:date+'T12:05:00+02:00',pot:null,potSinValidar:power+1000,dia:162,acum:2302}]});
+ const data=[mk('A',32000),mk('B',27000)];
+ const r=buildSeries(data,{date}),stats=dailyPvInventory(data,date);
+ const diag=pvDayDiagnosis(data,r,date);
+ assert.equal(stats.A.raw,2);
+ assert.equal(stats.B.raw,2);
+ assert.equal(stats.A.unverified,2);
+ assert.equal(stats.B.unverified,2);
+ assert.equal(diag.plotted.A,0);
+ assert.equal(diag.plotted.B,0);
+ assert.equal(diag.kind,'unverified');
+ assert.match(diag.message,/potencias están pendientes de validar/);
+});
+test('día parcialmente descargado y día completamente válido',()=>{
+ const date='2026-10-21';
+ const mk=(tipo,pot)=>({tipo,unidadPotencia:'kW',nombre:'QA',
+   rows:[{ts:date+'T11:00:00+02:00',pot,dia:99,acum:500}]});
+ const A=mk('A',30),B=mk('B',25);
+ const first=pvDayDiagnosis([A],buildSeries([A],{date}),date);
+ assert.equal(first.kind,'partial-source');
+ assert.match(first.message,/Falta el otro inversor/);
+ const all=pvDayDiagnosis([A,B],buildSeries([A,B],{date}),date);
+ assert.equal(all.kind,'complete');
+ assert.equal(all.message,'');
+ assert.equal(all.plotted.joint,1);
+});
+test('una copia duplicada no duplica el recuento de filas originales',()=>{
+ const date='2026-10-21';
+ const A={tipo:'A',nombre:'Ficheros',rows:[{ts:date+'T11:00:00+02:00',pot:31000,dia:80}]};
+ const other={tipo:'A',nombre:'Histórico central Gorraiz',
+   unidadPotencia:'kW',rows:[{ts:date+'T11:00:00+02:00',pot:31,dia:80}]};
+ const stats=dailyPvInventory([A,other],date);
+ assert.equal(stats.A.raw,1);
+ assert.equal(stats.A.validPower,1);
+ assert.equal(stats.A.unverified,0,'una potencia validada en otra fuente resuelve ese instante');
 });
