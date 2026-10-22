@@ -226,9 +226,9 @@ try {
   await page.waitForFunction(()=>document.querySelector('#day')?.value==='2026-10-19');
   assert.equal(await page.locator('#blankState').isVisible(),false);
   assert.equal(requests,0,'seleccionar último SPC no consulta al proveedor');
-  const views=['planta','inversores','red','historicos','diagnostico','general'];
+  const views=['planta','inversores','red','cotejo','historicos','diagnostico','general'];
   const chartByView={planta:'plantChart',inversores:'inverterAChart',
-    red:'redDetailChart',historicos:'historyChart',general:'mainChart'};
+    red:'redDetailChart',cotejo:'contrastChart',historicos:'historyChart',general:'mainChart'};
   for(const view of views){
     await page.locator('.scada-nav [data-view-link="'+view+'"]').click();
     await page.waitForFunction(v=>document.querySelector('[data-view-panel="'+v+'"]')?.hidden===false,view);
@@ -242,6 +242,35 @@ try {
     }
     assert.equal(requests,0,'navegar entre '+view+' no consume API');
   }
+  // Contraste FV/SPC: mismas fuentes, mismo día, sin consultas de proveedores.
+  await page.locator('.scada-nav [data-view-link="cotejo"]').click();
+  await page.waitForFunction(()=>!!Chart.getChart(document.getElementById('contrastChart')));
+  assert.match(await page.locator('#contrastInterpretation').innerText(),/Casillas FV/);
+  const paired=Number((await page.locator('#contrastMatched').innerText()).split(' / ')[0]);
+  assert.ok(paired>40,'más de cuarenta muestras FV/SPC sintéticas comparables');
+  assert.match(await page.locator('#contrastEnergyPv').innerText(),/kWh/);
+  assert.match(await page.locator('#contrastEnergyLoad').innerText(),/kWh/);
+  assert.equal(await page.locator('#contrastDailyRows tr').count(),7);
+  assert.equal(await page.locator('#contrastHourRows tr').count(),24);
+  const comparison=await page.evaluate(()=>{
+   const c=Chart.getChart(document.getElementById('contrastChart'));
+   return c.data.datasets.map(d=>d.label)
+  });
+  assert.equal(comparison.length,3,'la demanda no aparece sin autorización');
+  await page.locator('#contrastShift').evaluate(el=>{
+   el.value='5';el.dispatchEvent(new Event('input',{bubbles:true}));
+  });
+  assert.equal(await page.locator('#contrastShiftValue').innerText(),'+5 min');
+  await page.locator('#contrastLoad').check();
+  assert.equal(await page.locator('#contrastChart').evaluate(
+   el=>Chart.getChart(el).data.datasets.length),4);
+  assert.match(await page.locator('#contrastChart').evaluate(
+   el=>Chart.getChart(el).data.datasets[3].label),/NO VALIDADO/);
+  await page.locator('#contrastZero').click();
+  assert.equal(await page.locator('#contrastShiftValue').innerText(),'0 min');
+  assert.equal(requests,0,'desfasar SPC y calcular demanda no consulta Solarman');
+  assert.equal(kstarCalls,1,'desfasar SPC y calcular demanda no consulta KSTAR');
+  await page.locator('.scada-nav [data-view-link="general"]').click();
   await page.locator('#auto').check();
   await page.waitForTimeout(350);
   assert.equal(requests,0,'activar automático tampoco hace llamada inmediata');
@@ -291,7 +320,7 @@ try {
   assert.match(await page.locator('#coverageSPC').innerText(),/2026-10-19/);
   await page.locator('#lastSpc').click();
   assert.equal(requests,requestsBeforePreview,'la vista previa no consulta SPC');
-  for(const view of ['planta','inversores','red','historicos','diagnostico','general']){
+  for(const view of ['planta','inversores','red','cotejo','historicos','diagnostico','general']){
     await page.locator('.scada-nav [data-view-link="'+view+'"]').click();
     await page.waitForFunction(v=>!document.querySelector('[data-view-panel="'+v+'"]').hidden,view);
     assert.equal(requests,requestsBeforePreview,'vista previa sin peticiones al cambiar a '+view);
