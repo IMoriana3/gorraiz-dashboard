@@ -37,6 +37,7 @@ jobs:
           node --check energia.js
           node --check scada-data.mjs
           node --check scada-app.mjs
+          node --check scada-quota.mjs
           node --check worker/index.js
           node --check worker/spc.js
           node --check worker/kstar-prueba.js
