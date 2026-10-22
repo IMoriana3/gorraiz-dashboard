@@ -134,7 +134,29 @@ try {
   const width=await page.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth);
   assert.ok(width<=3,'desbordamiento horizontal móvil: '+width+' px');
   assert.deepEqual(errors,[],'errores JS en navegador');
-  console.log('SCADA Chromium QA: cuatro curvas, 288 marcas, balance consistente, 0 llamadas al abrir, bloqueo 1/h, diseño móvil. OK.');
+  // Preview se publica en el MISMO origen de Pages. Conserva el mismo
+  // IndexedDB, pero no contiene ningún camino de conexión hacia las APIs.
+  await page.setViewportSize({width:1440,height:900});
+  const requestsBeforePreview=requests;
+  await page.goto(addr+'/scada-preview/index.html',{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>{
+    const chart=window.Chart?.getChart(document.getElementById('mainChart'));
+    return chart?.data?.datasets?.length===4 &&
+      document.querySelector('#powerGen')?.textContent !== '—';
+  },{timeout:15000});
+  assert.equal(requests,requestsBeforePreview,
+    'la preview no debe llamar a Solarman ni a KSTAR');
+  assert.equal(await page.locator('#updatePV').isDisabled(),true);
+  assert.equal(await page.locator('#auto').count(),0,
+    'la preview no debe ofrecer control automático');
+  assert.match(await page.locator('body').innerText(),/SOLO LECTURA/);
+  await page.screenshot({path:join(root,'artifacts/scada-preview-escritorio.png'),fullPage:true});
+  await page.setViewportSize({width:390,height:844});
+  await page.screenshot({path:join(root,'artifacts/scada-preview-movil.png'),fullPage:true});
+  const previewOverflow=await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth);
+  assert.ok(previewOverflow<=3,'preview desborda ancho móvil '+previewOverflow);
+  assert.deepEqual(errors,[],'sin errores JS en ninguna pantalla');
+  console.log('SCADA: gráficos completos y preview SOLO LECTURA en Chromium. Ninguna consulta API al abrir. OK.');
 } finally {
   await browser.close();
   await new Promise(r=>server.close(r));
