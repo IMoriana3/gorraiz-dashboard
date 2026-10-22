@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "index.html"
+      - "scada.html"
+      - "scada-*.mjs"
       - "energia.js"
       - "worker/**"
       - "tests/**"
@@ -33,6 +35,8 @@ jobs:
       - name: Comprobar sintaxis JavaScript
         run: |
           node --check energia.js
+          node --check scada-data.mjs
+          node --check scada-app.mjs
           node --check worker/index.js
           node --check worker/spc.js
           node --check worker/kstar-prueba.js
