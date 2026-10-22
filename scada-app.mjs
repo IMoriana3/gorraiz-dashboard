@@ -2,6 +2,8 @@ import {availableDays,buildSeries,numeric} from './scada-data.mjs';
 import {spcBacklog,dailyCoverage,dailyPvInventory,pvDayDiagnosis} from './scada-coverage.mjs';
 import {contrastDay,contrastCsv} from './scada-contrast.mjs';
 import {signedExportKW,signedExportSeries} from './scada-grid-sign.mjs';
+import {snapshotAt,defaultSnapshotIndex,latestSnapshotIndex,snapshotSourceTimes,
+  snapshotStatus,pointDateTime} from './scada-snapshot.mjs';
 import {pullShared,pushShared,downloadSpcDay,downloadSpcRange} from './scada-sync.mjs';
 import {SCADA_POLL_MS,SCADA_QUOTA_KEY,SCADA_LOCK_NAME,quotaState,reserveAttempt} from './scada-quota.mjs';
 
@@ -10,6 +12,8 @@ const fmt=new Intl.NumberFormat('es-ES',{maximumFractionDigits:1});
 const fmt2=new Intl.NumberFormat('es-ES',{maximumFractionDigits:2});
 const paints={generation:'#48d18a',consumption:'#6ebcff',import:'#f27478',export:'#efc357',a:'#76d6cf',b:'#8bdb97'};
 let stored=[],day='',range=1,charts={},pvBusy=false,autoTimer=null;
+let selectedPointKey=null,renderedSnapshotSeries=null;
+let dailySnapshotCache=new Map();
 function madridToday(){
   const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Madrid',
     year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
@@ -72,6 +76,30 @@ function makeSeries(label,values,color,dashed=false){
  return {label,data:values,borderColor:color,backgroundColor:color,pointBackgroundColor:color,
   borderDash:dashed?[5,4]:[],fill:false};
 }
+// A thin cursor over the selected nominal interval. The chart retains all
+// original samples; choosing a cursor changes only the historical snapshot.
+const snapshotCursorPlugin={
+ id:'gorraizHistoricalCursor',
+ afterDatasetsDraw(chart){
+  if(chart.canvas?.id!=='mainChart'||!selectedPointKey)return;
+  const index=chart.data.labels.indexOf(selectedPointKey);
+  if(index<0||!chart.scales.x||!chart.chartArea)return;
+  const x=chart.scales.x.getPixelForValue(index);
+  const {top,bottom}=chart.chartArea,ctx=chart.ctx;
+  if(!Number.isFinite(x))return;
+  ctx.save();
+  ctx.strokeStyle='#76d6cf';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(x,top);ctx.lineTo(x,bottom);ctx.stroke();
+  ctx.restore();
+ }
+};
+function mainChartClick(event,chart){
+ if(!renderedSnapshotSeries||!chart.scales?.x||!Number.isFinite(event.x))return;
+ const idx=Math.round(chart.scales.x.getValueForPixel(event.x));
+ if(!Number.isFinite(idx)||idx<0||idx>=renderedSnapshotSeries.keys.length)return;
+ selectedPointKey=renderedSnapshotSeries.keys[idx];
+ renderSnapshot(renderedSnapshotSeries);
+}
 function paint(canvasId,series,labels,{dayOnly=false}={}){
  const element=$(canvasId);
  if(!element || element.closest('.scada-view[hidden]')){
@@ -82,7 +110,10 @@ function paint(canvasId,series,labels,{dayOnly=false}={}){
   return;
  }
  charts[canvasId]?.destroy();
- charts[canvasId]=new Chart($(canvasId),{type:'line',data:{labels,datasets:series},options:chartStyle({dayOnly})});
+ const options=chartStyle({dayOnly});
+ if(canvasId==='mainChart')options.onClick=(event,_elements,chart)=>mainChartClick(event,chart);
+ charts[canvasId]=new Chart($(canvasId),{type:'line',data:{labels,datasets:series},options,
+  plugins:canvasId==='mainChart'?[snapshotCursorPlugin]:[]});
 }
 function notices(lines){
  const el=$('alarms');el.replaceChildren();
