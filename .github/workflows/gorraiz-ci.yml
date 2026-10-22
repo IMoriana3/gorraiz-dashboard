@@ -81,3 +81,28 @@ jobs:
           PY
       - name: Compilar Worker sin credenciales ni despliegue
         run: npx --yes wrangler@4.145.0 deploy --dry-run --config worker/wrangler.toml
+
+  scada-chromium:
+    name: SCADA Chromium · QA sin datos privados
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Obtener código
+        uses: actions/checkout@v4
+      - name: Preparar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Instalar navegador y Chart.js para pruebas sintéticas
+        run: |
+          npm install --no-save --no-package-lock playwright@1.55.1 chart.js@4.4.1
+          npx playwright install --with-deps chromium
+      - name: Humo de navegador sin secretos ni consultas reales
+        run: node tests/scada-browser.mjs
+      - name: Guardar capturas de revisión
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scada-gorraiz-qa-capturas
+          path: artifacts/scada-*.png
+          if-no-files-found: ignore
