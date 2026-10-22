@@ -22,7 +22,7 @@ const server=createServer((req,res)=>{
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const addr='http://127.0.0.1:'+server.address().port;
 const browser=await chromium.launch({headless:true});
-let requests=0;const errors=[];
+let requests=0,archiveReads=0,archiveWrites=0;const errors=[],archive=new Map();
 try {
   const context=await browser.newContext({viewport:{width:1440,height:900},deviceScaleFactor:1});
   const page=await context.newPage();
@@ -40,6 +40,33 @@ try {
       meta:{fuente:'ficticia QA'}
     };
     return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(fake)});
+  });
+  await page.route(/https:\/\/qa-scada-worker\.example\.invalid\/historico\/.*/,async route=>{
+    const path=new URL(route.request().url()).pathname;
+    const body=route.request().method()==='POST'?route.request().postDataJSON():{};
+    const json=obj=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(obj)});
+    if(path==='/historico/guardar'){
+      archiveWrites++;
+      for(const item of body.items||[])archive.set(item.tipo+'|'+item.fecha,item);
+      return json({ok:true,guardadas:(body.items||[]).length});
+    }
+    if(path==='/historico/estado'){
+      archiveReads++;
+      const dias={A:[],B:[],S:[]};
+      for(const source of archive.values())dias[source.tipo].push(source.fecha);
+      const coverage={};
+      for(const type of ['A','B','S']){
+        dias[type]=[...new Set(dias[type])].sort();
+        coverage[type]={dias:dias[type].length,desde:dias[type][0]||null,hasta:dias[type].at(-1)||null};
+      }
+      return json({ok:true,dias,cobertura:coverage,proveedorConsultado:false});
+    }
+    if(path==='/historico/datos'){
+      archiveReads++;
+      return json({fuentes:[...archive.values()].filter(f=>f.fecha>=body.desde&&f.fecha<=body.hasta),
+        meta:{desde:body.desde,hasta:body.hasta,proveedorConsultado:false}});
+    }
+    return route.fulfill({status:404,contentType:'application/json',body:'{"error":"Ruta desconocida"}'});
   });
   await page.goto(addr+'/blank');
   await page.evaluate(async ()=>{
@@ -75,7 +102,9 @@ try {
       {id:'S|'+date,tipo:'S',fecha:date,payload:{date,rows,
         daily:[{date,importKWh:imp,exportKWh:exp,
           selfConsumptionKWh:produccionA+produccionB-exp}],
-        meta:{completo:true,medidoresEstacion:1,timezoneVerified:true,
+        meta:{fuente:'spc',stationId:'2026032317114373',
+          meterId:'210261430F3060020000661',desde:date,hasta:date,completo:true,
+          medidoresEstacion:1,timezoneVerified:true,actualizado:'2026-10-20T12:00:00Z',
           fetchedAt:'2026-10-20T12:00:00Z'}}}
     ];
     await new Promise((resolve,reject)=>{
@@ -111,6 +140,23 @@ try {
   assert.ok(reading.series.every(x=>x.nonNull>=60),JSON.stringify(reading));
   assert.equal(reading.labels,288);
   assert.equal(requests,0,'abrir el SCADA no debe consumir ninguna llamada API');
+  // Ambos paneles usan las mismas rutas de archivo, sin consultar proveedores.
+  await page.locator('#pushHistory').click();
+  await page.waitForFunction(()=>document.querySelector('#sharedState')?.textContent.includes('Sincronización completada'));
+  assert.ok(archiveWrites>=1);
+  assert.equal(archive.size,3,'se comparten inversores A/B y SPC');
+  await page.evaluate(async()=>{
+    const db=await new Promise((ok,bad)=>{const r=indexedDB.open('gorraiz_datos',1);
+      r.onsuccess=()=>ok(r.result);r.onerror=()=>bad(r.error)});
+    await new Promise((ok,bad)=>{const tx=db.transaction('fuentes','readwrite');
+      tx.objectStore('fuentes').clear();tx.oncomplete=ok;tx.onerror=()=>bad(tx.error)});
+    db.close();
+  });
+  await page.locator('#reload').click();
+  await page.waitForFunction(()=>document.querySelector('#powerGen')?.textContent!=='—'&&
+    document.querySelector('#coverageSPC')?.textContent.includes('2026-10-19'));
+  assert.ok(archiveReads>=2,'recupera del archivo central después de vaciar caché del equipo');
+  assert.equal(requests,0,'recuperar histórico NO consulta Solarman');
   assert.match(await page.locator('#coverageA').innerText(),/2026-10-19/);
   assert.match(await page.locator('#coverageB').innerText(),/2026-10-19/);
   assert.match(await page.locator('#coverageSPC').innerText(),/2026-10-19/);
