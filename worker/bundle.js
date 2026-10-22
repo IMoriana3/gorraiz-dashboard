@@ -632,21 +632,41 @@ function sanitizeInv(input,source){
    throw new Error('El día FV no contiene una lista válida de hasta 600 muestras.');
  const date=input.fecha;
  const out=new Map();
+ const provided=source.unidadPotencia??source.potUnit??null;
+ if(provided!==null&&!['W','kW','desconocida'].includes(provided))
+   throw new Error('Unidad de potencia no reconocida. Indica W, kW o desconocida.');
+ let quarantined=0;
  for(const row of source.rows){
    if(!row||typeof row!=='object')throw new Error('Muestra FV inválida.');
    const ts=normalizedTime(row.ts);
    if(!ts||ts.slice(0,10)!==date)throw new Error('Marca FV fuera del día de origen.');
-   const pot=number(row.pot),acum=number(row.acum),dia=number(row.dia);
-   if(pot!==null&&(pot<0||pot>65))throw new Error('Potencia inversor fuera de límites de plausibilidad.');
+   const rawPot=number(row.pot),acum=number(row.acum),dia=number(row.dia);
    if(acum!==null&&(acum<0||acum>1e9))throw new Error('Acumulado inversor inválido.');
    if(dia!==null&&(dia<0||dia>1000))throw new Error('Energía diaria inversor inválida.');
-   if(pot===null&&acum===null&&dia===null)continue;
-   out.set(ts,{ts,pot,acum,dia});
+   // El origen puede tener la potencia en W (Solarman APo_t1) o kW.
+   // Si la unidad no está acreditada, NUNCA convertir silenciosamente.
+   // Las lecturas sospechosas se guardan en cuarentena para auditarlas,
+   // sin detener toda la migración y sin dibujarlas como kW.
+   let pot=rawPot;
+   if(provided==='W')pot=rawPot===null?null:rawPot/1000;
+   if(provided==='desconocida')pot=null;
+   if(pot!==null&&(pot<0||pot>65))pot=null;
+   let unverified=number(row.potSinValidar);
+   if(pot===null&&rawPot!==null)unverified=rawPot;
+   if(unverified!==null&&pot===null)quarantined++;
+   if(pot===null&&acum===null&&dia===null&&unverified===null)continue;
+   const clean={ts,pot,acum,dia};
+   if(unverified!==null&&pot===null)clean.potSinValidar=unverified;
+   out.set(ts,clean);
  }
  if(!out.size)throw new Error('Sin muestras FV útiles.');
  return {tipo:input.tipo,fecha:date,rows:[...out.values()].sort((a,b)=>a.ts.localeCompare(b.ts)),
-   origen:'datos-compartidos',updatedAt:new Date().toISOString()};
+   origen:'datos-compartidos',unidadPotencia:'kW',
+   controlPotencia:{unidadRecibida:provided||'no-declarada',
+     muestrasSinVerificar:quarantined},
+   updatedAt:new Date().toISOString()};
 }
+
 const isoTime=v=>typeof v==='string'&&Number.isFinite(Date.parse(v))?
   new Date(v).toISOString():null;
 function sanitizeSpc(input,source,env){
@@ -719,9 +739,14 @@ function combine(old,received){
  for(const row of received.rows||[]){
    const prev=rows.get(row.ts);
    rows.set(row.ts,prev?{ts:row.ts,
-     pot:row.pot??prev.pot,acum:row.acum??prev.acum,dia:row.dia??prev.dia}:row);
+     pot:row.pot??prev.pot,acum:row.acum??prev.acum,dia:row.dia??prev.dia,
+     ...(row.potSinValidar!==undefined||prev.potSinValidar!==undefined?
+       {potSinValidar:row.potSinValidar??prev.potSinValidar}:{})}:row);
  }
- const merged={...received,rows:[...rows.values()].sort((a,b)=>a.ts.localeCompare(b.ts))};
+ const all=[...rows.values()].sort((a,b)=>a.ts.localeCompare(b.ts));
+ const merged={...received,rows:all,
+   controlPotencia:{...received.controlPotencia,
+     muestrasSinVerificar:all.filter(r=>r.pot===null&&r.potSinValidar!==undefined).length}};
  if(merged.rows.length>MAX_SAMPLES||JSON.stringify(merged).length>MAX_TEXT)
    throw new Error('El histórico del día excede el límite de tamaño.');
  return merged;
@@ -747,11 +772,13 @@ async function writeHistory(storage,items,env){
      if(JSON.stringify(next)!==JSON.stringify(previous))await tx.put(key,next);
      return{tipo:source.tipo,fecha:source.fecha,
        muestras:source.tipo==='S'?next.payload.rows.length:next.rows.length,
-       completo:source.tipo==='S'?next.payload.meta.completo:true};
+       completo:source.tipo==='S'?next.payload.meta.completo:true,
+       pendientesPotencia:source.tipo==='S'?0:(next.controlPotencia?.muestrasSinVerificar||0)};
    });
    results.push(result);
  }
- return{ok:true,guardadas:results.length,fuentes:results};
+ return{ok:true,guardadas:results.length,fuentes:results,
+   pendientesPotencia:results.reduce((n,r)=>n+(r.pendientesPotencia||0),0)};
 }
 async function readHistory(storage,desde,hasta){
  if(!dateOK(desde)||!dateOK(hasta)||desde>hasta)throw new Error('Rango de fechas inválido.');
@@ -1318,6 +1345,23 @@ function smValor(lista,claves,nombres){
   }
   return 0;
 }
+// APo_t1 (Total AC Output Power, Active) está publicado en W en
+// SOLARMAN. Conservar explícitamente la unidad al normalizar; las tarjetas
+// del SCADA, los simuladores y el histórico central trabajan en kW.
+// Si el proveedor declara kW para otro firmware, respetar esa unidad.
+// No inferir una potencia cero por ausencia de una lectura.
+function smPotenciaKw(lista){
+  const l=Array.isArray(lista)?lista:[];
+  const campo=l.find(it=>String(it.key||'').toLowerCase()==='apo_t1')||
+    l.find(it=>/^total ac output power(?: \(active\))?$/i.test(String(it.name||'')));
+  if(!campo||campo.value===null||campo.value===undefined||campo.value==='')return null;
+  const valor=Number(campo.value);
+  if(!Number.isFinite(valor))return null;
+  const unidad=String(campo.unit||'W').replace(/\s/g,'').toUpperCase();
+  if(unidad==='KW')return valor;
+  if(unidad==='W')return valor/1000;
+  return null;
+}
 // Solarman solo sirve un día por llamada, así que un rango son muchas. En fila
 // el Worker acaba tardando tanto que la conexión se corta y el navegador
 // devuelve un escueto "Failed to fetch"; en tandas paralelas va sobrado. La
@@ -1345,7 +1389,7 @@ async function smHistorico(env,tk,sn,desde,hasta,base){
     const l=fr.dataList||[];
     if(!fr.collectTime)continue;
     out.push({ts:horaLocal(new Date(+fr.collectTime*1000)),
-      pot:smValor(l,['APo_t1'],['total ac output power','total ac output power (active)']),
+      pot:smPotenciaKw(l),potUnit:'kW',
       acum:smValor(l,['Et_ge0'],['cumulative production','cumulative production (active)']),
       dia:smValor(l,['Etdy_ge1'],['daily production','daily production (active)'])});
   }
@@ -1512,7 +1556,7 @@ export class SolarmanQuota {
             if(!days.has(date))days.set(date,[]);
             days.get(date).push(row);
           }
-          for(const [fecha,rows] of days)items.push({tipo:kind,fecha,rows});
+          for(const [fecha,rows] of days)items.push({tipo:kind,fecha,rows,unidadPotencia:'kW'});
         }
         if(items.length){
           try{
