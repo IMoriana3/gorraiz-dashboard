@@ -42,7 +42,7 @@ async function storePV(data,onDate){
      acum:numeric(x.acum),dia:numeric(x.dia)})).filter(x=>Number.isFinite(+x.ts));
   if(!rows.length)continue;
   entries.push({id:type+'|SCADA Solarman '+onDate,tipo:type,nombre:'SCADA Solarman '+onDate,
-    updatedAt:new Date().toISOString(),rows});
+    unidadPotencia:'kW',updatedAt:new Date().toISOString(),rows});
  }
  if(!entries.length)throw new Error('El Worker no devolvió muestras válidas de ninguno de los inversores.');
  const db=await getDb();
