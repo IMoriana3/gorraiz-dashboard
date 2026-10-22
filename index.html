@@ -764,11 +764,14 @@ function getSpcRows(){
   return [...filas.values()].sort((a,b)=>String(a.saveTime).localeCompare(String(b.saveTime)));
 }
 function spcCoberturaTexto(){
-  const d=$('aDesde').value,h=$('aHasta').value;
-  if(!spcFecha(d)||!spcFecha(h)||d>h)return 'Elige las fechas para ver la cobertura de SPC.';
-  const n=SPC_FUENTES.filter(f=>f.date>=d&&f.date<=h).length;
+  const d=$('spcDiaManual').value,h=$('spcHastaManual').value;
+  if(spcFecha(d)!==d||spcFecha(h)!==h||d>h)
+    return 'Elige el rango SPC Desde/Hasta para consultar su cobertura.';
+  const seleccion=SPC_FUENTES.filter(f=>f.date>=d&&f.date<=h);
+  const completos=seleccion.filter(f=>f.meta?.completo===true).length;
+  const parciales=seleccion.length-completos;
   const total=Math.round((Date.parse(h+'T00:00:00Z')-Date.parse(d+'T00:00:00Z'))/864e5)+1;
-  return `SPC: ${fn(n)} de ${fn(total)} días con datos guardados en el rango elegido.`;
+  return `SPC en ${fdmy(d)} → ${fdmy(h)}: ${fn(completos)} completos, ${fn(parciales)} parciales y ${fn(total-seleccion.length)} sin descargar de ${fn(total)} días.`;
 }
 function spcMomento(v){const d=new Date(v);return v&&!isNaN(d)?d.toLocaleString('es-ES'):''}
 function pintaSpc(){
@@ -856,6 +859,12 @@ async function descargarSoloSpc(){
   $('spcDiaManual').dataset.manualChoice='1';
   $('spcHastaManual').dataset.manualChoice='1';
   SPC_OCUPADO=true;pintaSpc();
+  const cfg=kstarCfg();
+  if(cfg.url&&cfg.key.length<24){
+    SPC_OCUPADO=false;pintaSpc();
+    $('spcAccion').textContent='Configura la clave del Worker KSTAR antes de descargar un rango. No se ha consultado al proveedor.';
+    return;
+  }
   const complete=SPC_FUENTES.filter(f=>f.meta?.completo===true).map(f=>f.date);
   const already=new Set(complete);
   const counts={guardados:0,parciales:0,omitidos:0,central:0,soloLocal:0,errores:[]};
@@ -880,16 +889,22 @@ async function descargarSoloSpc(){
           else counts.soloLocal++;
         }catch(e){
           counts.errores.push(fdmy(fecha)+': '+e.message);
-          // Recuperación selectiva: seguir con la próxima fecha sin repetir
-          // consultas ni cancelar las jornadas ya conservadas.
+          // No repetir solicitudes con credenciales inválidas o al límite;
+          // un error puntual de un día permite continuar con los siguientes.
+          if(/(?:HTTP\s*|\b)(?:401|403|429)\b|clave|credencial|autorizaci[oó]n|cupo|límite de peticiones/i.test(e.message)){
+            $('spcAccion').textContent='SPC rango detenido tras '+(i+1)+
+              '/'+total+' días por error de acceso o límite: '+e.message+
+              '. Los datos guardados se conservan. Solarman no consultado.';
+            break;
+          }
         }
       }
       $('spcAccion').textContent='SPC '+(i+1)+'/'+total+' · '+resumen()+
         (counts.errores.length?' Último fallo: '+counts.errores.at(-1):'')+
         ' Solarman no consultado.';
     }
-    SPC_PRUEBA={ok:counts.guardados+counts.parciales>0,
-      actualizado:new Date().toISOString()};
+    if(counts.guardados+counts.parciales>0)
+      SPC_PRUEBA={ok:true,actualizado:new Date().toISOString()};
     $('spcAccion').textContent='Descarga por rango completada · '+resumen()+
       (counts.errores.length?' Incidencias: '+counts.errores.slice(0,3).join(' | ')+
         (counts.errores.length>3?' y '+(counts.errores.length-3)+' más':'')+'.':'')+
