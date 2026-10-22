@@ -1,76 +1,155 @@
 <!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SCADA · Gorraiz</title><link rel="icon" href="favicon.svg">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b151b">
+<meta name="description" content="SCADA de generación e intercambio de Gorraiz; datos reales e incertidumbres visibles.">
+<link rel="icon" href="./favicon.svg"><title>SCADA · Gorraiz — Factiun</title>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
-:root{color-scheme:dark;--bg:#0f1a16;--panel:#162420;--stroke:#2b4036;--gold:#d4a039;--text:#e8e6e0;--dim:#a1b5a5;--good:#65c6a1}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px system-ui,sans-serif}
-header{padding:18px max(20px,calc((100vw - 1200px)/2));background:#14221d;border-bottom:1px solid var(--stroke);display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
-a{color:var(--good)}h1{font-size:23px;margin:0}small,.muted{color:var(--dim)}main{max-width:1240px;margin:auto;padding:20px}
-.toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:18px}input,button{padding:9px 12px;background:#1d3028;border:1px solid var(--stroke);border-radius:8px;color:var(--text)}button{cursor:pointer}
-.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.card,.stage{background:var(--panel);border:1px solid var(--stroke);border-radius:14px;padding:18px}.label{color:var(--dim);font-size:12px}.value{font-weight:700;font-variant-numeric:tabular-nums;font-size:27px;margin:8px 0}.unit{font-size:13px;color:var(--dim)}
-.flow{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:12px;align-items:center;margin:18px 0}.flow .stage{text-align:center;min-height:135px}.arrow{font-size:24px;color:var(--gold)}
-.section{margin-top:18px}.chart{height:315px;position:relative}.warn{color:#f0c57b}.tag{display:inline-block;font-size:12px;border:1px solid var(--stroke);padding:5px 9px;border-radius:99px}
-@media(max-width:750px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.flow{grid-template-columns:1fr;}.arrow{transform:rotate(90deg);text-align:center}.chart{height:270px}.value{font-size:22px}}
-</style></head><body>
-<header><div><h1>SCADA · Gorraiz</h1><small>Factiun · KSTAR SPC01 · Consulta histórica, sin funciones de mando</small></div><a href="./">← Informe de autoconsumo</a></header>
-<main><div class="toolbar"><label for="day">Día registrado</label><input id="day" type="date"><button id="reload">Recargar almacenamiento</button><span class="tag" id="source">Sin lectura</span></div>
-<p id="status" role="status" class="muted">Leyendo el histórico local…</p>
-<section class="stats" aria-label="Resumen de energía">
-<div class="card"><div class="label">Importación desde red</div><div class="value" id="import">—</div><span class="unit">kWh/día</span></div>
-<div class="card"><div class="label">Exportación a red</div><div class="value" id="export">—</div><span class="unit">kWh/día</span></div>
-<div class="card"><div class="label">Autoconsumo comunicado por SPC</div><div class="value" id="self">—</div><span class="unit">kWh/día</span></div>
-<div class="card"><div class="label">Muestras SPC</div><div class="value" id="samples">—</div><span class="unit">registros del día</span></div></section>
-<section class="flow" aria-label="Esquema energético conceptual">
-<div class="stage"><div class="label">RED ELÉCTRICA</div><div class="value" id="grid">—</div><div class="muted">Intercambio diario medido</div></div>
-<div class="arrow" aria-hidden="true">↔</div>
-<div class="stage"><div class="label">KSTAR SPC01</div><div class="value">Medidor</div><div class="muted">Importación / exportación</div></div>
-<div class="arrow" aria-hidden="true">↔</div>
-<div class="stage"><div class="label">INSTALACIÓN</div><div class="value" id="local">—</div><div class="muted">Autoconsumo comunicado</div></div>
-</section>
-<section class="card section"><div class="label">Histórico diario disponible en este navegador</div><div class="chart"><canvas id="history"></canvas></div></section>
-<p class="muted">Las flechas representan el perímetro de medida, no flujos eléctricos instantáneos. Los valores son acumulados del día, no potencias en tiempo real. No se deduce producción ni consumo a partir de acumulados incompatibles. El SCADA lee IndexedDB sin acceder a claves ni contraseñas de los Workers.</p>
-</main><script>
-'use strict';
-const $=id=>document.getElementById(id);const nf=new Intl.NumberFormat('es-ES',{maximumFractionDigits:2});
-let days=[],chart;
-function number(v){if(v===null||v===undefined||v==='')return null;const n=Number(v);return Number.isFinite(n)?n:null}
-function fmt(v){return v===null?'—':nf.format(v)}
-function load(){
- return new Promise((resolve,reject)=>{
-  const request=indexedDB.open('gorraiz_datos',1);
-  request.onupgradeneeded=()=>{if(!request.result.objectStoreNames.contains('fuentes'))request.result.createObjectStore('fuentes',{keyPath:'id'})};
-  request.onerror=()=>reject(request.error);
-  request.onsuccess=()=>{
-   const db=request.result,tx=db.transaction('fuentes','readonly'),q=tx.objectStore('fuentes').getAll();
-   q.onsuccess=()=>{db.close();resolve((q.result||[]).filter(x=>x.tipo==='S'&&x.payload))};
-   q.onerror=()=>{db.close();reject(q.error)};
-  };
- });
-}
-function render(){
- const d=days.find(x=>x.date===$('day').value),daily=d?.daily?.find(x=>x.date===d.date);
- $('import').textContent=fmt(number(daily?.importKWh));
- $('export').textContent=fmt(number(daily?.exportKWh));
- $('self').textContent=fmt(number(daily?.selfConsumptionKWh));
- $('samples').textContent=d?fmt(d.rows?.length||0):'—';
- $('grid').textContent=daily?'↓ '+fmt(number(daily.importKWh))+' / ↑ '+fmt(number(daily.exportKWh)):'—';
- $('local').textContent=fmt(number(daily?.selfConsumptionKWh))+' kWh';
- $('source').textContent=d?'SPC · '+(d.meta?.completo===true?'día completo':'integridad sin confirmar'):'Sin datos';
- $('status').textContent=d?'Día '+d.date+' · histórico local, no lectura en directo.':'No hay datos SPC guardados para esta fecha.';
-}
-async function refresh(){
- try{
-  const stored=await load();days=stored.map(x=>({...x.payload,date:x.fecha})).sort((a,b)=>a.date.localeCompare(b.date));
-  const desired=$('day').value;if(days.length){$('day').min=days[0].date;$('day').max=days.at(-1).date;$('day').value=days.some(x=>x.date===desired)?desired:days.at(-1).date}
-  else {$('status').textContent='Sin datos KSTAR locales. Abre el informe principal y utiliza «Traer datos» antes de consultar el SCADA.'}
-  render();const ds=days.map(d=>d.daily?.find(x=>x.date===d.date));
-  chart?.destroy();if(typeof Chart==='undefined')return;
-  chart=new Chart($('history'),{type:'bar',data:{labels:days.map(d=>d.date),datasets:[
-   {label:'Importación (kWh)',data:ds.map(x=>number(x?.importKWh)),backgroundColor:'#d4a039'},
-   {label:'Exportación (kWh)',data:ds.map(x=>number(x?.exportKWh)),backgroundColor:'#65c6a1'}]},
-   options:{maintainAspectRatio:false,responsive:true,plugins:{legend:{labels:{color:'#e8e6e0'}}},scales:{x:{ticks:{color:'#a1b5a5',maxTicksLimit:10},grid:{color:'#2b4036'}},y:{beginAtZero:true,ticks:{color:'#a1b5a5'},grid:{color:'#2b4036'}}}}});
- }catch(e){$('status').textContent='No se pudo abrir el histórico local: '+e.message}
-}
-$('day').addEventListener('change',render);$('reload').addEventListener('click',refresh);refresh();
-</script></body></html>
+:root{color-scheme:dark;--bg:#0c151b;--aside:#101f27;--card:#13232b;--card2:#162a33;--stroke:#28404a;--text:#ecf3f4;--dim:#94aeb5;--green:#47d48c;--blue:#65baff;--yellow:#eec057;--red:#fa7778;--cyan:#76d6cf}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:13px/1.5 'DM Sans',system-ui,sans-serif}
+button,input{font:inherit}button{cursor:pointer;background:#203540;color:var(--text);border:1px solid #36505a;border-radius:8px;padding:8px 12px;font-weight:600}button:hover{border-color:var(--cyan)}button:disabled{opacity:.5;cursor:not-allowed}
+button[aria-pressed=true]{background:#1a5554;border-color:#329a90}
+a{color:#7bd9bf;text-decoration:none}a:hover{text-decoration:underline}
+.muted{color:var(--dim)}.tiny{font-size:11px}.mono,.number{font-variant-numeric:tabular-nums}
+.frame{display:grid;grid-template-columns:174px minmax(0,1fr);min-height:100vh}
+aside{background:linear-gradient(#13242c,#0c181f);border-right:1px solid var(--stroke);padding:20px 12px}
+.brand{display:flex;gap:10px;align-items:center;padding:4px 10px 21px;border-bottom:1px solid #2a424b;margin-bottom:17px;font-weight:800;font-family:'Space Grotesk',sans-serif;letter-spacing:.08em}
+.brand .logo{display:grid;place-items:center;width:31px;height:31px;background:#1e4c40;color:#72e9af;border-radius:9px}
+.navitem{display:flex;align-items:center;gap:9px;color:#a5bcc3;padding:11px 12px;border-radius:9px;margin:4px 0;font-size:12px}
+.navitem.on{color:#e9fff6;background:#1d4543;border-left:3px solid #53d9b5}.navitem:not(.on):hover{background:#1b3038}
+main{min-width:0;padding:0 20px 25px;max-width:1940px;width:100%;margin:auto}
+.top{padding:17px 1px;border-bottom:1px solid var(--stroke);display:flex;align-items:center;justify-content:space-between;gap:15px;flex-wrap:wrap;margin-bottom:15px}
+h1{font:700 25px/1.2 'Space Grotesk',system-ui,sans-serif;margin:0 0 3px}.topright{display:flex;align-items:center;gap:17px;flex-wrap:wrap}
+.tag{display:inline-flex;gap:7px;align-items:center;border:1px solid #3e594c;background:#16312d;border-radius:99px;padding:5px 10px;font-size:11px;color:#c6eddf;white-space:nowrap}
+.dot{width:7px;height:7px;border-radius:50%;background:#6cd7ac;display:inline-block;flex:none}.dot.warn{background:var(--yellow)}.dot.off{background:#768b93}
+.controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:5px 0 15px}
+input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;border-radius:8px;padding:7px 11px;color-scheme:dark}
+.check{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--dim)}
+.check input{accent-color:#4bd5aa}
+#notice{margin:0 0 13px;padding:9px 13px;background:#192c32;border:1px solid #345461;border-radius:9px;color:#c0d2d4;font-size:11px}
+.cards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.card,.panel{border:1px solid #293f49;border-radius:11px;background:linear-gradient(145deg,#172a33,#101e25);min-width:0}
+.card{padding:12px 14px;position:relative;overflow:hidden;border-top:2px solid var(--c)}
+.card .cap{color:#b2c5c9;font-size:11px;display:flex;gap:8px;align-items:center;white-space:nowrap}
+.card .value{font:700 clamp(17px,2.15vw,28px)/1.3 'Space Grotesk',sans-serif;color:var(--c);margin-top:7px;letter-spacing:-.7px;white-space:nowrap}
+.card .sub{font-size:10px;color:#92a9b3;margin-top:4px;min-height:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.panels{display:grid;grid-template-columns:minmax(260px,1.04fr) minmax(370px,1.6fr) minmax(230px,.84fr);gap:11px;align-items:stretch}
+.panel{padding:0;overflow:hidden}.ptop{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid #2c424b;padding:10px 13px;min-height:42px}.ptop h2{font-size:12px;font-weight:700;margin:0}.pbody{padding:13px}
+.flow{min-height:350px;display:flex;flex-direction:column;justify-content:center;gap:12px}
+.energy-row{display:grid;grid-template-columns:minmax(0,1fr) 35px minmax(0,1fr) 35px minmax(0,1fr);gap:2px;align-items:center}
+.device{background:#1a3037;border:1px solid #3a5158;border-radius:10px;padding:14px 4px;text-align:center;min-height:111px}
+.device .symbol{font-size:27px;color:#b5e5d5;line-height:1.4}.device .name{font-size:9px;letter-spacing:.035em;color:#a8bec3}.device .reading{font:700 18px 'Space Grotesk',sans-serif;margin:5px 0;color:var(--green)}
+.arrow{text-align:center;color:var(--green);font-size:24px}.flow-line{display:flex;align-items:center;gap:11px;justify-content:space-around;text-align:center;padding:8px;border-top:1px solid #2a444a;margin-top:9px}
+.flow-line strong{display:block;font:700 19px 'Space Grotesk',sans-serif;margin-top:3px}
+.flow-line .import{color:var(--red)}.flow-line .export{color:var(--yellow)}
+.chartpanel{min-height:440px}.chartbox{position:relative;height:365px;padding:6px 10px 12px}
+.charts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px;margin-top:11px}
+.smallbox{height:190px;position:relative;padding:8px 10px 12px}
+.rightcol{display:flex;flex-direction:column;gap:11px}
+.equipment{padding:4px 13px}.equipment .item{display:flex;gap:10px;align-items:center;justify-content:space-between;border-bottom:1px solid #29424a;padding:9px 1px;font-size:11px}.equipment .item:last-child{border:0}.equipment .item .label{display:flex;align-items:center;gap:7px;min-width:0}.equipment .item .read{color:#acd4df;text-align:right;font-size:10px}
+.alarms{padding:9px 13px;color:#c2d3d4;font-size:11px}.alarms p{margin:4px 0 9px}.alarms p:last-child{margin-bottom:4px}
+.balance{padding:11px 14px}.meter{display:grid;grid-template-columns:105px 1fr 82px;gap:9px;align-items:center;margin:10px 0;font-size:10px}.meter .bar{height:7px;background:#2f434b;border-radius:20px;overflow:hidden}.meter .fill{height:100%;border-radius:20px;background:var(--bar);width:0}.meter .amount{text-align:right;font-variant-numeric:tabular-nums;color:#c9e4e7}
+.footnote{margin-top:12px;color:#9ab4b7;font-size:11px;line-height:1.6}
+#empty{display:none;margin:15px 0;border:1px dashed #4e6872;padding:20px;border-radius:10px;background:#142730;color:#b8cdd1}
+@media(max-width:1310px){.panels{grid-template-columns: minmax(275px,1fr) minmax(350px,1.5fr)}.rightcol{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr}.cards{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:880px){.frame{grid-template-columns:1fr}aside{display:none}main{padding:0 12px 20px}.panels{grid-template-columns:1fr}.rightcol{grid-column:auto}.charts{grid-template-columns:1fr 1fr}.flow{min-height:265px}.chartbox{height:325px}.card .value{font-size:24px}}
+@media(max-width:570px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.rightcol,.charts{grid-template-columns:1fr}.meter{grid-template-columns:95px 1fr 65px}.topright{gap:8px}.device{min-height:95px}.device .reading{font-size:14px}.energy-row{grid-template-columns:minmax(0,1fr) 18px minmax(0,1fr) 18px minmax(0,1fr)}.arrow{font-size:17px}}
+</style>
+</head>
+<body><div class="frame">
+<aside aria-label="Navegación">
+ <div class="brand"><span class="logo">↗</span> FACTIUN</div>
+ <div class="navitem on">▣ &nbsp; Vista general</div>
+ <div class="navitem">▦ &nbsp; Planta FV · 123,84 kWp</div>
+ <div class="navitem">▤ &nbsp; 2 × KSTAR G50KT</div>
+ <div class="navitem">⇄ &nbsp; Red eléctrica</div>
+ <div class="navitem">⌁ &nbsp; Históricos</div>
+ <div class="navitem">⚠ &nbsp; Diagnóstico</div>
+ <a class="navitem" href="./">↩ &nbsp; Informes de Gorraiz</a>
+</aside>
+<main>
+ <header class="top">
+  <div><h1>SCADA · Gorraiz</h1><div class="muted tiny">Generación fotovoltaica e intercambio con la red · Amixalan</div></div>
+  <div class="topright"><span class="tag" id="state"><i class="dot off"></i> Histórico sin verificar</span><span class="muted tiny mono" id="updated">Última lectura: —</span><a href="./">Ir a informes ↗</a></div>
+ </header>
+ <div class="controls">
+  <label class="muted tiny" for="day">Día</label><input type="date" id="day">
+  <button id="today" type="button">Hoy</button>
+  <button id="one" aria-pressed="true" type="button">24 h</button>
+  <button id="seven" aria-pressed="false" type="button">7 días</button>
+  <button id="reload" type="button">↻ Leer histórico</button>
+  <button id="updatePV" type="button" title="Solicita el día actual a Solarman, nunca a KSTAR">↓ Actualizar Solarman</button>
+  <label class="check" title="Solo Solarman; no consulta KSTAR"><input id="auto" type="checkbox"> Automático FV / 5 min</label>
+  <label class="check" title="Permite el cálculo aproximado del consumo con relojes SPC/Solarman sin conciliar; nunca afecta a los informes."><input id="provisional" type="checkbox"> Cruce horario provisional</label>
+ </div>
+ <p id="notice" role="status">Leyendo señales guardadas…</p>
+ <div class="cards" aria-label="Potencias del instante seleccionado">
+  <div class="card" style="--c:var(--green)"><div class="cap">☀ &nbsp; Generación total</div><div class="value number" id="powerGen">—</div><div class="sub" id="subGen">kW · Solarman</div></div>
+  <div class="card" style="--c:var(--blue)"><div class="cap">⌂ &nbsp; Consumo total</div><div class="value number" id="powerCons">—</div><div class="sub" id="subCons">kW · sin sincronización</div></div>
+  <div class="card" style="--c:var(--red)"><div class="cap">↙ &nbsp; Importación red</div><div class="value number" id="powerImp">—</div><div class="sub" id="subImp">kW medio por intervalo</div></div>
+  <div class="card" style="--c:var(--yellow)"><div class="cap">↗ &nbsp; Exportación red</div><div class="value number" id="powerExp">—</div><div class="sub" id="subExp">kW medio por intervalo</div></div>
+  <div class="card" style="--c:var(--cyan)"><div class="cap">◉ &nbsp; Autoconsumo diario</div><div class="value number" id="powerSelf">—</div><div class="sub">kWh SPC · no es potencia</div></div>
+ </div>
+ <div id="empty">No hay muestras en este navegador para el periodo elegido. Importa o descarga los datos desde el <a href="./">informe Gorraiz</a> y vuelve a esta vista.</div>
+ <div class="panels">
+  <section class="panel">
+   <div class="ptop"><h2>Sinóptico de energía</h2><span class="muted tiny">Lecturas de fuentes independientes</span></div>
+   <div class="pbody flow">
+    <div class="energy-row">
+      <div class="device"><div class="symbol">▦</div><div class="name">CAMPO FV</div><div class="reading" id="flowGen">—</div></div>
+      <div class="arrow">→</div>
+      <div class="device"><div class="symbol">▣</div><div class="name">INVERSORES</div><div class="reading" id="flowInv">—</div></div>
+      <div class="arrow">→</div>
+      <div class="device"><div class="symbol">⌂</div><div class="name">CARGAS</div><div class="reading" style="color:var(--blue)" id="flowLoad">—</div></div>
+    </div>
+    <div style="text-align:center;color:var(--yellow);font-size:22px;line-height:1.2">↕</div>
+    <div class="device" style="width:56%;min-height:65px;align-self:center;padding:7px 10px"><div class="symbol" style="font-size:24px">♧</div><div class="name">RED · KSTAR SPC01</div></div>
+    <div class="flow-line">
+      <div><div class="muted tiny">Importación media</div><strong class="import" id="flowImp">—</strong></div>
+      <div><div class="muted tiny">Exportación media</div><strong class="export" id="flowExp">—</strong></div>
+    </div>
+    <div class="muted tiny">Los valores no son simultáneos si sus relojes no están validados. Las flechas son conceptuales.</div>
+   </div>
+  </section>
+  <section class="panel chartpanel">
+   <div class="ptop"><h2>Potencia · curvas por tramos de 5 minutos</h2><span class="muted tiny">kW · eje horario Madrid / reloj SPC sin confirmar</span></div>
+   <div class="chartbox"><canvas id="mainChart" aria-label="Curvas de generación, consumo, importación y exportación en kilovatios" role="img"></canvas></div>
+  </section>
+  <div class="rightcol">
+   <section class="panel"><div class="ptop"><h2>Estado de equipos y señales</h2></div>
+    <div class="equipment">
+      <div class="item"><span class="label"><i class="dot off" id="dotA"></i> Inversor A</span><span class="read" id="invA">Sin muestra</span></div>
+      <div class="item"><span class="label"><i class="dot off" id="dotB"></i> Inversor B</span><span class="read" id="invB">Sin muestra</span></div>
+      <div class="item"><span class="label"><i class="dot off" id="dotSPC"></i> KSTAR SPC01</span><span class="read" id="spcState">Sin muestra</span></div>
+      <div class="item"><span class="label"><i class="dot off" id="dotBalance"></i> Consumo calculado</span><span class="read" id="balanceState">No conciliado</span></div>
+      <div class="item"><span class="label"><i class="dot off" id="dotLink"></i> Fuente Solarman</span><span class="read" id="linkState">No consultada</span></div>
+    </div>
+   </section>
+   <section class="panel"><div class="ptop"><h2>Validación y eventos</h2><span class="muted tiny">Sin alarmas de mando</span></div>
+    <div class="alarms" id="alarms">Las incidencias de cobertura y sincronización se detallarán aquí.</div>
+   </section>
+  </div>
+ </div>
+ <div class="charts">
+  <section class="panel"><div class="ptop"><h2>Generación FV</h2><span class="muted tiny" id="miniGen">kW</span></div><div class="smallbox"><canvas id="pvChart"></canvas></div></section>
+  <section class="panel"><div class="ptop"><h2>Consumo total</h2><span class="muted tiny" id="miniCons">kW · derivado</span></div><div class="smallbox"><canvas id="consChart"></canvas></div></section>
+  <section class="panel"><div class="ptop"><h2>Intercambio con red</h2><span class="muted tiny">kW medios estimados</span></div><div class="smallbox"><canvas id="gridChart"></canvas></div></section>
+ </div>
+ <section class="panel" style="margin-top:11px">
+  <div class="ptop"><h2>Balance de energía del último día seleccionado</h2><span class="muted tiny">kWh acumulados · fuentes identificadas</span></div>
+  <div class="balance">
+   <div class="meter" style="--bar:var(--green)"><span>Generación FV</span><span class="bar"><span class="fill" id="barGen"></span></span><span class="amount" id="dailyGen">—</span></div>
+   <div class="meter" style="--bar:var(--blue)"><span>Consumo derivado</span><span class="bar"><span class="fill" id="barCons"></span></span><span class="amount" id="dailyCons">—</span></div>
+   <div class="meter" style="--bar:var(--yellow)"><span>Vertido a red</span><span class="bar"><span class="fill" id="barExp"></span></span><span class="amount" id="dailyExp">—</span></div>
+   <div class="meter" style="--bar:var(--red)"><span>Importación</span><span class="bar"><span class="fill" id="barImp"></span></span><span class="amount" id="dailyImp">—</span></div>
+   <p class="footnote">Generación = inversor A + B, ambos con medida. Consumo diario = generación + importación − exportación, solo si hay balance del mismo día y perímetro. Las potencias de red son medias por intervalo obtenidas de contadores acumulados conciliados con el resumen KSTAR. No se usa <code>totalActivePower</code> hasta validar unidades/CT y signo. La actualización automática opcional solo consulta Solarman; KSTAR continúa manual, para días cerrados y sin cron.</p>
+  </div>
+ </section>
+</main></div>
+<script type="module" src="./scada-app.mjs"></script>
+</body>
+</html>
