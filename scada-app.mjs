@@ -1,10 +1,11 @@
 import {availableDays,buildSeries,numeric} from './scada-data.mjs';
+import {SCADA_POLL_MS,SCADA_QUOTA_KEY,SCADA_LOCK_NAME,quotaState,reserveAttempt} from './scada-quota.mjs';
 
 const $=id=>document.getElementById(id);
 const fmt=new Intl.NumberFormat('es-ES',{maximumFractionDigits:1});
 const fmt2=new Intl.NumberFormat('es-ES',{maximumFractionDigits:2});
 const paints={generation:'#48d18a',consumption:'#6ebcff',import:'#f27478',export:'#efc357',a:'#76d6cf',b:'#8bdb97'};
-let stored=[],day='',range=1,charts={},pvBusy=false,autoTimer=null,lastPvCall=0;
+let stored=[],day='',range=1,charts={},pvBusy=false,autoTimer=null;
 function madridToday(){
   const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Madrid',
     year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
@@ -167,8 +168,25 @@ async function reload({keepDay=true}={}){
 function apiCfg(){
  try{return JSON.parse(localStorage.getItem('gorraiz_api_cfg')||'{}')}catch{return{}}
 }
+const madridClock=new Intl.DateTimeFormat('es-ES',{timeZone:'Europe/Madrid',hour:'2-digit',minute:'2-digit'});
+function quotaMessage() {
+ const q=quotaState(localStorage);
+ if(q.error)return 'Cupo horario no disponible: '+q.error;
+ return q.allowed?'Solarman: se admite una actualización (máximo 1 intento por hora y navegador).':
+   'Solarman: próxima actualización permitida a las '+madridClock.format(new Date(q.nextAt))+' (Madrid).';
+}
+function showQuota(){text('rateInfo',quotaMessage())}
+async function reserveHourlyUpdate({auto=false}={}) {
+ // Web Locks serializa la reserva entre las pestañas del mismo origen.
+ // Si no hay exclusión segura, la descarga automática se deshabilita.
+ if(typeof navigator!=='undefined' && navigator.locks?.request)
+   return navigator.locks.request(SCADA_LOCK_NAME,{mode:'exclusive'},()=>reserveAttempt(localStorage));
+ return auto
+   ? {allowed:false,error:'Este navegador no ofrece bloqueo entre pestañas; actualización automática deshabilitada.'}
+   : reserveAttempt(localStorage); // manual: límite local, sin garantía entre dos pestañas simultáneas
+}
 async function refreshPV({auto=false}={}){
- if(pvBusy || (auto&&(document.hidden || Date.now()-lastPvCall<300000)))return;
+ if(pvBusy || (auto&&document.hidden))return;
  const c=apiCfg();const selected=auto?madridToday():day;
  if(!c.url||!c.key){safeState('Configura primero la URL y clave del Worker de Solarman en el informe principal.');return}
  let url;
@@ -176,8 +194,17 @@ async function refreshPV({auto=false}={}){
    url.search||url.hash)throw new Error('URL no permitida')}
  catch{safeState('La URL del Worker debe ser HTTPS y no incluir usuario, query ni fragmentos.');return}
  const btn=$('updatePV');pvBusy=true;btn.disabled=true;
- lastPvCall=Date.now();safeState('Solicitando a Solarman el día '+selected+'; no se consulta KSTAR.');
  try{
+  const quota=await reserveHourlyUpdate({auto});
+  showQuota();
+  if(!quota.allowed){
+   safeState(quota.error?
+    'Consulta bloqueada para conservar el cupo: '+quota.error:
+    'Cupo Solarman: consulta bloqueada hasta las '+madridClock.format(new Date(quota.nextAt))+
+    '. Las curvas siguen disponibles desde el almacenamiento local.');
+   return;
+  }
+  safeState('Consulta horaria autorizada · Solarman '+selected+'. KSTAR no se consulta.');
   const response=await fetch(url.origin+url.pathname.replace(/\/$/,'')+'/produccion',{
    method:'POST',cache:'no-store',headers:{'content-type':'application/json','X-Panel-Key':c.key},
    body:JSON.stringify({desde:selected,hasta:selected})});
@@ -193,7 +220,7 @@ async function refreshPV({auto=false}={}){
   $('dotLink').classList.add('off');$('dotLink').classList.remove('warn');
   text('linkState','Error de actualización');
   safeState('Solarman: '+e.message+'. Se conservan los datos locales anteriores.');
- }finally{pvBusy=false;btn.disabled=false}
+ }finally{pvBusy=false;btn.disabled=false;showQuota()}
 }
 function setRange(n){
  range=n;$('one').setAttribute('aria-pressed',String(n===1));
@@ -209,11 +236,23 @@ $('updatePV').addEventListener('click',()=>refreshPV());
 $('auto').addEventListener('change',()=>{
  if(autoTimer)clearInterval(autoTimer);autoTimer=null;
  if($('auto').checked){
-  safeState('Actualización automática FV habilitada cada 5 min mientras la pestaña siga abierta. KSTAR no se consulta.');
-  autoTimer=setInterval(()=>refreshPV({auto:true}),300000);
+  if(!navigator.locks?.request){
+   $('auto').checked=false;
+   safeState('Automático no activado: este navegador no puede coordinar la cuota entre pestañas.');
+   return;
+  }
+  safeState('Actualización automática FV cada 60 min, solo con la pestaña abierta y visible. '+
+    'No hace ninguna consulta al activar ni abrir la pantalla; KSTAR permanece manual.');
+  // No disparamos una consulta al marcar la casilla: el temporizador arranca ahora.
+  autoTimer=setInterval(()=>refreshPV({auto:true}),SCADA_POLL_MS);
+ } else {
+  safeState('Actualización FV automática desactivada; las gráficas siguen usando datos locales.');
  }
 });
 window.addEventListener('storage',e=>{
  if(e.key==='gorraiz_api_cfg')text('linkState','Conexión modificada en otra pestaña');
+ if(e.key===SCADA_QUOTA_KEY)showQuota();
 });
+showQuota();
+setInterval(showQuota,60_000); // solo interfaz local, cero llamadas a la API
 await reload({keepDay:false});
