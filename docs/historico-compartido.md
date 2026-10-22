@@ -45,3 +45,13 @@ La primera versión del importador rechazaba por completo un paquete si encontra
 - Volver a sincronizar no descarga datos nuevos de Solarman ni KSTAR: únicamente actualiza el mismo registro central por equipo y fecha. La copia local nunca se borra durante la operación.
 
 La aceptación de un día en el archivo central no certifica por sí sola la calidad de todas sus potencias. El SCADA excluye las potencias sin unidad verificada de las curvas y muestra los huecos sin rellenarlos con valores inventados. Las mediciones reales tras la migración deben contrastarse con el portal original antes de emplearse para informes de rendimiento.
+
+## Migrador v3 · comprobación obligatoria si aparece 0/N
+
+Si la copia de un navegador sigue en **0/597**, no se debe presuponer que el problema es solo la potencia. El importador anterior podía rechazar el lote completo por una energía diaria o acumulado con escala distinta, por un formato temporal no compatible, por la identidad del contador SPC o por el propio servicio.
+
+**Diagnosticar sin guardar** en la tarjeta Histórico compartido envía únicamente una muestra limitada de días al Worker central mediante `POST /historico/validar`. Esa ruta **no escribe registros** ni llama a Solarman/KSTAR; contesta con `version:migracion-v3`, cuántos tipos/fechas son compatibles y la causa precisa de los rechazos. El informe ofrece **Copiar diagnóstico** con fechas y motivos, sin claves ni contraseñas.
+
+Al compartir el histórico, cada bloque se valida primero. Los objetos compatibles se guardan; los demás quedan intactos en IndexedDB y se enumeran en el diagnóstico, sin paralizar el resto. Tanto `/historico/validar` como `/historico/guardar` devuelven versión y recuentos detallados. Se conserva `potSinValidar` para potencias dudosas, `diaSinValidar` para energías diarias fuera de escala y `acumSinValidar` para acumulados que requieren interpretación. **Ninguno de esos campos se utiliza para crear curvas o calcular energía válida.** Se admiten hasta 2.500 observaciones FV/día, sujetas al límite de tamaño por objeto del Durable Object.
+
+Si el Worker no devuelve el protocolo v3 o falla la autenticación, el informe informa y detiene la operación sin intentar cientos de escrituras. La página muestra «Migrador v3» para distinguirla de una versión antigua que continúe en la caché del navegador. Para verificar el resultado real deben contrastarse el contador de días guardados y la cobertura del histórico central; una CI verde solo prueba datos ficticios y no acredita por sí sola los 597 registros del usuario.

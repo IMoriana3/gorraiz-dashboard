@@ -186,6 +186,7 @@ input[type=file]{display:none}
       <div class="row">
         <button class="btn btn2" id="btnCentroLeer" type="button" onclick="bajaHistoricoCompartido({todo:true})" style="padding:6px 12px;font-size:11px">↻ Recuperar del servidor</button>
         <button class="btn btn2" id="btnCentroSubir" type="button" onclick="subeHistoricoLocal()" style="padding:6px 12px;font-size:11px">↑ Compartir histórico ya guardado</button>
+        <button class="btn btn2" id="btnCentroDiagnostico" type="button" onclick="diagnosticarMigracion()" style="padding:6px 12px;font-size:11px">Diagnosticar sin guardar</button>
         <a href="./scada.html" class="hint">Abrir SCADA ↗</a>
       </div>
       <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap">
@@ -197,7 +198,12 @@ input[type=file]{display:none}
         </select>
       </div>
       <div class="hint">Si los XLSX antiguos no guardaron su unidad, la base central conservará las cifras originales pero no dibujará potencias dudosas. Selecciona W o kW solo cuando lo hayas comprobado en los ficheros. No afecta a Solarman ni a los datos locales.</div>
-      <div id="centroEstado" class="hint" role="status">Pendiente de consultar la base común.</div>
+      <div id="centroEstado" class="hint" role="status">Migrador v3 · sin consultas a proveedores. Ningún fichero original se elimina.</div>
+      <details id="centroDetalles" style="margin-top:8px">
+        <summary>Diagnóstico de migración (fechas y motivos, sin credenciales)</summary>
+        <button class="btn btn2" type="button" onclick="navigator.clipboard?.writeText($('centroInformeMigracion').textContent)" style="padding:4px 9px;font-size:11px">Copiar diagnóstico</button>
+        <pre id="centroInformeMigracion" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:210px;overflow:auto"></pre>
+      </details>
     </div>
     <div class="az" id="zSpc">
       <div class="spc-head"><h3>Intercambio de red · KSTAR SPC01</h3><button class="btn btn2" id="btnSpc" onclick="comprobarSpc()" disabled>Comprobar SPC</button></div>
@@ -1655,45 +1661,133 @@ function fuentesLocalesParaServidor(){
    {...x,rows:[...x.rows.values()].sort((a,b)=>a.ts.localeCompare(b.ts))}:x)
    .sort((a,b)=>a.fecha.localeCompare(b.fecha)||a.tipo.localeCompare(b.tipo));
 }
+const MIGRATION_V3='migracion-v3';
+function informeMigracion(lines){
+ $('centroInformeMigracion').textContent=lines.join('\n');
+ $('centroDetalles').open=true;
+}
+async function diagnosticarMigracion(){
+ if(HIST_CENTRO_OCUPADO)return;
+ const all=fuentesLocalesParaServidor();
+ if(!all.length){centroMensaje('No hay históricos locales que diagnosticar.');return}
+ HIST_CENTRO_OCUPADO=true;$('btnCentroDiagnostico').disabled=true;
+ const lines=['Migrador '+MIGRATION_V3,'Conjuntos locales: '+all.length,
+   'Diagnóstico en seco: no escribe en Cloudflare, no llama a proveedores.'];
+ try{
+   const groups={A:0,B:0,S:0};
+   for(const item of all)groups[item.tipo]=(groups[item.tipo]||0)+1;
+   lines.push('Origenes: A '+groups.A+' · B '+groups.B+' · SPC '+groups.S);
+   // Una muestra limitada de distintas fechas y tipos es suficiente para
+   // detectar incompatibilidad del formato o del backend sin subir 597 días.
+   const sample=[],selected=new Set();
+   for(const type of ['A','B','S']){
+     const items=all.filter(x=>x.tipo===type);
+     for(const entry of [items[0],items[Math.floor(items.length/2)],items.at(-1)]){
+       if(!entry)continue;
+       const key=type+'|'+entry.fecha;
+       if(!selected.has(key)){selected.add(key);sample.push(entry)}
+     }
+   }
+   const report=await apiCall('/historico/validar',{items:sample});
+   if(report.version!==MIGRATION_V3)throw Error('El Worker aún no sirve migrador v3; comprueba su despliegue.');
+   lines.push('Formato servidor: '+report.version+
+     ' · válidos '+report.validas+'/'+sample.length+
+     ' · rechazados '+report.rechazadas);
+   for(const i of report.incidencias||[])lines.push(i.tipo+' '+i.fecha+': '+i.motivo);
+   for(const a of report.aceptadas||[])
+     if(a.potenciaSinValidar||a.energiaSinValidar)
+       lines.push(a.tipo+' '+a.fecha+': '+a.potenciaSinValidar+' potencias y '+
+         a.energiaSinValidar+' energías preservadas para revisión');
+   centroMensaje('Diagnóstico v3 completo: '+report.validas+'/'+sample.length+
+     ' fuentes compatibles de muestra, '+report.rechazadas+
+     ' incompatibles. Revisa «Diagnóstico de migración» antes de sincronizar.');
+ }catch(e){
+   lines.push('ERROR GENERAL: '+e.message);
+   centroMensaje('No se ha escrito nada. Error del diagnóstico: '+e.message);
+ }finally{
+   informeMigracion(lines);
+   HIST_CENTRO_OCUPADO=false;$('btnCentroDiagnostico').disabled=false;
+ }
+}
 async function subeHistoricoLocal(){
  const cfg=apiCfg();
  if(HIST_CENTRO_OCUPADO)return;
- if(!cfg.url||!cfg.key){centroMensaje('Configura primero el Worker principal.');return}
+ if(!cfg.url||!cfg.key){
+   centroMensaje('Configura primero el Worker principal; no se ha modificado la base central.');return
+ }
  const items=fuentesLocalesParaServidor();
  if(!items.length){centroMensaje('No hay registros FV/SPC locales que compartir.');return}
  HIST_CENTRO_OCUPADO=true;$('btnCentroSubir').disabled=true;
- let enviados=0,pendientes=0;
+ let enviados=0,pendientes=0,energiaSinValidar=0,comprobados=0;
  const rechazados=[];
- // Si hay un día con metadatos erróneos, probar una sola fuente y continuar;
- // no paralizar una migración de cientos de días por ese único registro.
+ const lines=['Migración '+MIGRATION_V3,'Fuentes locales: '+items.length,
+   'Se conserva la copia local, aunque haya errores en Cloudflare.'];
+ const errorGlobal=e=>/PANEL_KEY|clave de panel|SOLARMAN_QUOTA|coordinador central|credencial|Worker aún no sirve migrador|Ruta desconocida|HTTP 401|HTTP 403|HTTP 404|HTTP 503/i.test(e.message);
  async function enviarGrupo(packet){
   try{
-   const response=await apiCall('/historico/guardar',{items:packet});
-   enviados+=response.guardadas||0;
-   pendientes+=response.pendientesPotencia||0;
-   centroMensaje('Migración segura: '+enviados+'/'+items.length+' conjuntos guardados, '+
-     rechazados.length+' rechazados, '+pendientes+' potencias sin unidad verificada. Sin consultas a proveedores.');
-  }catch(e){
-   if(packet.length>1&&!/credencial|PANEL_KEY|clave de panel|coordinador central|SOLARMAN_QUOTA/i.test(e.message)){
-    const mid=Math.floor(packet.length/2);
-    await enviarGrupo(packet.slice(0,mid));
-    await enviarGrupo(packet.slice(mid));
-    return;
+   // Preflight: no escribe. El servidor señala fechas problemáticas y unidad.
+   const before=await apiCall('/historico/validar',{items:packet});
+   if(before.version!==MIGRATION_V3)
+     throw Error('El Worker aún no sirve migrador v3; no se escribe con una versión antigua.');
+   const rejected=new Set((before.incidencias||[]).map(x=>x.tipo+'|'+x.fecha));
+   const issues=(before.incidencias||[]).map(issue=>
+     issue.tipo+' '+issue.fecha+': '+issue.motivo);
+   const accepted=packet.filter(x=>!rejected.has(x.tipo+'|'+x.fecha));
+   if(!accepted.length){
+     for(const reason of issues)if(!rechazados.includes(reason))rechazados.push(reason);
+     comprobados+=packet.length;
+     centroMensaje('Diagnóstico: '+comprobados+'/'+items.length+' comprobados; 0 válidos en este lote. '+
+       (rechazados.at(-1)||'Comprueba el error por fecha en el diagnóstico.'));
+     return;
    }
-   if(packet.length>1)throw e;
+   const result=await apiCall('/historico/guardar',{items:accepted});
+   if(result.version!==MIGRATION_V3)
+     throw Error('Versión de archivo inesperada. Detenida la migración para proteger la base.');
+   comprobados+=packet.length;
+   for(const reason of issues)if(!rechazados.includes(reason))rechazados.push(reason);
+   enviados+=result.guardadas||0;
+   pendientes+=result.pendientesPotencia||0;
+   energiaSinValidar+=result.pendientesEnergia||0;
+   for(const issue of result.incidencias||[]){
+     const reason=issue.tipo+' '+issue.fecha+': '+issue.motivo;
+     if(!rechazados.includes(reason))rechazados.push(reason);
+   }
+   centroMensaje('Migrando: '+comprobados+'/'+items.length+' comprobados · '+enviados+
+     ' guardados · '+rechazados.length+' rechazados · '+pendientes+' potencias pendientes.');
+  }catch(e){
+   if(errorGlobal(e))throw e;
+   if(packet.length>1){
+     const mid=Math.floor(packet.length/2);
+     await enviarGrupo(packet.slice(0,mid));
+     await enviarGrupo(packet.slice(mid));
+     return;
+   }
+   comprobados++;
    rechazados.push(packet[0].tipo+' '+packet[0].fecha+': '+e.message);
+   centroMensaje('Incidencia '+comprobados+'/'+items.length+': '+e.message);
   }
  }
  try{
   for(let i=0;i<items.length;i+=12)await enviarGrupo(items.slice(i,i+12));
-  centroMensaje('Migración finalizada: '+enviados+'/'+items.length+' conjuntos compartidos; '+
-    rechazados.length+' pendientes de revisar; '+pendientes+' lecturas de potencia sin unidad fiable. '+
-    (rechazados.length?'Primera incidencia: '+rechazados[0]+'. ':'')+
-    'Los originales siguen guardados. Ninguna llamada adicional a Solarman ni a KSTAR.');
+  lines.push('Resultado: '+enviados+'/'+items.length+' guardados; '+
+    rechazados.length+' rechazados; '+pendientes+' potencias sin unidad validada; '+
+    energiaSinValidar+' energías pendientes.');
+  for(const detail of rechazados.slice(0,50))lines.push(detail);
+  if(rechazados.length>50)lines.push('... otros '+(rechazados.length-50)+' pendientes');
+  centroMensaje('Migración v3: '+enviados+'/'+items.length+' conjuntos guardados, '+
+    rechazados.length+' rechazados, '+pendientes+' potencias y '+
+    energiaSinValidar+' energías pendientes de validar. '+
+    (rechazados.length?'Motivos disponibles en «Diagnóstico de migración». ':'')+
+    'No se han consultado Solarman ni SPC.');
  }catch(e){
-  centroMensaje('Migración detenida por conexión o autenticación: '+enviados+'/'+items.length+
-    ' conjuntos guardados. '+e.message+'. Puedes reintentar sin borrar los originales.');
- }finally{HIST_CENTRO_OCUPADO=false;$('btnCentroSubir').disabled=false}
+  lines.push('ERROR GENERAL: '+e.message);
+  centroMensaje('Migración detenida: '+enviados+'/'+items.length+
+    ' guardados. Causa: '+e.message+
+    '. No se han borrado originales ni consultado proveedores.');
+ }finally{
+  informeMigracion(lines);
+  HIST_CENTRO_OCUPADO=false;$('btnCentroSubir').disabled=false;
+ }
 }
 
 async function guardaDiaSpcCentral(fecha,payload){

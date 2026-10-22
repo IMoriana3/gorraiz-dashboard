@@ -167,7 +167,11 @@ test('si un solo día falla el resto de la migración continúa y se conserva lo
  const start=html.indexOf('function unidadPotenciaLocal(');
  const end=html.indexOf('async function guardaDiaSpcCentral(',start);
  assert.ok(start>=0&&end>start);
- const elements={btnCentroSubir:{disabled:false},unidadXlsxLegacy:{value:'desconocida'}};
+ const elements={
+  btnCentroSubir:{disabled:false},btnCentroDiagnostico:{disabled:false},
+  unidadXlsxLegacy:{value:'desconocida'},
+  centroInformeMigracion:{textContent:''},centroDetalles:{open:false}
+ };
  const messages=[],sent=[];
  const dateArray=Array.from({length:597},(_,i)=>new Date(Date.parse('2025-03-04T00:00:00Z')+i*864e5).toISOString().slice(0,10));
  const context=vm.createContext({
@@ -182,10 +186,18 @@ test('si un solo día falla el resto de la migración continúa y se conserva lo
    },
    centroMensaje:msg=>messages.push(msg),HIST_CENTRO_OCUPADO:false,
    apiCall:async(route,body)=>{
+     if(route==='/historico/validar'){
+       const rejected=body.items.filter(s=>s.fecha==='2026-01-10');
+       return {version:'migracion-v3',
+         validas:body.items.length-rejected.length,
+         rechazadas:rejected.length,
+         incidencias:rejected.map(s=>({tipo:s.tipo,fecha:s.fecha,
+           motivo:'Hora incompatible'}))};
+     }
      assert.equal(route,'/historico/guardar');
-     if(body.items.some(s=>s.fecha==='2026-01-10'))throw Error('Día con marca corrupta');
      sent.push(...body.items);
-     return{guardadas:body.items.length,pendientesPotencia:0}
+     return{version:'migracion-v3',guardadas:body.items.length,
+       rechazadas:0,pendientesPotencia:0,pendientesEnergia:0,incidencias:[]}
    }
  });
  vm.runInContext(html.slice(start,end),context);
@@ -193,6 +205,44 @@ test('si un solo día falla el resto de la migración continúa y se conserva lo
  assert.equal(sent.length,596,'guardar 596/597 sin detenerse en el primer lote');
  assert.equal(sent[0].rows[0].pot,35,'las W se guardan como kW');
  assert.match(messages.at(-1),/596\/597/);
- assert.match(messages.at(-1),/1 pendientes de revisar/);
+ assert.match(messages.at(-1),/1 rechazados/);
+ assert.match(elements.centroInformeMigracion.textContent,/2026-01-10: Hora incompatible/);
+ assert.equal(elements.centroDetalles.open,true);
  assert.equal(elements.btnCentroSubir.disabled,false,'el botón queda habilitado tras migrar');
+});
+
+test('si el servidor rechaza todos los días, el diagnóstico explica el 0/N sin escribir nada',async()=>{
+ const a=html.indexOf('function unidadPotenciaLocal(');
+ const b=html.indexOf('async function guardaDiaSpcCentral(',a);
+ assert.ok(a>=0&&b>a);
+ const days=['2026-10-19','2026-10-20','2026-10-21'];
+ const elements={btnCentroSubir:{disabled:false},btnCentroDiagnostico:{disabled:false},
+   unidadXlsxLegacy:{value:'desconocida'},
+   centroInformeMigracion:{textContent:''},centroDetalles:{open:false}};
+ let writes=0;const notices=[];
+ const context=vm.createContext({Date,Map,Number,Promise,
+   $:id=>elements[id],spcFecha:()=>true,dk:d=>d.toISOString().slice(0,10),
+   apiCfg:()=>({url:'https://qa.invalid',key:'ficticia'}),
+   PROD_FUENTES:{A:[{nombre:'Solarman 2026',rows:days.map(d=>({
+     ts:new Date(d+'T10:00:00Z'),pot:34000,dia:100,acum:1000}))}],B:[]},
+   SPC_FUENTES:[],HIST_CENTRO_OCUPADO:false,
+   centroMensaje:m=>notices.push(m),
+   apiCall:async(path,body)=>{
+     if(path==='/historico/validar')return {
+       version:'migracion-v3',validas:0,rechazadas:body.items.length,
+       incidencias:body.items.map(item=>({tipo:item.tipo,fecha:item.fecha,
+         motivo:'Marca FV incompatible: revisar hora sin alterar originales'}))};
+     writes++;
+     return{version:'migracion-v3',guardadas:0,rechazadas:body.items.length}
+   }});
+ vm.runInContext(html.slice(a,b),context);
+ await vm.runInContext('diagnosticarMigracion()',context);
+ assert.equal(writes,0,'el diagnóstico nunca escribe');
+ assert.match(notices.at(-1),/0\/3 fuentes compatibles/);
+ await vm.runInContext('subeHistoricoLocal()',context);
+ assert.equal(writes,0,'no debe subir objetos que la validación acaba de rechazar');
+ assert.match(notices.at(-1),/0\/3 conjuntos guardados/);
+ assert.match(notices.at(-1),/3 rechazados/);
+ assert.match(elements.centroInformeMigracion.textContent,/Marca FV incompatible/);
+ assert.equal(elements.centroDetalles.open,true);
 });

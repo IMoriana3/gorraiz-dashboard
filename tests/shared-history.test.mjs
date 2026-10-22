@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {writeHistory,readHistory,historyStatus,historyKey,normalizeHistoryItem} from '../worker/shared-history.js';
+import {writeHistory,readHistory,historyStatus,historyKey,normalizeHistoryItem,validateHistory} from '../worker/shared-history.js';
 import worker,{SolarmanQuota} from '../worker/index.js';
 
 const DAY='2026-10-19';
@@ -135,4 +135,70 @@ test('no se atribuye unidad kW al XLSX histórico sin metadatos',()=>{
   rows:[{ts:DAY+'T10:00:00',pot:20,dia:5,acum:2000}]},ENV);
  assert.equal(record.rows[0].pot,null);
  assert.equal(record.rows[0].potSinValidar,20);
+});
+
+test('un histórico de kWh diarios en unidades antiguas no bloquea el lote completo',async()=>{
+ const db=fakeStorage();
+ const files=[
+   {tipo:'A',fecha:DAY,unidadPotencia:'kW',rows:[
+     {ts:DAY+'T10:00:00',pot:35,dia:150000,acum:1500000000},
+     {ts:DAY+'T10:05:00',pot:36,dia:150800,acum:1500000800}]},
+   inv('B',20)
+ ];
+ const inspection=validateHistory(files,ENV);
+ assert.equal(inspection.version,'migracion-v3');
+ assert.equal(inspection.validas,2);
+ const result=await writeHistory(db,files,ENV);
+ assert.equal(result.guardadas,2,JSON.stringify(result));
+ assert.equal(result.rechazadas,0);
+ assert.ok(result.pendientesEnergia>=2);
+ const a=(await readHistory(db,DAY,DAY)).fuentes[0];
+ assert.equal(a.rows[0].pot,35);
+ assert.equal(a.rows[0].dia,null,'no calcular con unidades incorrectas');
+ assert.equal(a.rows[0].diaSinValidar,150000);
+ assert.equal(a.rows[0].acumSinValidar,1500000000);
+ assert.equal(a.controlPotencia.energiaSinVerificar,2);
+});
+test('un día inválido devuelve causa y permite guardar los demás días del mismo paquete',async()=>{
+ const db=fakeStorage();
+ const dateBad='2026-10-20';
+ const group=[inv('A',20),{tipo:'A',fecha:dateBad,rows:[{
+   ts:'fecha no reconocida',pot:35000,dia:2000,acum:3000000000
+ }]}];
+ const check=validateHistory(group,ENV);
+ assert.equal(check.validas,1);
+ assert.equal(check.rechazadas,1);
+ assert.match(check.incidencias[0].motivo,/Ninguna muestra FV con fecha y hora compatibles/);
+ const saved=await writeHistory(db,group,ENV);
+ assert.equal(saved.version,'migracion-v3');
+ assert.equal(saved.guardadas,1);
+ assert.equal(saved.rechazadas,1);
+ assert.equal(saved.incidencias[0].fecha,dateBad);
+ assert.equal((await readHistory(db,DAY,DAY)).fuentes.length,1);
+});
+test('validación seca autentificada no escribe ni consulta Solarman',async t=>{
+ const db=fakeStorage(),quota=new SolarmanQuota({storage:db},ENV);
+ const env={...ENV,SOLARMAN_QUOTA:{idFromName:()=>1,get:()=>({
+   fetch:(url,init)=>quota.fetch(new Request(url,init))})}};
+ const external=t.mock.method(globalThis,'fetch',()=>{throw Error('Acceso a proveedor no permitido')});
+ const req=new Request('https://gorraiz.example.workers.dev/historico/validar',{
+  method:'POST',headers:{Origin:ENV.ALLOWED_ORIGIN,
+    'X-Panel-Key':ENV.PANEL_KEY,'content-type':'application/json'},
+  body:JSON.stringify({items:[inv(),inv('B',18)]})
+ });
+ const result=await worker.fetch(req,env);
+ assert.equal(result.status,200,await result.clone().text());
+ const output=await result.json();
+ assert.equal(output.version,'migracion-v3');
+ assert.equal(output.validas,2);
+ assert.equal(db.memory.size,0,'la validación no escribe en la base');
+ assert.equal(external.mock.callCount(),0);
+});
+test('hasta 2.500 muestras al día, con límite real por bytes',()=>{
+ const many=Array.from({length:1700},(_,i)=>({
+   ts:DAY+'T'+String(Math.floor(i/3600)).padStart(2,'0')+
+     ':'+String(Math.floor(i/60)%60).padStart(2,'0')+
+     ':'+String(i%60).padStart(2,'0'),pot:30,dia:55,acum:500}));
+ const rec=normalizeHistoryItem({tipo:'A',fecha:DAY,unidadPotencia:'kW',rows:many},ENV);
+ assert.ok(rec.rows.length>100,'admite 1700 muestras válidas en un día');
 });
