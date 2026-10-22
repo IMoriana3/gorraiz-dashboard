@@ -167,12 +167,12 @@ input[type=file]{display:none}
     <div class="uz" id="zB" onclick="$('fB').click()"><h3>📂 Inversor B — Ficheros de producción (.xlsx)</h3><p>Selecciona uno o varios ficheros .xlsx del Inversor B</p><div class="st" id="stB"></div><input type="file" id="fB" accept=".xlsx" multiple></div>
     <div class="uz" id="zI" onclick="$('fI').click()"><h3>📂 Importación de red · i-DE (.xlsx)</h3><p>Ficheros horarios de i-DE (hoja "Horarias"). Se unen sin duplicar los días repetidos. Se usan por su <b>total diario</b>, que se contrasta con el contador KSTAR.</p><div class="st" id="stI"></div><div class="fl" id="flI"></div><input type="file" id="fI" accept=".xlsx" multiple></div>
     <div class="az" id="zAuto">
-      <h3>⚡ Descarga manual de datos</h3>
-      <p>«Traer datos» consulta Solarman (máximo un lote nuevo por hora en el Worker central) y SPC, únicamente para días cerrados y cuando exista su conexión de lectura. Ambos se guardan en el mismo histórico central de Gorraiz; no se inicia ninguna descarga al abrir la página. i-DE/Datadis siguen sin consulta automática.</p>
+      <h3>Descarga manual · Solarman</h3>
+      <p>Solo descarga la producción de los dos inversores desde Solarman. Máximo un lote nuevo por hora para toda la instalación. KSTAR SPC se consulta por separado, sin consumir cuota Solarman. Ninguna API se consulta al abrir la página.</p>
       <div class="row">
         <label>Desde:</label><input type="date" id="aDesde">
         <label>Hasta:</label><input type="date" id="aHasta">
-        <button class="btn btn2" id="btnAuto" onclick="traerDatos()" style="padding:6px 14px;font-size:11px">⬇ Traer datos</button>
+        <button class="btn btn2" id="btnAuto" type="button" onclick="traerDatos()" style="padding:6px 14px;font-size:11px">↓ Descargar solo Solarman</button>
         <span class="hint" id="hintAuto" style="margin:0"></span>
       </div>
       <div class="hint" id="hueco"></div>
@@ -206,7 +206,12 @@ input[type=file]{display:none}
       </details>
     </div>
     <div class="az" id="zSpc">
-      <div class="spc-head"><h3>Intercambio de red · KSTAR SPC01</h3><button class="btn btn2" id="btnSpc" onclick="comprobarSpc()" disabled>Comprobar SPC</button></div>
+      <div class="spc-head"><h3>Intercambio de red · KSTAR SPC01</h3><button class="btn btn2" id="btnSpc" onclick="comprobarSpc()" disabled>Reconsultar SPC (manual)</button></div>
+      <div class="row" style="align-items:center;gap:10px;flex-wrap:wrap;padding:8px 0">
+        <label for="spcDiaManual"><strong>Día SPC cerrado:</strong></label><input id="spcDiaManual" type="date">
+        <button class="btn btn2" id="btnSpcSolo" type="button" onclick="descargarSoloSpc()" style="padding:7px 12px;font-size:11px">↓ Descargar solo SPC</button>
+        <span class="hint">Un día por clic · sin Solarman</span>
+      </div>
       <div class="cfg" id="cfgKstar"></div>
       <div class="st" id="spcEstado" role="status">Estado de SPC sin comprobar.</div>
       <div class="krow">
