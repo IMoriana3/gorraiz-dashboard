@@ -68,6 +68,6 @@ export function snapshotStatus(point,{provisional=false}={}){
    'Muestras de FV y SPC en la misma casilla nominal. Consumo ESTIMADO, reloj SPC SIN VALIDAR.';
 }
 export function pointDateTime(key){
- if(typeof key!=='string'||!/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$/.test(key))return '—';
+ if(typeof key!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(key))return '—';
  return key.slice(8,10)+'/'+key.slice(5,7)+' '+key.slice(11,16);
 }
