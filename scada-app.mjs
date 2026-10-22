@@ -1,4 +1,5 @@
 import {availableDays,buildSeries,numeric} from './scada-data.mjs';
+import {pullShared,pushShared,downloadSpcDay} from './scada-sync.mjs';
 import {SCADA_POLL_MS,SCADA_QUOTA_KEY,SCADA_LOCK_NAME,quotaState,reserveAttempt} from './scada-quota.mjs';
 
 const $=id=>document.getElementById(id);
@@ -273,7 +274,8 @@ function repaint(){
   ' intervalos · consumo '+r.common+' puntos'+
   (r.provisional?' · cruce provisional SIN validar':'')+'.');
 }
-async function reload({keepDay=true}={}){
+async function reload({keepDay=true,sinRed=false}={}){
+ if(!sinRed)await pullShared({date:$('day').value||null});
  try{
   stored=await load();showSourceCoverage();const ds=availableDays(stored),prev=keepDay?$('day').value:'';
   day=prev||ds.at(-1)||madridToday();$('day').value=day;
@@ -347,6 +349,11 @@ $('seven').addEventListener('click',()=>setRange(7));
 $('day').addEventListener('change',()=>{day=$('day').value;repaint()});
 $('today').addEventListener('click',()=>{day=madridToday();$('day').value=day;repaint()});
 $('reload').addEventListener('click',()=>reload());
+$('pullHistory').addEventListener('click',async()=>{await pullShared({all:true,date:day});await reload({sinRed:true})});
+$('pushHistory').addEventListener('click',pushShared);
+$('fetchSPC').addEventListener('click',async()=>{
+ if(await downloadSpcDay(day))await reload({keepDay:true,sinRed:true});
+});
 $('provisional').addEventListener('change',repaint);
 $('updatePV').addEventListener('click',()=>refreshPV());
 $('auto').addEventListener('change',()=>{
