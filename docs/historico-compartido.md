@@ -30,3 +30,18 @@ SPC sigue **solo manual**: el botón toma un día cerrado del Worker de lectura 
 - Las rutas exigen la clave de panel en cabecera, nunca en la URL. Los secretos de proveedores no entran en GitHub Pages ni en el archivo.
 - No se modifica el consumo proveniente de i-DE ni los precios de facturación: esta fase unifica generación A/B y energía SPC.
 - No se borran fuentes previas. La operación admite reintentos; conviene establecer exportación y copia de seguridad del Durable Object antes de depender de una sola copia central.
+
+## Revisión 22/10/2026 · unidades de potencia y migraciones grandes
+
+Solarman devuelve el campo `APo_t1` con su unidad en `dataList[].unit`. En el modelo de Gorraiz la potencia AC se expresa **siempre en kW**: si el dato llega en **W**, el Worker lo divide entre 1.000 y etiqueta la copia como kW. Si el proveedor declara kW, lo conserva. La falta de lectura no se reemplaza por cero.
+
+La primera versión del importador rechazaba por completo un paquete si encontraba un valor de potencia mayor que 65, incluso si representaba una lectura antigua en W. Este bloqueo se ha corregido:
+
+- Los datos antiguos identificados como fuentes Solarman previas se interpretan en W por su procedencia conocida, y solo la **copia enviada** se convierte a kW. No se alteran los registros originales del navegador.
+- Los registros ya etiquetados como kW se mantienen en kW. Las copias centrales siguen teniendo esa unidad.
+- Los XLSX antiguos con cabeceras de unidad perdidas no se convierten automáticamente: sus potencias se guardan como `potSinValidar` y `pot:null`; se mantienen sus energías diarias y acumulados. En Informe puede elegirse W o kW para esos archivos **solo tras comprobar su unidad real**. Si los archivos mezclan unidades, deberán separarse antes.
+- Un pico físicamente incompatible con cada G50KT no se presenta como kW válido. Se conserva el valor original para investigación.
+- La migración masiva procesa lotes pequeños y, ante un día defectuoso, lo aísla por división progresiva. Continúa con los demás días y muestra cuántos conjuntos se han copiado, cuántos quedan pendientes y cuántos valores de potencia carecen de unidad validada.
+- Volver a sincronizar no descarga datos nuevos de Solarman ni KSTAR: únicamente actualiza el mismo registro central por equipo y fecha. La copia local nunca se borra durante la operación.
+
+La aceptación de un día en el archivo central no certifica por sí sola la calidad de todas sus potencias. El SCADA excluye las potencias sin unidad verificada de las curvas y muestra los huecos sin rellenarlos con valores inventados. Las mediciones reales tras la migración deben contrastarse con el portal original antes de emplearse para informes de rendimiento.
