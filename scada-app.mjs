@@ -2,6 +2,7 @@ import {availableDays,buildSeries,numeric} from './scada-data.mjs';
 import {spcBacklog,dailyCoverage,dailyPvInventory,pvDayDiagnosis} from './scada-coverage.mjs';
 import {contrastDay,contrastCsv} from './scada-contrast.mjs';
 import {signedExportKW,signedExportSeries} from './scada-grid-sign.mjs';
+import {coherentPowerSnapshot,independentLatestTimes} from './scada-snapshot.mjs';
 import {pullShared,pushShared,downloadSpcDay,downloadSpcRange} from './scada-sync.mjs';
 import {SCADA_POLL_MS,SCADA_QUOTA_KEY,SCADA_LOCK_NAME,quotaState,reserveAttempt} from './scada-quota.mjs';
 
@@ -335,6 +336,53 @@ function updateBlankNotice(r){
  text('blankDetail',dates+'. '+notes+' Usa «Ver último SPC» o selecciona otra fecha. Abrir y cambiar vistas NO consume llamadas a la API.');
 }
 
+function readableSourceTime(key){
+ return key?key.slice(8,10)+'/'+key.slice(5,7)+'/'+key.slice(0,4)+
+   ' '+key.slice(11,16):'sin datos';
+}
+function paintCoherentSnapshot(r){
+ const match=coherentPowerSnapshot(r),
+   allowConsumption=$('provisional').checked,
+   last=independentLatestTimes(r);
+ const snapshotKey=match?.key||null;
+ const stamp=snapshotKey?readableSourceTime(snapshotKey):null;
+ text('snapshotTitle',stamp?
+  'Balance de potencia · '+stamp+' (Madrid)':
+  'No hay una casilla FV + SPC comparable en la selección');
+ text('snapshotFlag',match?.gridClockVerified?
+  'HISTÓRICO · HUSO DECLARADO, NO DIRECTO':
+  'HISTÓRICO · RELOJ SPC SIN VALIDAR');
+ text('snapshotExplanation',match?
+  'Las cuatro tarjetas y el sinóptico corresponden a la misma casilla nominal de cinco minutos. '+
+  'FV es una muestra instantánea y SPC una media entre contadores; el consumo es inferido, '+
+  'no medido y el huso SPC requiere comprobación independiente.':
+  'No se mezclan muestras individuales de horas distintas para inventar un balance. '+
+  'Los intervalos ausentes y los balances incompatibles permanecen sin valor.');
+ text('snapshotIndependent','Últimas lecturas individuales, NO comparables entre sí: '+
+  'FV '+readableSourceTime(last.solar)+' · '+
+  'SPC '+readableSourceTime(last.grid)+'.');
+ text('synopticTime',stamp?'Casilla '+stamp+' · no en directo':
+  'Sin casilla compartida · no en directo');
+ // Estas cinco posiciones describen la MISMA casilla. Nunca usar aquí
+ // r.last.<fuente> por separado, porque sus horas pueden diferir horas.
+ text('powerGen',kw(match?.generation));
+ text('powerCons',allowConsumption?kw(match?.consumptionKW):'—');
+ text('powerImp',kw(match?.importKW));
+ text('powerExp',kw(match?.signedExportKW));
+ const t=match?.time||null;
+ text('subGen',t?'FV A+B · '+t:'No hay casilla comparable');
+ text('subCons',t?(allowConsumption?
+    'Estimación NO VALIDADA · '+t:'Cálculo desactivado · '+t):
+    'Sin FV + SPC coincidentes');
+ text('subImp',t?'Media SPC · '+t:'No hay casilla comparable');
+ text('subExp',t?'Media SPC · '+t:'No hay casilla comparable');
+ text('flowGen',kw(match?.generation));
+ text('flowInv',kw(match?.generation));
+ text('flowLoad',allowConsumption?kw(match?.consumptionKW):'—');
+ text('flowImp',kw(match?.importKW));
+ text('flowExp',kw(match?.signedExportKW));
+ return match;
+}
 function repaint(){
  if(!day)return;
  const r=buildSeries(stored,{date:day,range,allowProvisional:$('provisional').checked});
@@ -357,25 +405,7 @@ function repaint(){
  paintCoverageByDay(r);
  runContrast();
  updateDetailPanels(r,labels);
- text('powerGen',kw(r.last.generation?.value));
- text('powerCons',kw(r.last.consumption?.value));
- text('powerImp',kw(r.last.import?.value));
- text('powerExp',exportKW(r.last.export?.value));
- text('powerSelf',kwh(r.summary.spcAutoconsumption));
- text('subGen',r.last.generation?'Último punto '+hh(r.last.generation.key)+' · Solarman':'Sin medidas A+B simultáneas');
- const dayLoad=r.summary.consumption!==null?' · día ≈'+kwh(r.summary.consumption):'';
- text('subCons',r.last.consumption?
-  (r.provisional?'Estimación NO VALIDADA':'Cruce validado')+
-  ' · último par '+hh(r.last.consumption.key)+dayLoad:
-  (!$('provisional').checked?'Estimación desactivada':
-    'Sin muestras FV+SPC compatibles')+dayLoad);
- text('subImp',r.last.import?'Media intervalo · '+hh(r.last.import.key):'KSTAR sin intervalos conciliados');
- text('subExp',r.last.export?'Media intervalo · '+hh(r.last.export.key):'KSTAR sin intervalos conciliados');
- text('flowGen',kw(r.last.generation?.value));
- text('flowInv',kw(r.last.generation?.value));
- text('flowLoad',kw(r.last.consumption?.value));
- text('flowImp',kw(r.last.import?.value));
- text('flowExp',exportKW(r.last.export?.value));
+ const snapshot=paintCoherentSnapshot(r);
  text('invA',r.last.a?kw(r.last.a.value)+' · '+hh(r.last.a.key):'Sin lectura');
  text('invB',r.last.b?kw(r.last.b.value)+' · '+hh(r.last.b.key):'Sin lectura');
  setDevice('dotA','invA',r.last.a);setDevice('dotB','invB',r.last.b);
@@ -394,18 +424,27 @@ function repaint(){
  text('dailyCons',kwh(r.summary.consumption));
  text('dailyExp',kwh(r.summary.export));
  text('dailyImp',kwh(r.summary.import));
+ text('dailySelf',kwh(r.summary.spcAutoconsumption));
+ const balanceDay=r.dates.at(-1);
+ text('dailyBalanceDay','kWh acumulados · '+(balanceDay?
+  readableSourceTime(balanceDay+'T00:00').slice(0,10):'día sin datos'));
+
  const vmax=Math.max(0,...Object.values(r.summary).filter(x=>typeof x==='number'&&Number.isFinite(x)));
  bar('barGen',r.summary.generation,vmax);bar('barCons',r.summary.consumption,vmax);
  bar('barExp',r.summary.export,vmax);bar('barImp',r.summary.import,vmax);
+ bar('barSelf',r.summary.spcAutoconsumption,vmax);
  const maxDay=availableDays(stored).at(-1)||null;
  $('empty').style.display=r.keys.some((k,i)=>Object.values(r.series).some(a=>a[i]!==null))?'none':'block';
  const latest=[r.last.generation?.key,r.last.import?.key,r.last.export?.key].filter(Boolean).sort().at(-1);
- text('updated',latest?'Última muestra seleccionada: '+latest.replace('T',' '):'Sin muestras de potencia');
+ text('updated',latest?
+  'Última muestra individual: '+latest.replace('T',' ')+' · no en directo':
+  'Sin muestras de potencia');
  const current=day===madridToday();
  $('state').innerHTML=current?'<i class="dot warn"></i> Histórico del día · no en directo':
    '<i class="dot off"></i> Histórico · '+(range===7?'7 días':day);
  notices([
   ...r.warnings,
+  ...(!snapshot?['Sin una casilla FV+SPC simultánea para el balance del sinóptico. Las últimas lecturas individuales no se mezclan.']:[]),
   ...(current?['El día en curso está abierto: el balance es provisional.']:[]),
   ...(!stored.some(x=>x.tipo==='S')?['SPC sin histórico local; la consulta KSTAR exige un día cerrado.']:[]),
   ...(maxDay&&maxDay<day?['Última fecha con datos: '+maxDay]:[])
