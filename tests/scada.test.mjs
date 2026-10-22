@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {availableDays,buildSeries,daysFor,gridIntervals,invStamp,spcStamp} from '../scada-data.mjs';
 
 const day='2026-10-19';
-const inv=(type,entries)=>({tipo:type,rows:entries.map(([time,pot,dia=50])=>
+const inv=(type,entries)=>({tipo:type,unidadPotencia:'kW',rows:entries.map(([time,pot,dia=50])=>
  ({ts:new Date(day+'T'+time+':00+02:00'),pot,dia}))});
 const source=(date=day,rows=[
  {saveTime:date+' 10:00:00',positiveActiveElec:100,reverseActiveElec:10},
