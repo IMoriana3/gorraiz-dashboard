@@ -127,6 +127,27 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
 
 #spcDownloadDate,#spcDownloadHasta{min-width:135px;max-width:150px}
 @media(max-width:570px){#spcDownloadDate,#spcDownloadHasta{min-width:0;max-width:160px}}
+
+/* Instantánea histórica de la MISMA casilla para todos los equipos. */
+.snapshot-toolbar{display:flex;align-items:center;gap:10px 14px;flex-wrap:wrap;
+ background:#142a32;border:1px solid #36545b;border-radius:10px;padding:10px 13px;margin:0 0 6px}
+.snapshot-summary{display:flex;flex-direction:column;gap:2px;min-width:220px;flex:1}
+.snapshot-summary strong{font:700 13px 'Space Grotesk',sans-serif;color:#d5eee6}
+.snapshot-summary span{font-variant-numeric:tabular-nums}
+.snapshot-actions{display:flex;gap:6px}
+.snapshot-actions button{padding:7px 9px;font-size:11px;white-space:nowrap}
+#snapshotSlider{width:min(235px,100%);min-width:100px;accent-color:var(--cyan)}
+#snapshotPosition{min-width:54px;text-align:right}
+.snapshot-interpretation{margin:0 0 11px;color:#c0d2d4;font-size:11px;
+ border-left:2px solid var(--cyan);padding:2px 10px;line-height:1.55}
+.cards .cap{white-space:normal;line-height:1.3;min-height:27px}
+.cards .sub{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.4;min-height:28px}
+@media(min-width:1050px) and (max-width:1310px){
+ .cards{grid-template-columns:repeat(5,minmax(0,1fr))}
+ .cards .card{padding:11px}
+}
+@media(max-width:570px){.snapshot-summary{width:100%;flex:none}.snapshot-actions{width:100%}
+ #snapshotSlider{flex:1}.snapshot-toolbar{gap:9px}}
 </style>
 </head>
 <body><div class="frame">
@@ -223,7 +244,21 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
   <span id="blankDetail">Consulta la cobertura de Solarman y SPC que aparece arriba. Los datos ausentes no se sustituyen por cero.</span>
  </div>
  <section id="view-general" class="scada-view" data-view-panel="general" aria-label="Vista general del SCADA">
- <div class="cards" aria-label="Potencias del instante seleccionado">
+ <div class="snapshot-toolbar" role="group" aria-label="Instante del sinóptico histórico">
+  <div class="snapshot-summary">
+   <strong id="snapshotStamp">Instantánea histórica · —</strong>
+   <span class="muted tiny" id="snapshotSources">Últimas marcas FV y SPC: —</span>
+  </div>
+  <div class="snapshot-actions">
+   <button type="button" id="snapshotMatched" title="Mostrar el último intervalo FV A+B / SPC comparable (sin certificar relojes)">Último cruce</button>
+   <button type="button" id="snapshotSpc" title="Mostrar la última media SPC aunque no haya FV para el mismo intervalo">Último SPC</button>
+  </div>
+  <label for="snapshotSlider" class="muted tiny">Hora histórica</label>
+  <input type="range" id="snapshotSlider" min="0" max="287" step="1" value="0" aria-label="Seleccionar intervalo de 5 minutos en el histórico">
+  <span id="snapshotPosition" class="muted tiny mono">—</span>
+ </div>
+ <p class="snapshot-interpretation" id="snapshotInterpretation" role="status">Las potencias de la instantánea corresponden siempre a la misma casilla nominal de cinco minutos. Sin comprobación externa del reloj SPC.</p>
+ <div class="cards" aria-label="Potencias de la misma casilla histórica de cinco minutos">
   <div class="card" style="--c:var(--green)"><div class="cap">☀ &nbsp; Generación total</div><div class="value number" id="powerGen">—</div><div class="sub" id="subGen">kW · Solarman</div></div>
   <div class="card" style="--c:var(--blue)"><div class="cap">⌂ &nbsp; Consumo estimado</div><div class="value number" id="powerCons">—</div><div class="sub" id="subCons">Cálculo provisional FV + import. − export.</div></div>
   <div class="card" style="--c:var(--red)"><div class="cap">↙ &nbsp; Importación red</div><div class="value number" id="powerImp">—</div><div class="sub" id="subImp">kW medio por intervalo</div></div>
@@ -233,7 +268,7 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
  <div id="empty">No hay muestras en este navegador para el periodo elegido. Importa o descarga los datos desde el <a href="./">informe Gorraiz</a> y vuelve a esta vista.</div>
  <div class="panels">
   <section class="panel">
-   <div class="ptop"><h2>Sinóptico de energía</h2><span class="muted tiny">Lecturas de fuentes independientes</span></div>
+   <div class="ptop"><h2>Sinóptico de energía</h2><span class="muted tiny" id="flowTime">Histórico · pendiente de hora</span></div>
    <div class="pbody flow">
     <div class="energy-row">
       <div class="device"><div class="symbol">▦</div><div class="name">CAMPO FV</div><div class="reading" id="flowGen">—</div></div>
@@ -248,7 +283,7 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
       <div><div class="muted tiny">Importación media</div><strong class="import" id="flowImp">—</strong></div>
       <div><div class="muted tiny">Exportación media (−)</div><strong class="export" id="flowExp">—</strong></div>
     </div>
-    <div class="muted tiny">Los valores no son simultáneos si sus relojes no están validados. Las flechas son conceptuales.</div>
+    <div class="muted tiny" id="flowState">Misma casilla de cinco minutos; correspondencia de relojes todavía sin validar. Flechas conceptuales.</div>
    </div>
   </section>
   <section class="panel chartpanel">
@@ -276,7 +311,7 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
   <section class="panel"><div class="ptop"><h2>Intercambio con red</h2><span class="muted tiny">Importación (+) · exportación (−) kW medios</span></div><div class="smallbox"><canvas id="gridChart"></canvas></div></section>
  </div>
  <section class="panel" style="margin-top:11px">
-  <div class="ptop"><h2>Balance de energía del último día seleccionado</h2><span class="muted tiny">kWh acumulados · fuentes identificadas</span></div>
+  <div class="ptop"><h2>Balance energético del día de la instantánea</h2><span class="muted tiny" id="balanceDate">kWh del día · —</span></div>
   <div class="balance">
    <div class="meter" style="--bar:var(--green)"><span>Generación FV</span><span class="bar"><span class="fill" id="barGen"></span></span><span class="amount" id="dailyGen">—</span></div>
    <div class="meter" style="--bar:var(--blue)"><span>Consumo diario derivado (kWh)</span><span class="bar"><span class="fill" id="barCons"></span></span><span class="amount" id="dailyCons">—</span></div>
@@ -379,6 +414,6 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
    <p class="footnote">No hay funciones de mando sobre KSTAR ni confirmación de estado «en línea». Una muestra reciente o histórica no garantiza ausencia de averías.</p>
  </section>
 </main></div>
-<script type="module" src="./scada-app.mjs?v=20261022j"></script>
+<script type="module" src="./scada-app.mjs?v=20261022k"></script>
 </body>
 </html>
