@@ -79,6 +79,17 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
  .detail-grid,.detail-grid.stats-detail{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 @media(max-width:570px){.detail-grid,.detail-grid.stats-detail{grid-template-columns:1fr}.detail-chart{height:275px}.detail-chart.large{height:345px}}
+
+/* Estado de fuentes: visible en todas las vistas, sin consultar la API. */
+.coverage-sources{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;padding:11px 13px;background:#162931;border:1px solid #33515a;border-radius:9px;font-size:11px}
+.coverage-source{display:flex;flex-direction:column;gap:1px;min-width:155px;flex:1}
+.coverage-source strong{color:#b8d1d5;font-size:10px}
+.coverage-source span{font-variant-numeric:tabular-nums}
+.coverage-sources a{flex:none;border:1px solid #4a6a5c;border-radius:7px;padding:7px 10px;color:#b6efcc}
+.coverage-sources button{flex:none;font-size:11px}
+.blank-notice{padding:13px;border:1px dashed #5d7883;border-radius:9px;background:#1a2d35;color:#e2ecef;margin-bottom:12px;font-size:12px}
+.blank-notice strong{display:block;font-size:13px;margin-bottom:3px}
+[hidden]{display:none!important}
 </style>
 </head>
 <body><div class="frame">
@@ -119,7 +130,18 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
   <label class="check" title="Permite el cálculo aproximado del consumo con relojes SPC/Solarman sin conciliar; nunca afecta a los informes."><input id="provisional" type="checkbox"> Cruce horario provisional</label>
  </div>
  <div id="rateInfo" class="muted tiny" style="padding:0 0 12px" role="status">Controlando cupo horario de Solarman…</div>
+ <div class="coverage-sources" aria-label="Cobertura del almacenamiento local">
+  <div class="coverage-source"><strong>Solarman · Inversor A</strong><span id="coverageA">Comprobando memoria…</span></div>
+  <div class="coverage-source"><strong>Solarman · Inversor B</strong><span id="coverageB">Comprobando memoria…</span></div>
+  <div class="coverage-source"><strong>KSTAR SPC01 · Días cerrados</strong><span id="coverageSPC">Comprobando memoria…</span></div>
+  <button type="button" id="lastSpc" disabled title="Selecciona el último día SPC ya guardado; no consume API">Ver último SPC</button>
+  <a href="./" title="Abre el informe para Comprobar SPC / Traer datos, solamente bajo autorización y cuenta de lectura">SPC: descarga manual ↗</a>
+ </div>
  <p id="notice" role="status">Leyendo señales guardadas…</p>
+ <div id="blankState" class="blank-notice" role="status" hidden>
+  <strong>Sin curvas completas para la selección</strong>
+  <span id="blankDetail">Consulta la cobertura de Solarman y SPC que aparece arriba. Los datos ausentes no se sustituyen por cero.</span>
+ </div>
  <section id="view-general" class="scada-view" data-view-panel="general" aria-label="Vista general del SCADA">
  <div class="cards" aria-label="Potencias del instante seleccionado">
   <div class="card" style="--c:var(--green)"><div class="cap">☀ &nbsp; Generación total</div><div class="value number" id="powerGen">—</div><div class="sub" id="subGen">kW · Solarman</div></div>
@@ -227,6 +249,6 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
    <p class="footnote">No hay funciones de mando sobre KSTAR ni confirmación de estado «en línea». Una muestra reciente o histórica no garantiza ausencia de averías.</p>
  </section>
 </main></div>
-<script type="module" src="./scada-app.mjs"></script>
+<script type="module" src="./scada-app.mjs?v=20261022c"></script>
 </body>
 </html>

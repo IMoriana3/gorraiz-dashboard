@@ -163,6 +163,46 @@ function updateDetailPanels(r,labels){
  }
 }
 
+
+function showSourceCoverage(){
+ // La frecuencia de descarga y la resolución de las muestras son cosas distintas.
+ // Solarman conserva tramos intradiarios en IndexedDB y SPC guarda día cerrado
+ // + filas del contador. Esto solo lee el almacenamiento local del navegador.
+ const invDays=tipo=>availableDays(stored.filter(s=>s.tipo===tipo));
+ const a=invDays('A'),b=invDays('B');
+ const spc=stored.filter(s=>s.tipo==='S'&&s.fecha&&s.payload);
+ const closed=[...new Set(spc.filter(s=>s.payload.meta?.completo===true).map(s=>s.fecha))].sort();
+ const partial=[...new Set(spc.map(s=>s.fecha))].filter(d=>!closed.includes(d)).sort();
+ const showDates=d=>d.length?
+   d.length+' día(s) · '+d[0]+(d.length>1?' → '+d.at(-1):''):
+   'sin datos en este navegador';
+ text('coverageA',showDates(a));
+ text('coverageB',showDates(b));
+ text('coverageSPC',showDates(closed)+(partial.length?' · '+partial.length+' parcial(es)':''));
+ const button=$('lastSpc');
+ button.disabled=!closed.length;
+ button.dataset.date=closed.at(-1)||'';
+}
+function updateBlankNotice(r){
+ const v=location.hash.slice(1)||'general';
+ const present=series=>series.some(x=>x!==null);
+ const active= v==='red'?[r.series.import,r.series.export]:
+   v==='inversores'?[r.series.a,r.series.b]:
+   v==='planta'?[r.series.generation,r.series.a,r.series.b]:
+   v==='diagnostico'?[]:
+   [r.series.generation,r.series.import,r.series.export,r.series.consumption];
+ const empty=active.length>0&&!active.some(present);
+ $('blankState').hidden=!empty;
+ if(!empty)return;
+ const dates=r.dates.length?r.dates[0]+' → '+r.dates.at(-1):'fecha sin datos';
+ const notes=v==='red'?
+   'No hay intervalos KSTAR conciliados en el rango. SPC solo se descarga manualmente desde Informes, para días cerrados.':
+   v==='inversores'||v==='planta'?
+   'No hay muestras de potencia Solarman válidas en el rango. La energía diaria no permite inventar una curva de kW.':
+   'No hay muestras válidas de potencia para el rango elegido.';
+ text('blankDetail',dates+'. '+notes+' Usa «Ver último SPC» o selecciona otra fecha. Abrir y cambiar vistas NO consume llamadas a la API.');
+}
+
 function repaint(){
  if(!day)return;
  const r=buildSeries(stored,{date:day,range,allowProvisional:$('provisional').checked});
@@ -180,6 +220,7 @@ function repaint(){
  paint('gridChart',[makeSeries('Importación',r.series.import,paints.import),
   makeSeries('Exportación',r.series.export,paints.export)],labels);
 
+ updateBlankNotice(r);
  updateDetailPanels(r,labels);
  text('powerGen',kw(r.last.generation?.value));
  text('powerCons',kw(r.last.consumption?.value));
@@ -234,7 +275,7 @@ function repaint(){
 }
 async function reload({keepDay=true}={}){
  try{
-  stored=await load();const ds=availableDays(stored),prev=keepDay?$('day').value:'';
+  stored=await load();showSourceCoverage();const ds=availableDays(stored),prev=keepDay?$('day').value:'';
   day=prev||ds.at(-1)||madridToday();$('day').value=day;
   if(ds.length){$('day').min=ds[0];$('day').max=madridToday()>ds.at(-1)?madridToday():ds.at(-1)}
   repaint();
@@ -330,6 +371,11 @@ window.addEventListener('storage',e=>{
 });
 showQuota();
 setInterval(showQuota,60_000); // solo interfaz local, cero llamadas a la API
+$('lastSpc').addEventListener('click',()=>{
+ const date=$('lastSpc').dataset.date;
+ if(!date)return;
+ day=date;$('day').value=date;repaint(); // Solo memoria local: no llama a SPC
+});
 window.addEventListener('hashchange',navigateView);
 navigateView();
 await reload({keepDay:false});
