@@ -175,6 +175,10 @@ try {
     'autoconsumo SPC diario no es una tarjeta de potencia');
   assert.match(await page.locator('#dailySelf').innerText(),/kWh/,
     'el autoconsumo de SPC debe estar con los balances diarios');
+  assert.match(await page.locator('.cards .card').first().innerText(),/Potencia FV · instante/,
+    'los kW son potencia en una casilla, no producción acumulada del día');
+  assert.match(await page.locator('#genEnergySelected').innerText(),/Energía FV del día: .*kWh · 1\/1 días/,
+    'la misma tarjeta debe mostrar la energía generada aunque al anochecer esté a cero kW');
   assert.match(await page.locator('#dailyBalanceDay').innerText(),/19\/10\/2026/);
   assert.match(await page.locator('#snapshotTitle').innerText(),/19\/10\/2026.*14:20/);
   assert.match(await page.locator('#snapshotExplanation').innerText(),/misma casilla nominal/);
@@ -369,6 +373,8 @@ try {
   assert.equal(kstarCalls,3,'desfasar SPC y calcular demanda no consulta KSTAR');
   await page.locator('.scada-nav [data-view-link="general"]').click();
   await page.locator('#seven').click();
+  assert.match(await page.locator('#genEnergySelected').innerText(),/Energía FV 7 días: .*kWh · 1\/7 días/,
+    'el período semanal muestra su producción y cobertura, no 0 kWh por potencia nocturna');
   assert.match(await page.locator('#energyScope').innerText(),/1\/7 días comparables/,
     'el balance semanal no atribuye datos SPC a días sin fuentes');
   assert.equal(await page.locator('#energyMatchGen').innerText(),firstEnergy,

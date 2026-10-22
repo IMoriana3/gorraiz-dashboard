@@ -435,6 +435,12 @@ function paintEnergySynoptic(){
  text('energyMatchImport',kwh(matched.import));
  text('energyMatchExport',kwh(matched.export));
  text('energySelectedPv',kwh(energy.generatedInPeriod));
+ // Evita interpretar 0 kW al atardecer como 0 kWh producidos en el día.
+ // La tarjeta de kW pertenece a una casilla histórica; esta línea es energía
+ // de todos los días seleccionados, con su cobertura independiente.
+ text('genEnergySelected','Energía FV '+(range===7?'7 días':'del día')+': '+
+   kwh(energy.generatedInPeriod)+' · '+energy.generatedDays+'/'+energy.days+
+   ' días con total FV'+(energy.openDays?' (jornada abierta)':''));
  text('energyPvCoverage','FV A+B reportada '+energy.generatedDays+'/'+energy.days+
    ' días'+(energy.openDays?' · día en curso: parcial':''));
  text('energyLifetimePv',kwh(energy.productionAccumulated.kwh));
