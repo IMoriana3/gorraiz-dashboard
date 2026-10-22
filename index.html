@@ -1730,11 +1730,12 @@ async function subeHistoricoLocal(){
    if(before.version!==MIGRATION_V3)
      throw Error('El Worker aún no sirve migrador v3; no se escribe con una versión antigua.');
    const rejected=new Set((before.incidencias||[]).map(x=>x.tipo+'|'+x.fecha));
-   for(const issue of before.incidencias||[])
-     rechazados.push(issue.tipo+' '+issue.fecha+': '+issue.motivo);
+   const issues=(before.incidencias||[]).map(issue=>
+     issue.tipo+' '+issue.fecha+': '+issue.motivo);
    const accepted=packet.filter(x=>!rejected.has(x.tipo+'|'+x.fecha));
-   comprobados+=packet.length;
    if(!accepted.length){
+     for(const reason of issues)if(!rechazados.includes(reason))rechazados.push(reason);
+     comprobados+=packet.length;
      centroMensaje('Diagnóstico: '+comprobados+'/'+items.length+' comprobados; 0 válidos en este lote. '+
        (rechazados.at(-1)||'Comprueba el error por fecha en el diagnóstico.'));
      return;
@@ -1742,11 +1743,15 @@ async function subeHistoricoLocal(){
    const result=await apiCall('/historico/guardar',{items:accepted});
    if(result.version!==MIGRATION_V3)
      throw Error('Versión de archivo inesperada. Detenida la migración para proteger la base.');
+   comprobados+=packet.length;
+   for(const reason of issues)if(!rechazados.includes(reason))rechazados.push(reason);
    enviados+=result.guardadas||0;
    pendientes+=result.pendientesPotencia||0;
    energiaSinValidar+=result.pendientesEnergia||0;
-   for(const issue of result.incidencias||[])
-     rechazados.push(issue.tipo+' '+issue.fecha+': '+issue.motivo);
+   for(const issue of result.incidencias||[]){
+     const reason=issue.tipo+' '+issue.fecha+': '+issue.motivo;
+     if(!rechazados.includes(reason))rechazados.push(reason);
+   }
    centroMensaje('Migrando: '+comprobados+'/'+items.length+' comprobados · '+enviados+
      ' guardados · '+rechazados.length+' rechazados · '+pendientes+' potencias pendientes.');
   }catch(e){
