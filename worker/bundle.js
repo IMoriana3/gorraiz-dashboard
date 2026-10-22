@@ -1,8 +1,8 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // GENERADO AUTOMÁTICAMENTE — no editar a mano.
-// Es index.js + periodos.js + spc.js y shared-history.js; para pegarlo
-// en el editor de Cloudflare cuando no se puede usar Wrangler.
- // Para regenerarlo: node construir.mjs
+// Es index.js + periodos.js + spc.js, para pegarlo en el editor web
+// de Cloudflare cuando no se puede usar wrangler desde el equipo.
+// Para regenerarlo tras cambiar cualquiera de ellos: node construir.mjs
 // ═══════════════════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════════
