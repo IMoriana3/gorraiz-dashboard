@@ -185,6 +185,9 @@ function showSourceCoverage(){
  button.disabled=!closed.length;
  button.dataset.date=closed.at(-1)||'';
  const backlog=spcBacklog(stored,madridToday());
+ const spcDate=$('spcDownloadDate');
+ if(!spcDate.dataset.manualChoice)spcDate.value=backlog.firstPending||backlog.lastClosed||'';
+ spcDate.max=new Date(Date.parse(madridToday()+'T00:00:00Z')-86400000).toISOString().slice(0,10);
  const lag=$('spcLag'),fetchPending=$('fetchPendingSPC');
  lag.hidden=backlog.pendingCount===0;
  fetchPending.disabled=backlog.pendingCount===0;
@@ -325,6 +328,59 @@ async function reload({keepDay=true,sinRed=false}={}){
 function apiCfg(){
  try{return JSON.parse(localStorage.getItem('gorraiz_api_cfg')||'{}')}catch{return{}}
 }
+// Informe y SCADA comparten las mismas claves en este origen. Las claves no
+// se muestran en los formularios. Guardar configuraciones no consulta APIs.
+function connectionStatus(message=''){
+ const central=apiCfg();
+ const spcURL=localStorage.getItem('gorraiz_kstar_url_v1')||'';
+ const spcKey=localStorage.getItem('gorraiz_kstar_clave_v1')||
+   sessionStorage.getItem('gorraiz_kstar_key_sesion_v1')||'';
+ text('connectionStatus',(message?message+' · ':'')+
+   'Solarman y archivo central: '+(central.url&&central.key?'configurados':'sin configurar')+
+   '. KSTAR SPC: '+(spcURL&&spcKey.length>=24?'configurado':'sin configurar')+
+   '. Guardar no consulta proveedores.');
+}
+function workerURL(value,{spc=false}={}){
+ const url=new URL(value);
+ if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash||
+    (spc&&(!url.hostname.endsWith('.workers.dev')||url.pathname!=='/')))
+   throw new Error('La URL debe ser HTTPS válida'+(spc?', de un Worker *.workers.dev sin rutas':'')+'.');
+ return url.origin+url.pathname.replace(/\/$/,'');
+}
+function initConnections(){
+ const cfg=apiCfg();
+ $('scadaCentralUrl').value=cfg.url||'';
+ $('scadaSpcUrl').value=localStorage.getItem('gorraiz_kstar_url_v1')||'';
+ $('saveCentral').addEventListener('click',()=>{
+   try{
+     const url=workerURL($('scadaCentralUrl').value.trim());
+     const key=$('scadaCentralKey').value||apiCfg().key;
+     if(!key)throw Error('Introduce la clave de panel o conserva la existente.');
+     localStorage.setItem('gorraiz_api_cfg',JSON.stringify({url,key}));
+     $('scadaCentralKey').value='';
+     connectionStatus('Worker central guardado');
+   }catch(e){connectionStatus('No se guardó Solarman: '+e.message)}
+ });
+ $('saveSpc').addEventListener('click',()=>{
+   try{
+     const url=workerURL($('scadaSpcUrl').value.trim(),{spc:true});
+     const key=$('scadaSpcKey').value||
+       localStorage.getItem('gorraiz_kstar_clave_v1')||
+       sessionStorage.getItem('gorraiz_kstar_key_sesion_v1')||'';
+     if(key.length<24)throw Error('La clave del Worker SPC debe tener al menos 24 caracteres.');
+     localStorage.setItem('gorraiz_kstar_url_v1',url);
+     localStorage.setItem('gorraiz_kstar_clave_v1',key);
+     sessionStorage.removeItem('gorraiz_kstar_key_sesion_v1');
+     $('scadaSpcKey').value='';
+     connectionStatus('Worker KSTAR guardado');
+   }catch(e){connectionStatus('No se guardó SPC: '+e.message)}
+ });
+ $('spcDownloadDate').addEventListener('change',()=>{
+   $('spcDownloadDate').dataset.manualChoice='true';
+ });
+ connectionStatus();
+}
+
 const madridClock=new Intl.DateTimeFormat('es-ES',{timeZone:'Europe/Madrid',hour:'2-digit',minute:'2-digit'});
 function quotaMessage() {
  const q=quotaState(localStorage);
@@ -391,7 +447,12 @@ $('reload').addEventListener('click',()=>reload());
 $('pullHistory').addEventListener('click',async()=>{await pullShared({all:true,date:day});await reload({sinRed:true})});
 $('pushHistory').addEventListener('click',pushShared);
 $('fetchSPC').addEventListener('click',async()=>{
- if(await downloadSpcDay(day))await reload({keepDay:true,sinRed:true});
+ const date=$('spcDownloadDate').value;
+ if(await downloadSpcDay(date)){
+  day=date;$('day').value=date;
+  $('spcDownloadDate').dataset.manualChoice='';
+  await reload({keepDay:true,sinRed:true});
+ }
 });
 $('fetchPendingSPC').addEventListener('click',async()=>{
  const date=$('fetchPendingSPC').dataset.date;
@@ -400,6 +461,7 @@ $('fetchPendingSPC').addEventListener('click',async()=>{
  // pendiente; no consulta Solarman ni activa ningún cron de SPC.
  if(await downloadSpcDay(date)){
   day=date;$('day').value=date;
+  $('spcDownloadDate').dataset.manualChoice='';
   await reload({keepDay:true,sinRed:true});
  }
 });
@@ -425,6 +487,7 @@ window.addEventListener('storage',e=>{
  if(e.key==='gorraiz_api_cfg')text('linkState','Conexión modificada en otra pestaña');
  if(e.key===SCADA_QUOTA_KEY)showQuota();
 });
+initConnections();
 showQuota();
 setInterval(showQuota,60_000); // solo interfaz local, cero llamadas a la API
 $('lastSpc').addEventListener('click',()=>{
