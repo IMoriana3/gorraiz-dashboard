@@ -183,6 +183,24 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
 .solar-gap-scroll{max-height:310px;overflow:auto}
 .solar-gap-scroll thead{position:sticky;top:0;background:#162731;z-index:1}
 .solar-gap-diagnosis td:nth-child(5){color:#e7c778}
+
+/* Energía: representar la contabilidad correcta, no un recorrido lineal FV→carga. */
+.energy-equations{display:flex;flex-direction:column;gap:6px}
+.energy-equation-title{font-size:10px;color:#a8c7d0;font-weight:700;letter-spacing:.025em}
+.energy-equation-row{display:grid;grid-template-columns:minmax(0,1fr) 20px minmax(0,1fr) 20px minmax(0,1fr);gap:4px;align-items:stretch}
+.energy-equation-row .energy-node{min-height:93px;padding:7px 4px;gap:3px}
+.energy-equation-row .energy-node-icon{font-size:17px}
+.energy-equation-row .energy-node strong{font-size:clamp(12px,1.35vw,18px);white-space:normal;overflow-wrap:anywhere}
+.energy-equation-operator{align-self:center;text-align:center;color:#b2d7da;font-size:23px;font-weight:700}
+.energy-equation-row .energy-export strong{color:var(--yellow)}
+.energy-equation-row .energy-import strong{color:var(--red)}
+@media(max-width:570px){
+ .energy-equation-row{grid-template-columns:minmax(0,1fr) 12px minmax(0,1fr) 12px minmax(0,1fr);gap:2px}
+ .energy-equation-row .energy-node strong{font-size:11px}
+ .energy-equation-row .energy-node-name{font-size:7.5px}
+ .energy-equation-row .energy-node small{font-size:8px}
+ .energy-equation-operator{font-size:17px}
+}
 </style>
 </head>
 <body><div class="frame">
@@ -334,19 +352,47 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
    <div class="ptop"><h2 id="energyHeading">Sinóptico de energía generada y balance · kWh</h2>
     <span class="muted tiny" id="energyScope">Datos del periodo seleccionado</span></div>
    <div class="pbody energy-panel-content">
-    <div class="energy-flow-nodes" aria-label="Balance energético con periodos comparables">
-     <div class="energy-node energy-pv"><span class="energy-node-icon" aria-hidden="true">▦</span>
-      <span class="energy-node-name">FV GENERADA*</span><strong id="energyMatchGen">—</strong><small>Solarman A+B</small></div>
-     <div class="energy-flow-arrow" aria-hidden="true">→</div>
-     <div class="energy-node energy-self"><span class="energy-node-icon" aria-hidden="true">☀</span>
-      <span class="energy-node-name">FV AUTOCONSUMIDA*</span><strong id="energyMatchSelf">—</strong><small>FV − exportación</small></div>
-     <div class="energy-flow-arrow" aria-hidden="true">→</div>
-     <div class="energy-node energy-load"><span class="energy-node-icon" aria-hidden="true">⌂</span>
-      <span class="energy-node-name">CONSUMO DERIVADO*</span><strong id="energyMatchLoad">—</strong><small>FV + red neta</small></div>
-    </div>
-    <div class="energy-grid-flows" aria-label="Energía intercambiada con la red en días comparables">
-     <div><span>Importación de red (+)</span><strong class="import" id="energyMatchImport">—</strong><small>SPC · kWh</small></div>
-     <div><span>Exportación de red (+ kWh)</span><strong class="export" id="energyMatchExport">—</strong><small>SPC · kWh acumulados</small></div>
+    <div class="energy-equations" aria-label="Dos relaciones del balance energético">
+     <div class="energy-equation-title">1 · Reparto de la generación FV</div>
+     <div class="energy-equation-row">
+      <div class="energy-node energy-pv">
+       <span class="energy-node-icon" aria-hidden="true">▦</span>
+       <span class="energy-node-name">FV GENERADA*</span><strong id="energyMatchGen">—</strong>
+       <small>Solarman A+B · kWh</small>
+      </div>
+      <span class="energy-equation-operator" aria-label="menos">−</span>
+      <div class="energy-node energy-export">
+       <span class="energy-node-icon" aria-hidden="true">↗</span>
+       <span class="energy-node-name">EXPORTACIÓN</span><strong id="energyMatchExport">—</strong>
+       <small>SPC · kWh (+ acumulado)</small>
+      </div>
+      <span class="energy-equation-operator" aria-label="igual">=</span>
+      <div class="energy-node energy-self">
+       <span class="energy-node-icon" aria-hidden="true">☀</span>
+       <span class="energy-node-name">FV AUTOCONSUMIDA*</span><strong id="energyMatchSelf">—</strong>
+       <small>FV − exportación</small>
+      </div>
+     </div>
+     <div class="energy-equation-title">2 · Balance del consumo total</div>
+     <div class="energy-equation-row">
+      <div class="energy-node energy-self">
+       <span class="energy-node-icon" aria-hidden="true">☀</span>
+       <span class="energy-node-name">FV AUTOCONSUMIDA*</span><strong id="energySelfRepeat">—</strong>
+       <small>Parte de la generación</small>
+      </div>
+      <span class="energy-equation-operator" aria-label="más">+</span>
+      <div class="energy-node energy-import">
+       <span class="energy-node-icon" aria-hidden="true">↙</span>
+       <span class="energy-node-name">IMPORTACIÓN RED</span><strong id="energyMatchImport">—</strong>
+       <small>SPC · kWh</small>
+      </div>
+      <span class="energy-equation-operator" aria-label="igual">=</span>
+      <div class="energy-node energy-load">
+       <span class="energy-node-icon" aria-hidden="true">⌂</span>
+       <span class="energy-node-name">CONSUMO DERIVADO*</span><strong id="energyMatchLoad">—</strong>
+       <small>FV autoconsumida + red</small>
+      </div>
+     </div>
     </div>
     <div class="energy-production-totals">
      <div><span>FV total · selección completa</span>
@@ -357,7 +403,7 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
       <small id="energyLifetimeCoverage">Últimos contadores acumulados compatibles</small></div>
     </div>
     <p class="energy-coherence" id="energyComparable">Sin balance energético de días comparables.</p>
-    <p class="energy-disclaimer" id="energyExplanation">* Autoconsumo y consumo derivados, no mediciones independientes. El balance agrupa solo días completos y fuentes compatibles.</p>
+    <p class="energy-disclaimer" id="energyExplanation">* FV autoconsumida = FV generada − exportación; consumo total = FV autoconsumida + importación. Son magnitudes derivadas, no mediciones independientes. Se agrupan solo días completos y fuentes compatibles.</p>
     <p class="energy-spc-self" id="energySPCReported">Autoconsumo comunicado por SPC (referencia separada): —</p>
    </div>
   </section>

@@ -431,6 +431,7 @@ function paintEnergySynoptic(){
    ' días comparables');
  text('energyMatchGen',kwh(matched.generation));
  text('energyMatchSelf',kwh(matched.self));
+ text('energySelfRepeat',kwh(matched.self)); // Misma magnitud en ambas ecuaciones; NO sumar dos veces
  text('energyMatchLoad',kwh(matched.load));
  text('energyMatchImport',kwh(matched.import));
  text('energyMatchExport',kwh(matched.export));

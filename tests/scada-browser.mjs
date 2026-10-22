@@ -192,13 +192,24 @@ try {
   assert.equal(await page.locator('.synoptic-duo > .panel').count(),2);
   assert.match(await page.locator('.synoptic-duo').innerText(),/Sinóptico de potencia · kW/);
   assert.match(await page.locator('#energyHeading').innerText(),/energía generada y balance · kWh/);
-  for(const id of ['energyMatchGen','energyMatchSelf','energyMatchLoad',
+  for(const id of ['energyMatchGen','energyMatchSelf','energySelfRepeat','energyMatchLoad',
     'energyMatchImport','energyMatchExport','energySelectedPv','energyLifetimePv']){
     assert.match(await page.locator('#'+id).innerText(),/kWh/,
       'el sinóptico energético debe mostrar '+id+' en kWh');
   }
   assert.match(await page.locator('#energyScope').innerText(),/1\/1 días comparables/);
   assert.match(await page.locator('#energyComparable').innerText(),/1\/1 día/);
+  assert.equal(await page.locator('.energy-equation-row').count(),2,
+    'sinóptico diario separado en dos ecuaciones físicas');
+  const left=await page.locator('.energy-equation-row').first().innerText();
+  const right=await page.locator('.energy-equation-row').nth(1).innerText();
+  assert.match(left,/FV GENERADA/);assert.match(left,/EXPORTACIÓN/);
+  assert.match(left,/FV AUTOCONSUMIDA/);
+  assert.match(right,/FV AUTOCONSUMIDA/);assert.match(right,/IMPORTACIÓN RED/);
+  assert.match(right,/CONSUMO DERIVADO/);
+  assert.equal(await page.locator('#energyMatchSelf').innerText(),
+    await page.locator('#energySelfRepeat').innerText(),
+    'el autoconsumo repetido es la misma cifra, no energía sumada dos veces');
   const firstEnergy=await page.locator('#energyMatchGen').innerText();
 
   assert.equal(await page.locator('.cards').evaluate(el=>
