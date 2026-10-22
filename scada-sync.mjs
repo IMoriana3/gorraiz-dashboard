@@ -1,3 +1,5 @@
+import {normalizeSourcePower} from './scada-units.mjs';
+
 // Acceso a archivo común para el SCADA (mismo Durable Object que Informe).
 // Lectura/guardado NO consulta Solarman ni el proveedor KSTAR; SPC solo se
 // consulta desde downloadSpcDay(), siempre tras un clic explícito.
@@ -111,7 +113,7 @@ function madridDay(v){
 export async function pushShared(){
  if(busy)return;
  busy=true;const btn=$('pushHistory');if(btn)btn.disabled=true;
- let uploaded=0;
+ let uploaded=0,unverified=0;
  try{
   const data=await readLocal(),group=new Map();
   for(const f of data){
@@ -123,9 +125,19 @@ export async function pushShared(){
     const date=madridDay(row.ts);
     if(!date)continue;
     const key=f.tipo+'|'+date;
-    if(!group.has(key))group.set(key,{tipo:f.tipo,fecha:date,rows:new Map()});
+    if(!group.has(key))group.set(key,{tipo:f.tipo,fecha:date,unidadPotencia:'kW',rows:new Map()});
     const stamp=row.ts instanceof Date?row.ts.toISOString():String(row.ts);
-    group.get(key).rows.set(stamp,{ts:stamp,pot:row.pot,acum:row.acum,dia:row.dia});
+    const power=normalizeSourcePower(f,row.pot);
+    const previous=group.get(key).rows.get(stamp);
+    const measurement={ts:stamp,pot:power.pot,acum:row.acum??null,dia:row.dia??null};
+    const unverified=power.potSinValidar??row.potSinValidar??null;
+    if(unverified!==null&&power.pot===null)measurement.potSinValidar=unverified;
+    group.get(key).rows.set(stamp,previous?{
+      ...previous,...measurement,
+      pot:measurement.pot??previous.pot??null,
+      acum:measurement.acum??previous.acum??null,
+      dia:measurement.dia??previous.dia??null
+    }:measurement);
    }
   }
   const items=[...group.values()].map(v=>v.rows instanceof Map?
@@ -135,9 +147,12 @@ export async function pushShared(){
   for(let i=0;i<items.length;i+=12){
    const res=await central('/historico/guardar',{items:items.slice(i,i+12)});
    uploaded+=res.guardadas||0;
-   notify('Compartiendo datos locales en el archivo central: '+uploaded+'/'+items.length+'.');
+   unverified+=res.pendientesPotencia||0;
+   notify('Archivo central: '+uploaded+'/'+items.length+' conjuntos · '+unverified+
+    ' lecturas con potencia pendiente de verificar; sin consultar proveedores.');
   }
-  notify('Sincronización completada: '+uploaded+' días/equipos compartidos. Sin llamar a Solarman ni SPC.');
+  notify('Sincronización completada: '+uploaded+' días/equipos compartidos; '+unverified+
+   ' potencias pendientes de validar. Sin llamar a Solarman ni SPC.');
  }catch(e){notify('Sincronización parcial '+uploaded+': '+e.message+'. Datos locales conservados.')}
  finally{busy=false;if(btn)btn.disabled=false}
 }
