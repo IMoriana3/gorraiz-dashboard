@@ -122,9 +122,11 @@ function notices(lines){
   const p=document.createElement('p');p.textContent='• '+line;el.append(p);
  }
 }
-function setDevice(dotId,labelId,last,source){
- const dot=$(dotId);dot.classList.toggle('off',!last);dot.classList.toggle('warn',!!last);
- text(labelId,last?fmt.format(last.value)+' kW · '+hh(last.key):source||'Sin muestra');
+function setDevice(dotId,labelId,value,key){
+ const dot=$(dotId),available=value!==null&&value!==undefined;
+ dot.classList.toggle('off',!available);
+ dot.classList.remove('warn'); // Un dato histórico presente no es alarma.
+ text(labelId,available?kw(value)+' · '+hh(key):'Sin lectura en esta casilla');
 }
 function bar(id,value,max){
  $(id).style.width=value!==null&&max>0?Math.max(0,Math.min(100,100*value/max))+'%':'0%';
@@ -366,6 +368,120 @@ function updateBlankNotice(r){
  text('blankDetail',dates+'. '+notes+' Usa «Ver último SPC» o selecciona otra fecha. Abrir y cambiar vistas NO consume llamadas a la API.');
 }
 
+function daySummaryForSnapshot(date){
+ if(!date)return null;
+ if(!dailySnapshotCache.has(date)){
+  const d=buildSeries(stored,{date,range:1,allowProvisional:false});
+  dailySnapshotCache.set(date,{summary:d.summary,
+    closed:d.gridState?.[date]?.meta?.completo===true});
+ }
+ return dailySnapshotCache.get(date);
+}
+function renderSnapshot(r){
+ renderedSnapshotSeries=r;
+ let index=selectedPointKey?r.keys.indexOf(selectedPointKey):-1;
+ if(index<0){
+  index=defaultSnapshotIndex(r);
+  selectedPointKey=index>=0?r.keys[index]:null;
+ }
+ const point=snapshotAt(r,index),sources=snapshotSourceTimes(r);
+ const thisDate=point?.date||null;
+ const clock=point?.key||null;
+ const timestamp=pointDateTime(clock);
+ const subtitle=point?
+   snapshotStatus(point,{provisional:$('provisional').checked}):
+   'Sin potencias disponibles para la selección; los huecos permanecen vacíos.';
+ text('snapshotStamp',point?'Instantánea histórica · '+timestamp+' · NO EN DIRECTO':
+   'Instantánea histórica · sin señales');
+ text('snapshotSources','Última FV: '+pointDateTime(sources.pv)+
+  ' · última SPC: '+pointDateTime(sources.spc)+
+  ' · último cruce: '+pointDateTime(sources.matched));
+ text('snapshotInterpretation',subtitle+
+  ' Las marcas FV y SPC se agrupan por casilla nominal; el reloj SPC sigue pendiente de contraste.');
+ const slider=$('snapshotSlider');
+ slider.min='0';slider.max=String(Math.max(0,r.keys.length-1));
+ slider.value=String(index>=0?index:0);
+ slider.disabled=!r.keys.length;
+ text('snapshotPosition',index>=0?(index+1)+' / '+r.keys.length:'—');
+ const lastMatched=latestSnapshotIndex(r,'matched'),lastSpc=latestSnapshotIndex(r,'spc');
+ $('snapshotMatched').disabled=lastMatched<0;
+ $('snapshotSpc').disabled=lastSpc<0;
+ $('snapshotMatched').setAttribute('aria-pressed',String(index>=0&&index===lastMatched));
+ $('snapshotSpc').setAttribute('aria-pressed',String(index>=0&&index===lastSpc));
+ const available=p=>p!==null&&p!==undefined;
+ const pv=point?.generation??null,imp=point?.import??null,exp=point?.export??null,
+   load=point?.consumption??null;
+ const fvTime=pv!==null?timestamp:'sin muestra '+(point?.time||'');
+ const netTime=point?.hasSPC?timestamp:'sin intervalo '+(point?.time||'');
+ text('powerGen',kw(pv));
+ text('powerCons',kw(load));
+ text('powerImp',kw(imp));
+ text('powerExp',exportKW(exp));
+ text('subGen',pv!==null?'FV A+B · '+fvTime:'FV no disponible en esta casilla');
+ text('subImp',imp!==null?'Media SPC · '+netTime:'SPC sin intervalo a esta hora');
+ text('subExp',exp!==null?'Media SPC · '+netTime:'SPC sin intervalo a esta hora');
+ text('subCons',load!==null?
+   'Estimación '+(point?.clockVerified?'con marcas SPC verificadas':'NO VALIDADA')+
+   ' · '+timestamp:!$('provisional').checked?'Estimación desactivada':
+   !point?.hasFV?'Falta FV en la misma casilla':!point?.hasSPC?
+   'Falta SPC en la misma casilla':'Balance incompatible; revisar relojes');
+ // El balance del día y el autoconsumo son kWh. Nunca confundirlos
+ // con potencia instantánea ni con un último dato de otro día.
+ const daily=daySummaryForSnapshot(thisDate),totals=daily?.summary||{};
+ const hasClosedSpc=daily?.closed===true;
+ text('powerSelf',kwh(hasClosedSpc?totals.spcAutoconsumption:null));
+ text('balanceDate',thisDate?
+   thisDate.split('-').reverse().join('/')+
+   ' · '+(hasClosedSpc?'SPC cerrado':'SPC parcial o sin día completo'):
+   'Sin día seleccionado');
+ text('flowTime',clock?'Misma casilla · '+timestamp:'Sin instante compatible');
+ text('flowState',subtitle+' Flechas conceptuales, no implica señales en directo.');
+ text('flowGen',kw(pv));text('flowInv',kw(pv));text('flowLoad',kw(load));
+ text('flowImp',kw(imp));text('flowExp',exportKW(exp));
+ setDevice('dotA','invA',point?.a??null,clock);
+ setDevice('dotB','invB',point?.b??null,clock);
+ const spcAvailable=point?.hasSPC===true;
+ $('dotSPC').classList.toggle('off',!spcAvailable);
+ $('dotSPC').classList.remove('warn');
+ text('spcState',spcAvailable?'Media SPC · '+timestamp:'Sin dato para esta hora');
+ $('dotBalance').classList.toggle('off',load===null);
+ $('dotBalance').classList.toggle('warn',load!==null&&!point.clockVerified);
+ text('balanceState',load!==null?
+   'Estimación '+(point.clockVerified?'reloj contrastado':'SIN VALIDAR')+
+   ' · '+timestamp:'No calculable a '+(timestamp==='—'?'esta hora':timestamp));
+ text('linkState',point?.hasFV?'FV histórico · '+timestamp:
+   'Sin FV a '+(timestamp==='—'?'esta hora':timestamp));
+ $('dotLink').classList.toggle('off',!point?.hasFV);
+ $('dotLink').classList.remove('warn');
+ text('miniCons',r.common?
+   r.common+' tramos disponibles · '+(r.provisional?'RELOJ SIN VALIDAR':'sin estimación de reloj'):
+   'Sin pares FV y SPC en la selección');
+ text('dailyGen',kwh(totals.generation));
+ text('dailyCons',kwh(hasClosedSpc?totals.consumption:null));
+ text('dailyExp',kwh(totals.export));
+ text('dailyImp',kwh(totals.import));
+ const vmax=Math.max(0,...Object.values(totals).filter(v=>typeof v==='number'&&Number.isFinite(v)));
+ bar('barGen',totals.generation,vmax);
+ bar('barCons',hasClosedSpc?totals.consumption:null,vmax);
+ bar('barExp',totals.export,vmax);
+ bar('barImp',totals.import,vmax);
+ text('updated','Instantánea: '+timestamp+
+  ' · última FV '+pointDateTime(sources.pv)+
+  ' · última SPC '+pointDateTime(sources.spc));
+ charts.mainChart?.draw(); // marca vertical sin cambiar las medidas de la gráfica
+ return point;
+}
+function selectSnapshot(type){
+ const r=renderedSnapshotSeries;
+ if(!r)return;
+ const i=type==='matched'?
+   (latestSnapshotIndex(r,'estimated')>=0?
+     latestSnapshotIndex(r,'estimated'):latestSnapshotIndex(r,'matched')):
+   latestSnapshotIndex(r,'spc');
+ if(i<0)return;
+ selectedPointKey=r.keys[i];renderSnapshot(r);
+}
+
 function repaint(){
  if(!day)return;
  const r=buildSeries(stored,{date:day,range,allowProvisional:$('provisional').checked});
@@ -388,50 +504,10 @@ function repaint(){
  paintCoverageByDay(r);
  runContrast();
  updateDetailPanels(r,labels);
- text('powerGen',kw(r.last.generation?.value));
- text('powerCons',kw(r.last.consumption?.value));
- text('powerImp',kw(r.last.import?.value));
- text('powerExp',exportKW(r.last.export?.value));
- text('powerSelf',kwh(r.summary.spcAutoconsumption));
- text('subGen',r.last.generation?'Último punto '+hh(r.last.generation.key)+' · Solarman':'Sin medidas A+B simultáneas');
- const dayLoad=r.summary.consumption!==null?' · día ≈'+kwh(r.summary.consumption):'';
- text('subCons',r.last.consumption?
-  (r.provisional?'Estimación NO VALIDADA':'Cruce validado')+
-  ' · último par '+hh(r.last.consumption.key)+dayLoad:
-  (!$('provisional').checked?'Estimación desactivada':
-    'Sin muestras FV+SPC compatibles')+dayLoad);
- text('subImp',r.last.import?'Media intervalo · '+hh(r.last.import.key):'KSTAR sin intervalos conciliados');
- text('subExp',r.last.export?'Media intervalo · '+hh(r.last.export.key):'KSTAR sin intervalos conciliados');
- text('flowGen',kw(r.last.generation?.value));
- text('flowInv',kw(r.last.generation?.value));
- text('flowLoad',kw(r.last.consumption?.value));
- text('flowImp',kw(r.last.import?.value));
- text('flowExp',exportKW(r.last.export?.value));
- text('invA',r.last.a?kw(r.last.a.value)+' · '+hh(r.last.a.key):'Sin lectura');
- text('invB',r.last.b?kw(r.last.b.value)+' · '+hh(r.last.b.key):'Sin lectura');
- setDevice('dotA','invA',r.last.a);setDevice('dotB','invB',r.last.b);
- const spc=r.gridState[day];const isSpc=!!spc?.ready;
- $('dotSPC').classList.toggle('off',!isSpc);$('dotSPC').classList.toggle('warn',isSpc);
- text('spcState',isSpc?'Intervalos históricos':'Sin intervalo validado');
- $('dotBalance').classList.toggle('off',!r.common);$('dotBalance').classList.toggle('warn',!!r.common);
- text('balanceState',r.common?
-  r.common+' pares · '+(r.provisional?'estimados (reloj no verificado)':'reloj validado'):
-  'Sin pares válidos de FV y SPC');
- text('miniGen',r.last.generation?kw(r.last.generation.value):'Sin potencia');
- text('miniCons',r.last.consumption?
-  (r.provisional?'Estimado · RELOJ SIN VALIDAR':'Calculado · reloj verificado')+
-  ' · '+r.common+' tramos':'Sin pares válidos de FV y SPC');
- text('dailyGen',kwh(r.summary.generation));
- text('dailyCons',kwh(r.summary.consumption));
- text('dailyExp',kwh(r.summary.export));
- text('dailyImp',kwh(r.summary.import));
- const vmax=Math.max(0,...Object.values(r.summary).filter(x=>typeof x==='number'&&Number.isFinite(x)));
- bar('barGen',r.summary.generation,vmax);bar('barCons',r.summary.consumption,vmax);
- bar('barExp',r.summary.export,vmax);bar('barImp',r.summary.import,vmax);
+ renderSnapshot(r);
  const maxDay=availableDays(stored).at(-1)||null;
  $('empty').style.display=r.keys.some((k,i)=>Object.values(r.series).some(a=>a[i]!==null))?'none':'block';
- const latest=[r.last.generation?.key,r.last.import?.key,r.last.export?.key].filter(Boolean).sort().at(-1);
- text('updated',latest?'Última muestra seleccionada: '+latest.replace('T',' '):'Sin muestras de potencia');
+
  const current=day===madridToday();
  $('state').innerHTML=current?'<i class="dot warn"></i> Histórico del día · no en directo':
    '<i class="dot off"></i> Histórico · '+(range===7?'7 días':day);
@@ -451,7 +527,8 @@ function repaint(){
 async function reload({keepDay=true,sinRed=false}={}){
  if(!sinRed)await pullShared({date:$('day').value||null});
  try{
-  stored=await load();showSourceCoverage();const ds=availableDays(stored),prev=keepDay?$('day').value:'';
+  stored=await load();dailySnapshotCache.clear();showSourceCoverage();
+  const ds=availableDays(stored),prev=keepDay?$('day').value:'';
   day=prev||ds.at(-1)||madridToday();$('day').value=day;
   if(ds.length){$('day').min=ds[0];$('day').max=madridToday()>ds.at(-1)?madridToday():ds.at(-1)}
   repaint();
