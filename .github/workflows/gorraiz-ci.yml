@@ -38,6 +38,8 @@ jobs:
           node --check energia.js
           node --check scada-data.mjs
           node --check scada-app.mjs
+          node --check scada-sync.mjs
+          node --check worker/shared-history.js
           node --check scada-quota.mjs
           node --check worker/index.js
           node --check worker/spc.js
