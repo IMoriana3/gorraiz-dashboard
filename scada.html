@@ -82,10 +82,11 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
   <button id="one" aria-pressed="true" type="button">24 h</button>
   <button id="seven" aria-pressed="false" type="button">7 días</button>
   <button id="reload" type="button">↻ Leer histórico</button>
-  <button id="updatePV" type="button" title="Solicita el día actual a Solarman, nunca a KSTAR">↓ Actualizar Solarman</button>
-  <label class="check" title="Solo Solarman; no consulta KSTAR"><input id="auto" type="checkbox"> Automático FV / 5 min</label>
+  <button id="updatePV" type="button" title="Máximo un intento por hora en este navegador, compartido con el modo automático">↓ Actualizar Solarman (1/h)</button>
+  <label class="check" title="Optativo; una consulta a Solarman cada 60 minutos como máximo en este navegador. No consulta KSTAR."><input id="auto" type="checkbox"> Automático FV / 60 min</label>
   <label class="check" title="Permite el cálculo aproximado del consumo con relojes SPC/Solarman sin conciliar; nunca afecta a los informes."><input id="provisional" type="checkbox"> Cruce horario provisional</label>
  </div>
+ <div id="rateInfo" class="muted tiny" style="padding:0 0 12px" role="status">Controlando cupo horario de Solarman…</div>
  <p id="notice" role="status">Leyendo señales guardadas…</p>
  <div class="cards" aria-label="Potencias del instante seleccionado">
   <div class="card" style="--c:var(--green)"><div class="cap">☀ &nbsp; Generación total</div><div class="value number" id="powerGen">—</div><div class="sub" id="subGen">kW · Solarman</div></div>
@@ -146,7 +147,7 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
    <div class="meter" style="--bar:var(--blue)"><span>Consumo derivado</span><span class="bar"><span class="fill" id="barCons"></span></span><span class="amount" id="dailyCons">—</span></div>
    <div class="meter" style="--bar:var(--yellow)"><span>Vertido a red</span><span class="bar"><span class="fill" id="barExp"></span></span><span class="amount" id="dailyExp">—</span></div>
    <div class="meter" style="--bar:var(--red)"><span>Importación</span><span class="bar"><span class="fill" id="barImp"></span></span><span class="amount" id="dailyImp">—</span></div>
-   <p class="footnote">Generación = inversor A + B, ambos con medida. Consumo diario = generación + importación − exportación, solo si hay balance del mismo día y perímetro. Las potencias de red son medias por intervalo obtenidas de contadores acumulados conciliados con el resumen KSTAR. No se usa <code>totalActivePower</code> hasta validar unidades/CT y signo. La actualización automática opcional solo consulta Solarman; KSTAR continúa manual, para días cerrados y sin cron.</p>
+   <p class="footnote">Generación = inversor A + B, ambos con medida. Consumo diario = generación + importación − exportación, solo si hay balance del mismo día y perímetro. Las potencias de red son medias por intervalo obtenidas de contadores acumulados conciliados con el resumen KSTAR. No se usa <code>totalActivePower</code> hasta validar unidades/CT y signo. El refresco de gráficos no llama a APIs. La actualización automática optativa consulta Solarman cada 60 minutos como máximo en este navegador y está apagada de inicio; tampoco consulta al abrir el SCADA. El botón manual utiliza el mismo límite. Una actualización puede consumir varias llamadas internas de la API Solarman, por lo que no se interpreta «1/h» como una única petición al proveedor. KSTAR continúa manual, para días cerrados y sin cron.</p>
   </div>
  </section>
 </main></div>
