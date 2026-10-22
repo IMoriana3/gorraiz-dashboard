@@ -1,5 +1,6 @@
 import {availableDays,buildSeries,numeric} from './scada-data.mjs';
 import {spcBacklog,dailyCoverage,dailyPvInventory,pvDayDiagnosis} from './scada-coverage.mjs';
+import {contrastDay,contrastCsv} from './scada-contrast.mjs';
 import {pullShared,pushShared,downloadSpcDay} from './scada-sync.mjs';
 import {SCADA_POLL_MS,SCADA_QUOTA_KEY,SCADA_LOCK_NAME,quotaState,reserveAttempt} from './scada-quota.mjs';
 
@@ -54,7 +55,7 @@ async function storePV(data,onDate){
   tx.onerror=()=>{db.close();reject(tx.error)};
  });
 }
-function chartStyle(){
+function chartStyle({dayOnly=false}={}){
  return {responsive:true,maintainAspectRatio:false,animation:false,normalized:true,
   interaction:{mode:'index',intersect:false},plugins:{legend:{display:true,position:'bottom',
    labels:{color:'#aec5cc',boxWidth:9,boxHeight:9,padding:14,font:{size:10}}},
@@ -62,14 +63,14 @@ function chartStyle(){
   elements:{point:{radius:0,hitRadius:9},line:{borderWidth:1.8,tension:0.08,spanGaps:false}},
   scales:{x:{grid:{color:'#243b44'},ticks:{color:'#89a5af',autoSkip:true,maxTicksLimit:9,
      callback:function(i){const s=this.getLabelForValue(i);return s.length===16?
-       (range===7?s.slice(8,10)+'/'+s.slice(5,7)+' '+s.slice(11):s.slice(11)) : s}}},
+       (range===7&&!dayOnly?s.slice(8,10)+'/'+s.slice(5,7)+' '+s.slice(11):s.slice(11)) : s}}},
    y:{beginAtZero:true,title:{display:true,text:'kW',color:'#9ab5bb'},grid:{color:'#2c424b'},ticks:{color:'#99b1ba'}}}};
 }
 function makeSeries(label,values,color,dashed=false){
  return {label,data:values,borderColor:color,backgroundColor:color,pointBackgroundColor:color,
   borderDash:dashed?[5,4]:[],fill:false};
 }
-function paint(canvasId,series,labels){
+function paint(canvasId,series,labels,{dayOnly=false}={}){
  const element=$(canvasId);
  if(!element || element.closest('.scada-view[hidden]')){
    charts[canvasId]?.destroy();delete charts[canvasId];return;
@@ -79,7 +80,7 @@ function paint(canvasId,series,labels){
   return;
  }
  charts[canvasId]?.destroy();
- charts[canvasId]=new Chart($(canvasId),{type:'line',data:{labels,datasets:series},options:chartStyle()});
+ charts[canvasId]=new Chart($(canvasId),{type:'line',data:{labels,datasets:series},options:chartStyle({dayOnly})});
 }
 function notices(lines){
  const el=$('alarms');el.replaceChildren();
@@ -95,7 +96,7 @@ function setDevice(dotId,labelId,last,source){
 function bar(id,value,max){
  $(id).style.width=value!==null&&max>0?Math.max(0,Math.min(100,100*value/max))+'%':'0%';
 }
-const SCADA_VIEW_IDS=new Set(['general','planta','inversores','red','historicos','diagnostico']);
+const SCADA_VIEW_IDS=new Set(['general','planta','inversores','red','cotejo','historicos','diagnostico']);
 function navigateView(){
  const requested=location.hash.slice(1);
  const chosen=SCADA_VIEW_IDS.has(requested)?requested:'general';
@@ -241,6 +242,71 @@ function paintCoverageByDay(r){
    audit.append(heading,note);
  }
 }
+function runContrast(){
+ if(!day)return null;
+ const source=buildSeries(stored,{date:day,range:1,allowProvisional:false});
+ const offsetMinutes=Number($('contrastShift').value);
+ const showLoad=$('contrastLoad').checked;
+ const audit=contrastDay(source,{offsetMinutes});
+ const d=audit.daily,p=audit.fields;
+ text('contrastShiftValue',(offsetMinutes>0?'+':'')+offsetMinutes+' min');
+ const plots=[
+  makeSeries('FV Solarman · kW AC',audit.readings.generation,paints.generation),
+  makeSeries('SPC importación · kW medio',audit.readings.import,paints.import),
+  makeSeries('SPC exportación · kW medio',audit.readings.export,paints.export)];
+ if(showLoad)plots.push(makeSeries('Consumo calculado · NO VALIDADO',audit.readings.load,paints.consumption,true));
+ paint('contrastChart',plots,audit.keys,{dayOnly:true});
+ text('contrastPvPoints',String(p.solarmanPoints)+' / 288');
+ text('contrastSpcPoints',String(p.spcPoints)+' / 288');
+ text('contrastMatched',String(p.simultaneous)+' / 288');
+ text('contrastNegative',p.simultaneous?String(p.negativeLoad):'—');
+ text('contrastEnergyPv',kwh(d.generation));
+ text('contrastEnergyLoad',kwh(d.inferredConsumption));
+ let note='Comparativa '+day+' · SPC desplazado '+(offsetMinutes>0?'+':'')+offsetMinutes+
+  ' min. Casillas FV '+p.solarmanPoints+', SPC '+p.spcPoints+', simultáneas '+p.simultaneous+'. ';
+ if(!p.solarmanPoints || !p.spcPoints){
+  note+='Faltan potencias válidas de '+(!p.solarmanPoints?'Solarman':'SPC')+
+    '. No se calcula consumo.';
+ }else if(!p.simultaneous){
+  note+='No hay casillas coincidentes bajo este desfase. La ausencia de solape no prueba un fallo de comunicaciones.';
+ }else{
+  note+=p.negativeLoad+' consumos calculados por debajo de -0,2 kW. '+
+    (p.negativeLoad?
+      'Son incompatibilidades que requieren verificar relojes, unidades, cargas y la diferencia entre muestra instantánea y media SPC. ':
+      'Que no aparezcan valores negativos NO certifica que ambos relojes coincidan. ');
+ }
+ note+='El desfase es exploratorio: no reescribe datos, no valida relojes y no consulta APIs.';
+ text('contrastInterpretation',note);
+ const rows=[
+  ['Generación FV (A+B)',d.generation,'Acumulados diarios · Solarman'],
+  ['Importación de red',d.import,'Resumen diario · SPC'],
+  ['Exportación a red',d.export,'Resumen diario · SPC'],
+  ['Consumo derivado*',d.inferredConsumption,'FV + importación − exportación; reloj no certificado'],
+  ['Autoconsumo FV estimado*',d.inferredSelfConsumed,'FV − exportación; depende del alcance de la instalación'],
+  ['Autoconsumo comunicado por SPC',d.spcReportedSelf,'Campo selfConsumption del portal KSTAR'],
+  ['Diferencia de autoconsumo SPC − cálculo*',d.selfConsumptionDifference,'Diferencia orientativa; NO prueba sincronización'],
+ ];
+ const dailyBody=$('contrastDailyRows');
+ dailyBody.replaceChildren();
+ for(const [name,value,sourceName] of rows){
+  const tr=document.createElement('tr');
+  for(const valueText of [name,kwh(value),sourceName]){
+   const td=document.createElement('td');td.textContent=valueText;tr.appendChild(td);
+  }
+  dailyBody.appendChild(tr);
+ }
+ const hourlyBody=$('contrastHourRows');
+ hourlyBody.replaceChildren();
+ for(const hour of audit.hourly){
+  const tr=document.createElement('tr');
+  const cells=[hour.hour,kw(hour.generation),kw(hour.import),kw(hour.export),
+   hour.comparedCount+' / 12',showLoad?kw(hour.load):'—'];
+  for(const c of cells){const td=document.createElement('td');td.textContent=c;tr.appendChild(td)}
+  hourlyBody.appendChild(tr);
+ }
+ return audit;
+}
+
 function updateBlankNotice(r){
  const v=location.hash.slice(1)||'general';
  const present=series=>series.some(x=>x!==null);
@@ -280,6 +346,7 @@ function repaint(){
 
  updateBlankNotice(r);
  paintCoverageByDay(r);
+ runContrast();
  updateDetailPanels(r,labels);
  text('powerGen',kw(r.last.generation?.value));
  text('powerCons',kw(r.last.consumption?.value));
@@ -480,6 +547,22 @@ $('fetchPendingSPC').addEventListener('click',async()=>{
   $('spcDownloadDate').dataset.manualChoice='';
   await reload({keepDay:true,sinRed:true});
  }
+});
+$('contrastShift').addEventListener('input',runContrast);
+$('contrastLoad').addEventListener('change',runContrast);
+$('contrastZero').addEventListener('click',()=>{
+ $('contrastShift').value='0';runContrast();
+});
+$('contrastExport').addEventListener('click',()=>{
+ const data=runContrast();
+ if(!data)return;
+ const content=contrastCsv(data,{showLoad:$('contrastLoad').checked});
+ const url=URL.createObjectURL(new Blob([content],{type:'text/csv;charset=utf-8'}));
+ const a=document.createElement('a');a.href=url;
+ a.download='gorraiz_FV_SPC_'+data.day+'_desfase_'+
+   (data.offsetMinutes>=0?'+':'')+data.offsetMinutes+'min.csv';
+ a.hidden=true;document.body.appendChild(a);a.click();a.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
 $('provisional').addEventListener('change',repaint);
 $('updatePV').addEventListener('click',()=>refreshPV());
