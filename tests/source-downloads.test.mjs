@@ -22,7 +22,8 @@ function context({quota=false,range=false}={}){
  let spcCalls=0,centralWrites=0;
  const testCtx=vm.createContext({
   Date,Number,Math,Promise,Error,Array,JSON,
-  $:id=>tables[id],spcFecha:date=>/^\d{4}-\d{2}-\d{2}$/.test(date),
+  $:id=>tables[id],spcFecha:date=>typeof date==='string'&&
+    /^\d{4}-\d{2}-\d{2}$/.test(date)?date:'',
   spcHoy:()=> '2026-10-22',
   spcSumaDias:(d,n)=>new Date(Date.parse(d+'T00:00:00Z')+n*864e5).toISOString().slice(0,10),
   SPC_FUENTES:[],
