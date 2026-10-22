@@ -142,7 +142,7 @@ try {
   assert.equal(requests,0,'abrir el SCADA no debe consumir ninguna llamada API');
   // Ambos paneles usan las mismas rutas de archivo, sin consultar proveedores.
   await page.locator('#pushHistory').click();
-  await page.waitForFunction(()=>document.querySelector('#sharedState')?.textContent.includes('Sincronización completada'));
+  await page.waitForFunction(()=>document.querySelector('#sharedState')?.textContent.includes('Migración terminada'));
   assert.ok(archiveWrites>=1);
   assert.equal(archive.size,3,'se comparten inversores A/B y SPC');
   await page.evaluate(async()=>{
