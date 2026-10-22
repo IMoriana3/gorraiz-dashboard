@@ -142,3 +142,26 @@ test('solicitudes simultáneas de dos clientes no duplican compras de datos',asy
  assert.equal(follow.status,200);assert.equal(follow.headers.get('X-Solarman-Cuota'),'cache-compartida');
  assert.equal(api.calls,before);
 });
+
+test('un único lote Solarman alimenta el histórico A/B del Informe y SCADA sin otras llamadas',async t=>{
+ const api=provider(t),db=storage(),env={...base,SOLARMAN_QUOTA:namespace(base,db)};
+ const result=await worker.fetch(prod(),env);
+ assert.equal(result.status,200);
+ const body=await result.json();
+ assert.equal(body.meta.compartido.ok,true,JSON.stringify(body.meta));
+ assert.equal(body.meta.compartido.guardadas,2);
+ assert.ok(db.memory.has('energia:v1:A:2026-10-19'));
+ assert.ok(db.memory.has('energia:v1:B:2026-10-19'));
+ const attempts=api.calls;
+ const request=new Request(endpoint+'/historico/datos',{
+  method:'POST',headers:{Origin:base.ALLOWED_ORIGIN,'X-Panel-Key':base.PANEL_KEY,
+   'content-type':'application/json'},
+  body:JSON.stringify({desde:'2026-10-19',hasta:'2026-10-19'})
+ });
+ const historic=await worker.fetch(request,env);
+ assert.equal(historic.status,200);
+ const shared=await historic.json();
+ assert.deepEqual(shared.fuentes.map(s=>s.tipo),['A','B']);
+ assert.equal(shared.fuentes[0].rows[0].pot,21.3);
+ assert.equal(api.calls,attempts,'la lectura del servidor nunca consulta Solarman');
+});
