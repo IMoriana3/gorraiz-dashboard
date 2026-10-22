@@ -78,7 +78,7 @@ test('Informe descarga SOLO SPC para el día elegido, sin consultar Solarman',as
  assert.equal(t.spcCalls,1);
  assert.equal(t.centralWrites,1);
  assert.deepEqual(t.calls,[]);
- assert.match(t.tables.spcAccion.textContent,/Solarman no consultado/);
+ assert.match(t.tables.spcAccion.textContent,/No se ha consultado Solarman/);
 });
 test('Cupo Solarman bloqueado no hace consulta SPC ni borra datos',async()=>{
  const t=context({quota:true});
