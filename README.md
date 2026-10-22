@@ -17,7 +17,7 @@ Dashboard de producción, intercambio con la red y valoración económica del Ed
 | Reparto provisional P1-P6 de energía | Acumulados KSTAR | Respaldo cuando no hay ficheros de i-DE; solo fechas con intervalos compatibles |
 | Precios medios por periodo de factura | Configuración privada | Archivo JSON importado en el navegador |
 
-El botón **Traer datos** consulta Solarman y KSTAR por conexiones independientes. La **descarga automática** de i-DE y Datadis sigue archivada en el código, sin consultas. El 19/10/2026 se validó una descarga real de KSTAR: 658,92 kWh importados, 0 kWh exportados, 74 kWh de autoconsumo comunicado y 287 registros del contador.
+**Informe y SCADA permiten descargar por separado Solarman y KSTAR SPC.** El botón Solarman consulta únicamente `/produccion`, mantiene el presupuesto de un lote nuevo por hora y admite un máximo de 10 días por lote. El botón SPC consulta un único día cerrado mediante el Worker aislado o central y no gasta cupo Solarman. Ambos datos se guardan en el archivo energético común y en la caché del navegador. i-DE y Datadis permanecen sin consulta automática. El 19/10/2026 se validó una descarga real de KSTAR: 658,92 kWh importados, 0 kWh exportados, 74 kWh de autoconsumo comunicado y 287 registros del contador.
 
 ### Fiabilidad de los datos
 
@@ -123,7 +123,7 @@ Ver [configuración y límites económicos](docs/precios.md) y [activación de S
 
 1. Configura la URL y la clave del Worker habitual **Solarman**.
 2. En la tarjeta **KSTAR SPC01**, indica la URL HTTPS `*.workers.dev` del Worker aislado y su `KSTAR_TEST_KEY` (nunca la contraseña del proveedor). La URL se guarda en el navegador y la clave dura solo esa sesión.
-3. Selecciona un día cerrado y pulsa **Comprobar SPC**. **Traer datos** descarga como máximo 14 días KSTAR por tanda y conserva los días en IndexedDB.
+3. Selecciona un día cerrado en el selector SPC y pulsa **Descargar solo SPC** (un día por clic). **Reconsultar SPC** fuerza una lectura específica cuando proceda; una descarga normal omite días completos ya guardados. El SCADA dispone de los mismos accesos y permite configurar las dos conexiones sin pasar por el Informe.
 4. Importa la configuración privada de precios medios de factura, genera el informe y revisa la cobertura y el reparto provisional P1-P6 antes de exportar el PDF.
 
 La apertura del panel recupera datos de IndexedDB y no inicia sesión en SPC. **No se activa cron KSTAR** mientras el proveedor exija HTTP sin cifrar. Para integración y limitaciones consulta [la guía de Worker aislado](worker/KSTAR_PRUEBA.md).
