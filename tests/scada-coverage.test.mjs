@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {spcBacklog,dailyCoverage,dailyPvInventory,pvDayDiagnosis} from '../scada-coverage.mjs';
+import {spcBacklog,dailyCoverage,dailyPvInventory,pvDayDiagnosis,solarGapAudit,solarGapCsv} from '../scada-coverage.mjs';
 import {buildSeries} from '../scada-data.mjs';
 const day='2026-10-20';
 const spc=(date,complete=true)=>({tipo:'S',fecha:date,payload:{meta:{completo:complete},rows:[]}});
@@ -100,4 +100,77 @@ test('una copia duplicada no duplica el recuento de filas originales',()=>{
  assert.equal(stats.A.raw,1);
  assert.equal(stats.A.validPower,1);
  assert.equal(stats.A.unverified,0,'una potencia validada en otra fuente resuelve ese instante');
+});
+
+const makePV=(date,type,readings)=>({
+ tipo:type,nombre:'Test INV '+type,unidadPotencia:'kW',
+ rows:readings.map(({minute,pot,raw})=>{
+   const hour=String(Math.floor(minute/60)).padStart(2,'0');
+   const mm=String(minute%60).padStart(2,'0');
+   return {ts:date+'T'+hour+':'+mm+':00+02:00',
+     pot:pot===undefined?null:pot,
+     ...(raw===undefined?{}:{potSinValidar:raw}),
+     dia:8,acum:2010};
+ })
+});
+test('diagnóstico del día: huecos por falta del inversor B sin contar las horas nocturnas',()=>{
+ const d='2026-10-21';
+ const a=makePV(d,'A',[{minute:600,pot:20},{minute:605,pot:21},
+  {minute:610,pot:22},{minute:615,pot:21},{minute:620,pot:26},{minute:625,pot:23}]);
+ const b=makePV(d,'B',[{minute:600,pot:18},{minute:610,pot:19},
+  {minute:620,pot:20},{minute:625,pot:21}]);
+ const report=solarGapAudit([a,b],d);
+ assert.equal(report.first,'10:00');
+ assert.equal(report.last,'10:25');
+ assert.equal(report.joint,4);
+ assert.equal(report.issues.length,2);
+ assert.equal(report.totals.onlyA,2);
+ assert.equal(report.totals.onlyB,0);
+ assert.equal(report.totals.bothMissing,0);
+ assert.equal(report.totals.possibleOffset,2);
+ assert.deepEqual(report.issues.map(x=>x.time),['10:05','10:15']);
+ assert.ok(report.issues.every(x=>x.reason==='sin-B'));
+});
+test('diagnóstico distingue ambos ausentes de muestras descartadas por potencia',()=>{
+ const d='2026-10-21';
+ const a=makePV(d,'A',[{minute:600,pot:20},{minute:605,pot:22},
+  {minute:615,pot:20}]);
+ const b=makePV(d,'B',[{minute:600,pot:20},
+  {minute:605,pot:null,raw:38000},
+  {minute:615,pot:21}]);
+ const r=solarGapAudit([a,b],d);
+ assert.equal(r.joint,2);
+ assert.equal(r.issues.length,2);
+ assert.equal(r.issues[0].reason,'B-invalidado');
+ assert.equal(r.issues[0].b,'Potencia pendiente');
+ assert.equal(r.issues[1].reason,'sin-A-ni-B');
+ assert.equal(r.totals.invalid,1);
+ assert.equal(r.totals.bothMissing,1);
+});
+test('marcas cercanas a límite de casilla pueden desalinear muestras A/B',()=>{
+ const d='2026-10-21';
+ const a={tipo:'A',unidadPotencia:'kW',rows:[
+  {ts:d+'T11:00:00+02:00',pot:20},
+  {ts:d+'T11:12:29+02:00',pot:27},
+  {ts:d+'T11:25:00+02:00',pot:24}]};
+ const b={tipo:'B',unidadPotencia:'kW',rows:[
+  {ts:d+'T11:00:00+02:00',pot:18},
+  {ts:d+'T11:12:31+02:00',pot:25},
+  {ts:d+'T11:25:00+02:00',pot:23}]};
+ const report=solarGapAudit([a,b],d);
+ assert.equal(report.joint,2);
+ assert.equal(report.totals.onlyA,1);
+ assert.equal(report.totals.onlyB,1);
+ assert.equal(report.totals.possibleOffset,2);
+ assert.match(report.interpretation,/no prueba/);
+});
+test('CSV de huecos solo contiene fecha hora motivo y diagnóstico no validador',()=>{
+ const d='2026-10-21';
+ const a=makePV(d,'A',[{minute:600,pot:21},{minute:605,pot:24},{minute:610,pot:25}]);
+ const b=makePV(d,'B',[{minute:600,pot:12},{minute:610,pot:13}]);
+ const report=solarGapAudit([a,b],d);
+ const csv=solarGapCsv(report);
+ assert.match(csv,/2026-10-21;10:05;B sin fila, A con potencia válida;Válido;Sin fila;POSIBLE/);
+ assert.equal(report.issues.length,1);
+ assert.equal(csv.trim().split('\r\n').length,2);
 });

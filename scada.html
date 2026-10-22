@@ -173,6 +173,16 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
 @media(max-width:980px){.synoptic-duo{grid-template-columns:1fr}.synoptic-duo>.panel{min-height:auto}.synoptic-duo .flow{min-height:275px}}
 @media(max-width:880px){.panels{grid-template-columns:1fr}.panels .rightcol{grid-column:auto}.synoptic-duo .flow{min-height:230px}}
 @media(max-width:570px){.energy-flow-nodes{grid-template-columns:minmax(0,1fr) 12px minmax(0,1fr) 12px minmax(0,1fr)}.energy-flow-arrow{font-size:15px}.energy-node{min-height:106px}.energy-node strong{font-size:13px}.energy-node-name{font-size:8px}.energy-grid-flows strong{font-size:16px}.energy-production-totals strong{font-size:16px}}
+
+/* Detalle de huecos de producción: solo dentro de la ventana FV diurna. */
+.solar-gap-diagnosis{padding:12px 0 4px;border-top:1px solid #36535c;margin-top:12px}
+.solar-gap-top{display:flex;justify-content:space-between;align-items:center;gap:9px;flex-wrap:wrap}
+.solar-gap-top strong{font-size:12px;color:#dce9ee}
+.solar-gap-top button{font-size:11px;padding:6px 11px}
+#solarGapSummary{font-size:12px;margin:8px 0 5px}
+.solar-gap-scroll{max-height:310px;overflow:auto}
+.solar-gap-scroll thead{position:sticky;top:0;background:#162731;z-index:1}
+.solar-gap-diagnosis td:nth-child(5){color:#e7c778}
 </style>
 </head>
 <body><div class="frame">
@@ -261,6 +271,21 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
    </table>
   </div>
   <p class="foot">Solarman A/B y A+B son intervalos de 5 minutos con potencia válida. «Originales A/B» cuenta filas con fecha de cada inversor; «Sin validar» son potencias originales conservadas pero excluidas de las curvas. Los huecos interiores no cuentan la noche. Los datos no se interpolan; leer este diagnóstico no consulta proveedores.</p>
+  <div class="solar-gap-diagnosis" id="solarGapDiagnosis">
+   <div class="solar-gap-top">
+    <strong>¿De dónde vienen los huecos de Solarman A/B?</strong>
+    <button type="button" id="solarGapExport" title="Genera el CSV de huecos desde los datos locales. No llama a la API.">Exportar diagnóstico CSV</button>
+   </div>
+   <p id="solarGapSummary" role="status">Analizando el día seleccionado con datos locales…</p>
+   <p id="solarGapCauses" class="muted tiny"></p>
+   <div class="coverage-table-wrap solar-gap-scroll">
+    <table class="coverage-table" aria-label="Diagnóstico de huecos de los inversores A y B">
+     <thead><tr><th>Hora</th><th>Origen del hueco</th><th>Inversor A</th><th>Inversor B</th><th>Desalineación ±5 min*</th></tr></thead>
+     <tbody id="solarGapRows"></tbody>
+    </table>
+   </div>
+   <p class="foot" id="solarGapNote">* Las casillas cercanas son solo un indicio de desfase. Una fila ausente en la copia local no permite atribuir la causa al inversor, al datalogger ni a la API Solarman.</p>
+  </div>
  </details>
  <div id="pvDayAudit" role="status" class="pv-day-audit" hidden></div>
  <p id="notice" role="status">Leyendo señales guardadas…</p>
@@ -466,6 +491,6 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
    <p class="footnote">No hay funciones de mando sobre KSTAR ni confirmación de estado «en línea». Una muestra reciente o histórica no garantiza ausencia de averías.</p>
  </section>
 </main></div>
-<script type="module" src="./scada-app.mjs?v=20261022l"></script>
+<script type="module" src="./scada-app.mjs?v=20261022m"></script>
 </body>
 </html>

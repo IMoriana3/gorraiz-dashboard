@@ -1,5 +1,5 @@
 import {availableDays,buildSeries,numeric} from './scada-data.mjs';
-import {spcBacklog,dailyCoverage,dailyPvInventory,pvDayDiagnosis} from './scada-coverage.mjs';
+import {spcBacklog,dailyCoverage,dailyPvInventory,pvDayDiagnosis,solarGapAudit,solarGapCsv} from './scada-coverage.mjs';
 import {contrastDay,contrastCsv} from './scada-contrast.mjs';
 import {signedExportKW,signedExportSeries} from './scada-grid-sign.mjs';
 import {coherentPowerSnapshot,independentLatestTimes} from './scada-snapshot.mjs';
@@ -12,6 +12,7 @@ const fmt=new Intl.NumberFormat('es-ES',{maximumFractionDigits:1});
 const fmt2=new Intl.NumberFormat('es-ES',{maximumFractionDigits:2});
 const paints={generation:'#48d18a',consumption:'#6ebcff',import:'#f27478',export:'#efc357',a:'#76d6cf',b:'#8bdb97'};
 let stored=[],day='',range=1,charts={},pvBusy=false,autoTimer=null;
+let currentSolarGapAudit=null;
 function madridToday(){
   const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Madrid',
     year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
@@ -250,6 +251,42 @@ function paintCoverageByDay(r){
    const note=document.createElement('span');
    note.textContent=diagnosis.message;
    audit.append(heading,note);
+ }
+ // El diagnóstico usa solo las filas FV ya importadas; NO llama a Solarman.
+ // Dentro de una vista semanal, se audita el día del selector superior.
+ const gaps=solarGapAudit(stored,day);
+ currentSolarGapAudit=gaps;
+ const grouped=[
+  'Ambos sin fila: '+gaps.totals.bothMissing,
+  'Solo A tiene potencia válida: '+gaps.totals.onlyA,
+  'Solo B tiene potencia válida: '+gaps.totals.onlyB,
+  'Alguna fila sin potencia validada: '+gaps.totals.invalid,
+  'Posible diferencia de casilla ±5 min: '+gaps.totals.possibleOffset
+ ];
+ text('solarGapSummary',gaps.first?
+   'Fecha '+day+' · ventana FV '+gaps.first+'–'+gaps.last+
+   ' · '+gaps.joint+' casillas conjuntas válidas y '+
+   gaps.issues.length+' huecos interiores.':
+   'Fecha '+day+' · no existen dos casillas conjuntas válidas para delimitar una ventana de generación.');
+ text('solarGapCauses',grouped.join(' · '));
+ text('solarGapNote',gaps.interpretation);
+ const gapBody=$('solarGapRows');
+ gapBody.replaceChildren();
+ for(const entry of gaps.issues.slice(0,80)){
+  const tr=document.createElement('tr');
+  for(const value of [entry.time,entry.description,entry.a,entry.b,
+    entry.possibleOffset?'Posible':'No']){
+    const cell=document.createElement('td');
+    cell.textContent=value;
+    tr.appendChild(cell);
+  }
+  gapBody.appendChild(tr);
+ }
+ if(gaps.issues.length>80){
+  const tr=document.createElement('tr'),cell=document.createElement('td');
+  cell.colSpan=5;cell.textContent='Se muestran los primeros 80 de '+
+    gaps.issues.length+' huecos. Exporta el CSV para consultar todos.';
+  tr.appendChild(cell);gapBody.appendChild(tr);
  }
 }
 function runContrast(){
@@ -643,6 +680,16 @@ $('fetchPendingSPC').addEventListener('click',async()=>{
   $('spcDownloadHasta').dataset.manualChoice='';
   await reload({keepDay:true,sinRed:true});
  }
+});
+$('solarGapExport').addEventListener('click',()=>{
+ if(!currentSolarGapAudit)return;
+ const contents=solarGapCsv(currentSolarGapAudit);
+ const url=URL.createObjectURL(new Blob([contents],{type:'text/csv;charset=utf-8'}));
+ const a=document.createElement('a');
+ a.href=url;
+ a.download='gorraiz_huecos_solarman_'+currentSolarGapAudit.date+'.csv';
+ a.hidden=true;document.body.appendChild(a);a.click();a.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
 $('contrastShift').addEventListener('input',runContrast);
 $('contrastLoad').addEventListener('change',runContrast);

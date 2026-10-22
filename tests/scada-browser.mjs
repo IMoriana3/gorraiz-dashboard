@@ -295,6 +295,9 @@ try {
   assert.match(await page.locator('#blankDetail').innerText(),/No hay muestras válidas/);
   assert.match(await page.locator('#pvDayAudit').innerText(),/No constan filas originales FV/);
   assert.match(await page.locator('#coverageDayRows').textContent(),/0 \/ 0/);
+  assert.match(await page.locator('#solarGapSummary').textContent(),/no existen dos casillas conjuntas/);
+  assert.equal(await page.locator('#solarGapRows tr').count(),0);
+  assert.equal(requests,0,'consultar el origen de huecos FV no consume Solarman');
   assert.equal(requests,0,'diagnosticar las fuentes originales no consume cuota Solarman');
   await page.locator('.scada-nav [data-view-link="red"]').click();
   await page.waitForFunction(()=>document.querySelector('#blankDetail')?.textContent.includes('No hay intervalos KSTAR'));
@@ -302,7 +305,14 @@ try {
   await page.locator('#lastSpc').click();
   await page.waitForFunction(()=>document.querySelector('#day')?.value==='2026-10-19');
   assert.equal(await page.locator('#blankState').isVisible(),false);
-  assert.equal(requests,0,'seleccionar último SPC no consulta al proveedor');
+  await page.waitForFunction(()=>document.querySelector('#solarGapSummary')?.textContent.includes('ventana FV'));
+  assert.match(await page.locator('#solarGapSummary').textContent(),/casillas conjuntas válidas/);
+  await page.locator('#dailyCoverageDetail summary').click();
+  assert.equal(await page.locator('#solarGapExport').isVisible(),true);
+  const download=page.waitForEvent('download');
+  await page.locator('#solarGapExport').click();
+  assert.match((await download).suggestedFilename(),/^gorraiz_huecos_solarman_2026-10-19\.csv$/);
+  assert.equal(requests,0,'exportar CSV de huecos no contacta al proveedor Solarman');
   const views=['planta','inversores','red','cotejo','historicos','diagnostico','general'];
   const chartByView={planta:'plantChart',inversores:'inverterAChart',
     red:'redDetailChart',cotejo:'contrastChart',historicos:'historyChart',general:'mainChart'};
