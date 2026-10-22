@@ -5,8 +5,6 @@ const fmt=new Intl.NumberFormat('es-ES',{maximumFractionDigits:1});
 const fmt2=new Intl.NumberFormat('es-ES',{maximumFractionDigits:2});
 const paints={generation:'#48d18a',consumption:'#6ebcff',import:'#f27478',export:'#efc357',a:'#76d6cf',b:'#8bdb97'};
 let stored=[],day='',range=1,charts={},pvBusy=false,autoTimer=null,lastPvCall=0;
-const dateKey=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Madrid',year:'numeric',month:'2-digit',day:'2-digit'})
-  .format(new Date()).split('/').reverse().join('-');
 function madridToday(){
   const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Madrid',
     year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
@@ -41,7 +39,8 @@ async function storePV(data,onDate){
   const rows=data[type].map(x=>({ts:new Date(x.ts),pot:numeric(x.pot),
      acum:numeric(x.acum),dia:numeric(x.dia)})).filter(x=>Number.isFinite(+x.ts));
   if(!rows.length)continue;
-  entries.push({id:type+'|SCADA Solarman '+onDate,tipo:type,nombre:'SCADA Solarman '+onDate,rows});
+  entries.push({id:type+'|SCADA Solarman '+onDate,tipo:type,nombre:'SCADA Solarman '+onDate,
+    updatedAt:new Date().toISOString(),rows});
  }
  if(!entries.length)throw new Error('El Worker no devolvió muestras válidas de ninguno de los inversores.');
  const db=await getDb();
@@ -68,7 +67,10 @@ function makeSeries(label,values,color,dashed=false){
   borderDash:dashed?[5,4]:[],fill:false};
 }
 function paint(canvasId,series,labels){
- if(typeof Chart==='undefined')return;
+ if(typeof Chart==='undefined'){
+  $('notice').textContent='Chart.js no está disponible: comprueba la conexión con el CDN antes de interpretar las gráficas.';
+  return;
+ }
  charts[canvasId]?.destroy();
  charts[canvasId]=new Chart($(canvasId),{type:'line',data:{labels,datasets:series},options:chartStyle()});
 }
