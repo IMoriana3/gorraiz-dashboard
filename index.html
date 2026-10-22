@@ -188,6 +188,15 @@ input[type=file]{display:none}
         <button class="btn btn2" id="btnCentroSubir" type="button" onclick="subeHistoricoLocal()" style="padding:6px 12px;font-size:11px">↑ Compartir histórico ya guardado</button>
         <a href="./scada.html" class="hint">Abrir SCADA ↗</a>
       </div>
+      <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap">
+        <label for="unidadXlsxLegacy">XLSX antiguos sin unidad:</label>
+        <select id="unidadXlsxLegacy" title="No se modifican los originales; solo la copia enviada al histórico central">
+          <option value="desconocida" selected>Conservar potencia sin validar (seguro)</option>
+          <option value="W">Confirmado: potencia en W (se convierte a kW)</option>
+          <option value="kW">Confirmado: potencia ya en kW</option>
+        </select>
+      </div>
+      <div class="hint">Si los XLSX antiguos no guardaron su unidad, la base central conservará las cifras originales pero no dibujará potencias dudosas. Selecciona W o kW solo cuando lo hayas comprobado en los ficheros. No afecta a Solarman ni a los datos locales.</div>
       <div id="centroEstado" class="hint" role="status">Pendiente de consultar la base común.</div>
     </div>
     <div class="az" id="zSpc">
@@ -1593,8 +1602,13 @@ function unidadPotenciaLocal(f){
  if(/^Solarman(?:\s|$)|^SCADA Solarman(?:\s|$)/i.test(nombre))return 'W';
  // El histórico central ya contiene potencias estandarizadas en kW.
  if(/^Histórico central Gorraiz$|^Compartido(?:\s|$)/i.test(nombre))return 'kW';
- // En los XLSX viejos se descartó el encabezado con unidad al importar.
- // No cabe afirmar si el número en 'Ficheros' era W o kW; conservar bruto.
+ // Los XLSX viejos perdieron la unidad al almacenar sus filas. El usuario
+ // puede confirmarla para la copia compartida; por defecto se pone en
+ // cuarentena y ningún valor se presenta como kW sin evidencia.
+ if(nombre==='Ficheros'){
+   const confirmed=$('unidadXlsxLegacy')?.value;
+   return confirmed==='W'||confirmed==='kW'?confirmed:'desconocida';
+ }
  return 'desconocida';
 }
 function fuenteDiaNormalizada(tipo,f,r){
