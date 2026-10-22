@@ -64,7 +64,10 @@ test('rechaza planta ajena y tipos/formato peligrosos',()=>{
  const wrongMeter=spc();wrongMeter.payload.meta.meterId='AJENO';
  assert.throws(()=>normalizeHistoryItem(wrongMeter,ENV),/identificador/);
  assert.throws(()=>normalizeHistoryItem({...inv(),tipo:'I'},ENV),/Tipo o fecha/);
- assert.throws(()=>normalizeHistoryItem({...inv(),rows:[{ts:DAY+'T10:00:00',pot:900}]},ENV),/Potencia/);
+ const unusual=normalizeHistoryItem({...inv(),rows:[{ts:DAY+'T10:00:00',pot:900,dia:10}]},ENV);
+ assert.equal(unusual.rows[0].pot,null,'no mostrar 900 como si fuesen kW');
+ assert.equal(unusual.rows[0].potSinValidar,900,'conservar el dato bruto');
+ assert.equal(unusual.controlPotencia.muestrasSinVerificar,1);
 });
 test('límite 31 días, no rellena huecos',async()=>{
  const db=fakeStorage();await writeHistory(db,[inv()],ENV);
@@ -93,4 +96,43 @@ test('publicación desde móvil e informe accede al mismo DO y nunca llama a pro
  assert.equal(external.mock.callCount(),0);
  assert.equal(db.memory.has('solarman:ultima_reserva'),false,
    'leer/escribir datos centrales NO debe gastar cupo Solarman');
+});
+
+test('potencia acreditada de Solarman W se convierte a kW sin perder acumulados',async()=>{
+ const db=fakeStorage();
+ const result=await writeHistory(db,[{tipo:'A',fecha:DAY,unidadPotencia:'W',
+   rows:[{ts:DAY+'T10:00:00',pot:35000,dia:85,acum:456789},
+         {ts:DAY+'T10:05:00',pot:42000,dia:89,acum:456793}]}],ENV);
+ assert.equal(result.guardadas,1);assert.equal(result.pendientesPotencia,0);
+ const f=(await readHistory(db,DAY,DAY)).fuentes[0];
+ assert.deepEqual(f.rows.map(r=>r.pot),[35,42]);
+ assert.equal(f.rows[0].dia,85);
+ assert.equal(f.unidadPotencia,'kW');
+});
+test('potencia sospechosa sin unidad no bloquea otros días ni se pierde',async()=>{
+ const db=fakeStorage();
+ const result=await writeHistory(db,[
+  {tipo:'A',fecha:DAY,unidadPotencia:'desconocida',
+   rows:[{ts:DAY+'T10:00:00',pot:35000,dia:85,acum:456789}]},
+  {...inv('B',20),fecha:DAY,unidadPotencia:'kW'}
+ ],ENV);
+ assert.equal(result.guardadas,2);
+ assert.equal(result.pendientesPotencia,1);
+ const data=(await readHistory(db,DAY,DAY)).fuentes;
+ assert.equal(data[0].rows[0].pot,null);
+ assert.equal(data[0].rows[0].potSinValidar,35000);
+ assert.equal(data[1].rows[0].pot,20);
+});
+test('potencia con unidad W fuera del rango del inversor queda registrada en cuarentena',()=>{
+ const record=normalizeHistoryItem({tipo:'A',fecha:DAY,unidadPotencia:'W',
+  rows:[{ts:DAY+'T10:00:00',pot:120000,acum:900,dia:5}]},ENV);
+ assert.equal(record.rows[0].pot,null);
+ assert.equal(record.rows[0].potSinValidar,120000);
+ assert.equal(record.rows[0].acum,900);
+});
+test('no se atribuye unidad kW al XLSX histórico sin metadatos',()=>{
+ const record=normalizeHistoryItem({tipo:'B',fecha:DAY,unidadPotencia:'desconocida',
+  rows:[{ts:DAY+'T10:00:00',pot:20,dia:5,acum:2000}]},ENV);
+ assert.equal(record.rows[0].pot,null);
+ assert.equal(record.rows[0].potSinValidar,20);
 });
