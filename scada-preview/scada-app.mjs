@@ -1,4 +1,5 @@
 import {availableDays,buildSeries,numeric} from './scada-data.mjs';
+import {signedExportKW,signedExportSeries} from '../scada-grid-sign.mjs';
 
 const $=id=>document.getElementById(id);
 const fmt=new Intl.NumberFormat('es-ES',{maximumFractionDigits:1});
@@ -14,6 +15,7 @@ function madridToday(){
 function text(id,value){$(id).textContent=value}
 function kw(v){return v===null||v===undefined?'—':fmt.format(v)+' kW'}
 function kwh(v){return v===null||v===undefined?'—':fmt2.format(v)+' kWh'}
+function kwExport(v){return kw(signedExportKW(v))}
 function hh(key){return key?key.slice(11,16):'—'}
 function safeState(message){text('notice',message)}
 function getDb(){
@@ -99,10 +101,10 @@ function updateDetailPanels(r,labels){
    makeSeries('Inversor B',r.series.b,paints.b,true)];
  const gridCurves=[
    makeSeries('Importación · media estimada',r.series.import,paints.import),
-   makeSeries('Exportación · media estimada',r.series.export,paints.export)];
+   makeSeries('Exportación (−) · media SPC',signedExportSeries(r.series.export),paints.export)];
  const commonCurves=[
    makeSeries('Generación',r.series.generation,paints.generation),
-   makeSeries('Consumo calculado',r.series.consumption,paints.consumption,true),
+   makeSeries('Consumo estimado · SIN VALIDAR',r.series.consumption,paints.consumption,true),
    ...gridCurves];
  text('plantNow',kw(r.last.generation?.value));
  text('plantDay',kwh(r.summary.generation));
@@ -189,34 +191,34 @@ function repaint(){
  const labels=r.keys;
  paint('mainChart',[
   makeSeries('Generación FV · medida',r.series.generation,paints.generation),
-  makeSeries('Consumo · derivado',r.series.consumption,paints.consumption,true),
+  makeSeries('Consumo estimado · SIN VALIDAR',r.series.consumption,paints.consumption,true),
   makeSeries('Importación · media estimada',r.series.import,paints.import),
-  makeSeries('Exportación · media estimada',r.series.export,paints.export)],labels);
+  makeSeries('Exportación (−) · media SPC',signedExportSeries(r.series.export),paints.export)],labels);
  paint('pvChart',[
   makeSeries('Generación',r.series.generation,paints.generation),
   makeSeries('Inversor A',r.series.a,paints.a,true),
   makeSeries('Inversor B',r.series.b,paints.b,true)],labels);
- paint('consChart',[makeSeries('Consumo calculado',r.series.consumption,paints.consumption)],labels);
+ paint('consChart',[makeSeries('Consumo estimado · SIN VALIDAR',r.series.consumption,paints.consumption,true)],labels);
  paint('gridChart',[makeSeries('Importación',r.series.import,paints.import),
-  makeSeries('Exportación',r.series.export,paints.export)],labels);
+  makeSeries('Exportación (−)',signedExportSeries(r.series.export),paints.export)],labels);
 
  updateBlankNotice(r);
  updateDetailPanels(r,labels);
  text('powerGen',kw(r.last.generation?.value));
  text('powerCons',kw(r.last.consumption?.value));
  text('powerImp',kw(r.last.import?.value));
- text('powerExp',kw(r.last.export?.value));
+ text('powerExp',kwExport(r.last.export?.value));
  text('powerSelf',kwh(r.summary.spcAutoconsumption));
  text('subGen',r.last.generation?'Último punto '+hh(r.last.generation.key)+' · Solarman':'Sin medidas A+B simultáneas');
- text('subCons',r.last.consumption?(r.provisional?'Estimación provisional · '+hh(r.last.consumption.key):
-  'Cruce horario validado · '+hh(r.last.consumption.key)):'Pendiente de reloj SPC y ambos inversores');
+ text('subCons',r.last.consumption?(r.provisional?'Estimado NO VALIDADO · ': 'Reloj contrastado · ')+hh(r.last.consumption.key):
+  'Sin pares FV y SPC válidos o estimación desactivada');
  text('subImp',r.last.import?'Media intervalo · '+hh(r.last.import.key):'KSTAR sin intervalos conciliados');
  text('subExp',r.last.export?'Media intervalo · '+hh(r.last.export.key):'KSTAR sin intervalos conciliados');
  text('flowGen',kw(r.last.generation?.value));
  text('flowInv',kw(r.last.generation?.value));
  text('flowLoad',kw(r.last.consumption?.value));
  text('flowImp',kw(r.last.import?.value));
- text('flowExp',kw(r.last.export?.value));
+ text('flowExp',kwExport(r.last.export?.value));
  text('invA',r.last.a?kw(r.last.a.value)+' · '+hh(r.last.a.key):'Sin lectura');
  text('invB',r.last.b?kw(r.last.b.value)+' · '+hh(r.last.b.key):'Sin lectura');
  setDevice('dotA','invA',r.last.a);setDevice('dotB','invB',r.last.b);
