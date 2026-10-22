@@ -111,6 +111,22 @@ try {
   assert.ok(reading.series.every(x=>x.nonNull>=60),JSON.stringify(reading));
   assert.equal(reading.labels,288);
   assert.equal(requests,0,'abrir el SCADA no debe consumir ninguna llamada API');
+  const views=['planta','inversores','red','historicos','diagnostico','general'];
+  const chartByView={planta:'plantChart',inversores:'inverterAChart',
+    red:'redDetailChart',historicos:'historyChart',general:'mainChart'};
+  for(const view of views){
+    await page.locator('.scada-nav [data-view-link="'+view+'"]').click();
+    await page.waitForFunction(v=>document.querySelector('[data-view-panel="'+v+'"]')?.hidden===false,view);
+    assert.equal(await page.locator('.scada-nav [data-view-link="'+view+'"]').getAttribute('aria-current'),'page');
+    assert.equal(await page.locator('[data-view-panel]:visible').count(),1,'solo una vista activa');
+    if(chartByView[view]){
+      const chart=chartByView[view];
+      await page.waitForFunction(id=>!!Chart.getChart(document.getElementById(id)),chart);
+    }else{
+      assert.ok(await page.locator('#diagWarnings p').count()>0,'diagnóstico con validaciones');
+    }
+    assert.equal(requests,0,'navegar entre '+view+' no consume API');
+  }
   await page.locator('#auto').check();
   await page.waitForTimeout(350);
   assert.equal(requests,0,'activar automático tampoco hace llamada inmediata');
@@ -130,6 +146,13 @@ try {
   await page.waitForFunction(()=>document.querySelector('#notice')?.textContent.includes('Cupo Solarman'));
   assert.equal(requests,1,'segundo click no debe provocar segunda consulta');
   await page.setViewportSize({width:390,height:844});
+  assert.equal(await page.locator('.mobile-nav').isVisible(),true,'navegación móvil presente');
+  await page.locator('.mobile-nav [data-view-link="inversores"]').click();
+  await page.waitForFunction(()=>!document.getElementById('view-inversores').hidden);
+  await page.waitForFunction(()=>!!Chart.getChart(document.getElementById('inverterBChart')));
+  assert.equal(requests,1,'navegar en móvil no hace otra consulta');
+  await page.locator('.mobile-nav [data-view-link="general"]').click();
+  await page.waitForFunction(()=>!!Chart.getChart(document.getElementById('mainChart')));
   await page.screenshot({path:join(root,'artifacts/scada-movil-qa.png'),fullPage:true});
   const width=await page.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth);
   assert.ok(width<=3,'desbordamiento horizontal móvil: '+width+' px');
@@ -150,6 +173,11 @@ try {
   assert.equal(await page.locator('#auto').count(),0,
     'la preview no debe ofrecer control automático');
   assert.match(await page.locator('body').innerText(),/SOLO LECTURA/);
+  for(const view of ['planta','inversores','red','historicos','diagnostico','general']){
+    await page.locator('.scada-nav [data-view-link="'+view+'"]').click();
+    await page.waitForFunction(v=>!document.querySelector('[data-view-panel="'+v+'"]').hidden,view);
+    assert.equal(requests,requestsBeforePreview,'vista previa sin peticiones al cambiar a '+view);
+  }
   await page.screenshot({path:join(root,'artifacts/scada-preview-escritorio.png'),fullPage:true});
   await page.setViewportSize({width:390,height:844});
   await page.screenshot({path:join(root,'artifacts/scada-preview-movil.png'),fullPage:true});

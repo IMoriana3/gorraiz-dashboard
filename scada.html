@@ -58,20 +58,52 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
 @media(max-width:1310px){.panels{grid-template-columns: minmax(275px,1fr) minmax(350px,1.5fr)}.rightcol{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr}.cards{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:880px){.frame{grid-template-columns:1fr}aside{display:none}main{padding:0 12px 20px}.panels{grid-template-columns:1fr}.rightcol{grid-column:auto}.charts{grid-template-columns:1fr 1fr}.flow{min-height:265px}.chartbox{height:325px}.card .value{font-size:24px}}
 @media(max-width:570px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.rightcol,.charts{grid-template-columns:1fr}.meter{grid-template-columns:95px 1fr 65px}.topright{gap:8px}.device{min-height:95px}.device .reading{font-size:14px}.energy-row{grid-template-columns:minmax(0,1fr) 18px minmax(0,1fr) 18px minmax(0,1fr)}.arrow{font-size:17px}}
+
+/* Navegación real: enlaces accesibles, vistas independientes y móvil. */
+.scada-view[hidden]{display:none!important}
+.scada-nav{display:flex;flex-direction:column}
+.navitem:focus-visible,.mobile-nav a:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.mobile-nav{display:none}
+.view-head{margin:16px 0 15px}
+.view-head h2{font:700 21px/1.25 'Space Grotesk',sans-serif;margin:0 0 6px}
+.view-head p{color:var(--dim);margin:0;font-size:12px;max-width:880px}
+.detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:12px 0}
+.detail-grid.stats-detail{grid-template-columns:repeat(3,minmax(0,1fr))}
+.detail-chart{position:relative;height:345px;padding:12px 13px 20px}
+.detail-chart.large{height:450px}
+.detail-note{color:var(--dim);font-size:11px;padding:0 14px 12px;margin:0}
+.diag-warnings p{padding:9px 12px;background:#1e3239;border-left:3px solid #d2ab55;border-radius:5px;font-size:12px;margin:8px 0}
+@media(max-width:880px){
+ .mobile-nav{display:flex;gap:7px;overflow-x:auto;padding:3px 2px 12px;scrollbar-width:thin}
+ .mobile-nav .navitem{flex:none;white-space:nowrap;border:1px solid var(--stroke);padding:8px 11px;margin:0;font-size:11px}
+ .detail-grid,.detail-grid.stats-detail{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:570px){.detail-grid,.detail-grid.stats-detail{grid-template-columns:1fr}.detail-chart{height:275px}.detail-chart.large{height:345px}}
 </style>
 </head>
 <body><div class="frame">
 <aside aria-label="Navegación">
  <div class="brand"><span class="logo">↗</span> FACTIUN</div>
- <div class="navitem on">▣ &nbsp; Vista general</div>
- <div class="navitem">▦ &nbsp; Planta FV · 123,84 kWp</div>
- <div class="navitem">▤ &nbsp; 2 × KSTAR G50KT</div>
- <div class="navitem">⇄ &nbsp; Red eléctrica</div>
- <div class="navitem">⌁ &nbsp; Históricos</div>
- <div class="navitem">⚠ &nbsp; Diagnóstico</div>
- <a class="navitem" href="./">↩ &nbsp; Informes de Gorraiz</a>
+ <nav class="scada-nav" aria-label="Secciones del SCADA">
+ <a class="navitem on" href="#general" data-view-link="general" aria-current="page"><span aria-hidden="true">▣</span><span>Vista general</span></a>
+ <a class="navitem" href="#planta" data-view-link="planta"><span aria-hidden="true">▦</span><span>Planta FV · 123,84 kWp</span></a>
+ <a class="navitem" href="#inversores" data-view-link="inversores"><span aria-hidden="true">▤</span><span>2 × KSTAR G50KT</span></a>
+ <a class="navitem" href="#red" data-view-link="red"><span aria-hidden="true">⇄</span><span>Red eléctrica</span></a>
+ <a class="navitem" href="#historicos" data-view-link="historicos"><span aria-hidden="true">⌁</span><span>Históricos</span></a>
+ <a class="navitem" href="#diagnostico" data-view-link="diagnostico"><span aria-hidden="true">⚠</span><span>Diagnóstico</span></a>
+ <a class="navitem" href="./"><span aria-hidden="true">↩</span><span>Informes de Gorraiz</span></a>
+ </nav>
 </aside>
 <main>
+ <nav class="mobile-nav" aria-label="Secciones del SCADA en móvil">
+ <a class="navitem on" href="#general" data-view-link="general" aria-current="page"><span aria-hidden="true">▣</span><span>Vista general</span></a>
+ <a class="navitem" href="#planta" data-view-link="planta"><span aria-hidden="true">▦</span><span>Planta FV · 123,84 kWp</span></a>
+ <a class="navitem" href="#inversores" data-view-link="inversores"><span aria-hidden="true">▤</span><span>2 × KSTAR G50KT</span></a>
+ <a class="navitem" href="#red" data-view-link="red"><span aria-hidden="true">⇄</span><span>Red eléctrica</span></a>
+ <a class="navitem" href="#historicos" data-view-link="historicos"><span aria-hidden="true">⌁</span><span>Históricos</span></a>
+ <a class="navitem" href="#diagnostico" data-view-link="diagnostico"><span aria-hidden="true">⚠</span><span>Diagnóstico</span></a>
+ <a class="navitem" href="./"><span aria-hidden="true">↩</span><span>Informes de Gorraiz</span></a>
+ </nav>
  <header class="top">
   <div><h1>SCADA · Gorraiz</h1><div class="muted tiny">Generación fotovoltaica e intercambio con la red · Amixalan</div></div>
   <div class="topright"><span class="tag" id="state"><i class="dot off"></i> Histórico sin verificar</span><span class="muted tiny mono" id="updated">Última lectura: —</span><a href="./">Ir a informes ↗</a></div>
@@ -88,6 +120,7 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
  </div>
  <div id="rateInfo" class="muted tiny" style="padding:0 0 12px" role="status">Controlando cupo horario de Solarman…</div>
  <p id="notice" role="status">Leyendo señales guardadas…</p>
+ <section id="view-general" class="scada-view" data-view-panel="general" aria-label="Vista general del SCADA">
  <div class="cards" aria-label="Potencias del instante seleccionado">
   <div class="card" style="--c:var(--green)"><div class="cap">☀ &nbsp; Generación total</div><div class="value number" id="powerGen">—</div><div class="sub" id="subGen">kW · Solarman</div></div>
   <div class="card" style="--c:var(--blue)"><div class="cap">⌂ &nbsp; Consumo total</div><div class="value number" id="powerCons">—</div><div class="sub" id="subCons">kW · sin sincronización</div></div>
@@ -149,6 +182,49 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
    <div class="meter" style="--bar:var(--red)"><span>Importación</span><span class="bar"><span class="fill" id="barImp"></span></span><span class="amount" id="dailyImp">—</span></div>
    <p class="footnote">Generación = inversor A + B, ambos con medida. Consumo diario = generación + importación − exportación, solo si hay balance del mismo día y perímetro. Las potencias de red son medias por intervalo obtenidas de contadores acumulados conciliados con el resumen KSTAR. No se usa <code>totalActivePower</code> hasta validar unidades/CT y signo. El refresco de gráficos no llama a APIs. La actualización automática optativa consulta Solarman cada 60 minutos como máximo en este navegador y está apagada de inicio; tampoco consulta al abrir el SCADA. El botón manual utiliza el mismo límite. Una actualización puede consumir varias llamadas internas de la API Solarman, por lo que no se interpreta «1/h» como una única petición al proveedor. KSTAR continúa manual, para días cerrados y sin cron.</p>
   </div>
+ </section>
+ </section>
+
+ <section id="view-planta" class="scada-view" data-view-panel="planta" aria-labelledby="head-planta" hidden>
+   <div class="view-head"><h2 id="head-planta">Planta FV · Generación</h2><p>123,84 kWp DC instalados · dos inversores KSTAR G50KT de 50 kW AC nominales. Curvas de potencia AC medida por Solarman, no simulaciones.</p></div>
+   <div class="detail-grid stats-detail">
+    <div class="card" style="--c:var(--green)"><div class="cap">Potencia total · última muestra</div><div class="value" id="plantNow">—</div><div class="sub">Suma solo si coinciden A y B</div></div>
+    <div class="card" style="--c:var(--cyan)"><div class="cap">Energía diaria · último día</div><div class="value" id="plantDay">—</div><div class="sub">Lectura del acumulado de ambos inversores</div></div>
+    <div class="card" style="--c:var(--blue)"><div class="cap">Puntos completos · intervalo</div><div class="value" id="plantPoints">—</div><div class="sub">Muestras con A+B</div></div>
+   </div>
+   <section class="panel"><div class="ptop"><h2>Curvas de generación FV y cada inversor</h2><span class="muted tiny">Potencia medida · kW</span></div><div class="detail-chart"><canvas id="plantChart" aria-label="Generación FV e inversores A y B"></canvas></div></section>
+   <p class="footnote">Las diferencias entre inversores no prueban por sí mismas una avería: los subcampos tienen orientaciones distintas. «A/B» son identificadores de las fuentes registradas.</p>
+ </section>
+ <section id="view-inversores" class="scada-view" data-view-panel="inversores" aria-labelledby="head-inversores" hidden>
+   <div class="view-head"><h2 id="head-inversores">Inversores · KSTAR G50KT</h2><p>Señales disponibles de Solarman, con sus propias curvas y última marca de tiempo. No se muestran órdenes ni estados de alarma del equipo que la API no haya proporcionado.</p></div>
+   <div class="detail-grid">
+     <section class="panel"><div class="ptop"><h2>Inversor A · 50 kW nominales AC</h2><span id="invDetailA" class="muted tiny">Sin muestra</span></div><div class="detail-chart"><canvas id="inverterAChart" aria-label="Potencia del inversor A"></canvas></div><p class="detail-note" id="invCoverageA">Cobertura pendiente</p></section>
+     <section class="panel"><div class="ptop"><h2>Inversor B · 50 kW nominales AC</h2><span id="invDetailB" class="muted tiny">Sin muestra</span></div><div class="detail-chart"><canvas id="inverterBChart" aria-label="Potencia del inversor B"></canvas></div><p class="detail-note" id="invCoverageB">Cobertura pendiente</p></section>
+   </div>
+ </section>
+ <section id="view-red" class="scada-view" data-view-panel="red" aria-labelledby="head-red" hidden>
+   <div class="view-head"><h2 id="head-red">Red eléctrica · KSTAR SPC01</h2><p>Intercambio de energía obtenido de los acumulados del contador. La potencia se estima como media de cada intervalo, no como lectura instantánea confirmada.</p></div>
+   <div class="detail-grid stats-detail">
+     <div class="card" style="--c:var(--red)"><div class="cap">Importación diaria</div><div class="value" id="redImpDay">—</div><div class="sub">Resumen KSTAR · kWh</div></div>
+     <div class="card" style="--c:var(--yellow)"><div class="cap">Exportación diaria</div><div class="value" id="redExpDay">—</div><div class="sub">Resumen KSTAR · kWh</div></div>
+     <div class="card" style="--c:var(--cyan)"><div class="cap">Intervalos de red válidos</div><div class="value" id="redPoints">—</div><div class="sub">Tramos conciliados con el contador</div></div>
+   </div>
+   <section class="panel"><div class="ptop"><h2>Importación y exportación · kW medios</h2><span class="muted tiny" id="redClock">Huso del medidor por verificar</span></div><div class="detail-chart"><canvas id="redDetailChart" aria-label="Curvas de importación y exportación"></canvas></div></section>
+ </section>
+ <section id="view-historicos" class="scada-view" data-view-panel="historicos" aria-labelledby="head-historicos" hidden>
+   <div class="view-head"><h2 id="head-historicos">Históricos · Comparación de señales</h2><p>El selector de fecha y los botones 24 h / 7 días de la parte superior filtran este gráfico sin consultar la API. Los huecos indican muestras ausentes; no se interpolan.</p></div>
+   <section class="panel"><div class="ptop"><h2>Histórico de generación, consumo e intercambio</h2><span class="muted tiny" id="historyDates">—</span></div><div class="detail-chart large"><canvas id="historyChart" aria-label="Histórico de cuatro señales eléctricas"></canvas></div></section>
+   <p class="footnote" id="historyCoverage">Sin cobertura histórica calculada.</p>
+ </section>
+ <section id="view-diagnostico" class="scada-view" data-view-panel="diagnostico" aria-labelledby="head-diagnostico" hidden>
+   <div class="view-head"><h2 id="head-diagnostico">Diagnóstico · Calidad de datos</h2><p>Estado de las lecturas locales y validaciones del cálculo; no sustituye a las alarmas de hardware de los inversores ni confirma comunicaciones en tiempo real.</p></div>
+   <div class="detail-grid stats-detail">
+     <div class="card" style="--c:var(--green)"><div class="cap">Muestras FV simultáneas</div><div class="value" id="diagPv">—</div><div class="sub">Ambos inversores con valor válido</div></div>
+     <div class="card" style="--c:var(--yellow)"><div class="cap">Intervalos KSTAR</div><div class="value" id="diagGrid">—</div><div class="sub">Derivados y conciliados</div></div>
+     <div class="card" style="--c:var(--blue)"><div class="cap">Cruces para consumo</div><div class="value" id="diagCons">—</div><div class="sub">Solo pares temporalmente compatibles</div></div>
+   </div>
+   <section class="panel"><div class="ptop"><h2>Validaciones y limitaciones</h2><span class="muted tiny">Última selección</span></div><div class="pbody"><p id="diagClock" class="muted">Sin verificación de relojes</p><div id="diagWarnings" class="diag-warnings"></div></div></section>
+   <p class="footnote">No hay funciones de mando sobre KSTAR ni confirmación de estado «en línea». Una muestra reciente o histórica no garantiza ausencia de averías.</p>
  </section>
 </main></div>
 <script type="module" src="./scada-app.mjs"></script>
