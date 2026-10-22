@@ -1490,10 +1490,13 @@ async function bajaHistoricoCompartido({todo=false}={}){
   }
   // El histórico remoto se coloca antes de las fuentes locales: si se ha
   // descargado una corrección más reciente en este equipo, prevalece la local.
+  // Recuperar 45 días NO puede borrar otros meses remotos ya importados.
   for(const tipo of ['A','B']){
    if(nuevas[tipo].length){
     const nombre='Histórico central Gorraiz';
-    PROD_FUENTES[tipo]=[{nombre,rows:nuevas[tipo]},
+    const antes=PROD_FUENTES[tipo].find(x=>x.nombre===nombre)?.rows||[];
+    const unidos=new Map([...antes,...nuevas[tipo]].map(r=>[+r.ts,r]));
+    PROD_FUENTES[tipo]=[{nombre,rows:[...unidos.values()].sort((a,b)=>a.ts-b.ts)},
       ...PROD_FUENTES[tipo].filter(x=>x.nombre!==nombre)];
     mergeProd(tipo);
    }
