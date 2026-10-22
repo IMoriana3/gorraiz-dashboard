@@ -1,4 +1,5 @@
 import {normalizeSourcePower} from './scada-units.mjs';
+import {spcManualRange} from './scada-spc-range.mjs';
 
 // Acceso a archivo común para el SCADA (mismo Durable Object que Informe).
 // Lectura/guardado NO consulta Solarman ni el proveedor KSTAR; SPC solo se
@@ -189,56 +190,121 @@ export async function pushShared(){
  }finally{busy=false;if(btn)btn.disabled=false}
 }
 
-export async function downloadSpcDay(date){
- if(busy)return false;
- if(!date||date>=today()){notify('SPC solo admite un día cerrado anterior a hoy (Madrid).');return false}
- // Si el día SPC ya está completo en IndexedDB no hacer otra solicitud HTTP.
- const local=await readLocal().catch(()=>[]);
- if(local.some(x=>x.tipo==='S'&&x.fecha===date&&x.payload?.meta?.completo===true)){
-   notify('SPC '+date+': día cerrado ya guardado. No se ha vuelto a consultar a KSTAR.');
-   return false;
- }
- const url=localStorage.getItem('gorraiz_kstar_url_v1')||'';
- const key=localStorage.getItem('gorraiz_kstar_clave_v1')||
-   sessionStorage.getItem('gorraiz_kstar_key_sesion_v1')||'';
- let endpoint,headers;
+// Una acción manual de intervalo cerrado de 1–14 días. El servidor KSTAR
+// mantiene su contrato seguro: /spc/intercambio recibe día único.
+export async function downloadSpcRange(desde,hasta){
+ let dates;
+ try{dates=spcManualRange(desde,hasta,today())}
+ catch(e){notify('Rango SPC no válido: '+e.message);return null}
+ if(busy){notify('Hay una operación de sincronización en curso. No se inicia otra descarga SPC.');return null}
+ busy=true;
+ const mainButton=$('fetchSPC'),pendingButton=$('fetchPendingSPC');
+ if(mainButton)mainButton.disabled=true;
+ if(pendingButton)pendingButton.disabled=true;
+ const result={desde,hasta,total:dates.length,downloaded:0,partial:0,skipped:0,
+   central:0,localOnly:0,errors:[],stopped:false};
+ const summary=()=>{
+   return 'SPC '+desde+(desde===hasta?'':' → '+hasta)+
+    ': '+result.downloaded+' días completos descargados, '+
+    result.partial+' parciales, '+result.skipped+' ya guardados, '+
+    result.central+' en base central, '+result.localOnly+' solo locales, '+
+    result.errors.length+' errores. Solarman no consultado.';
+ };
  try{
-  if(url){
-   const worker=new URL(url);
-   if(worker.protocol!=='https:'||!worker.hostname.endsWith('.workers.dev')||worker.username||
-      worker.password||worker.search||worker.hash||worker.pathname!=='/'||key.length<24)
-      throw Error('Worker KSTAR aislado o su clave no son válidos.');
-   endpoint=worker.origin+'/spc/intercambio';
-   headers={'content-type':'application/json','X-KSTAR-Test-Key':key};
-  }else{
-   // Mismo proveedor desde el Worker central cuando este tenga SPC activado.
-   // No consulta jamás la ruta /produccion.
-   const main=settings();
-   endpoint=main.url+'/spc/intercambio';
-   headers={'content-type':'application/json','X-Panel-Key':main.key};
-  }
+   const local=await readLocal();
+   const complete=new Set(local.filter(x=>x.tipo==='S'&&x.fecha&&
+     x.payload?.meta?.completo===true).map(x=>x.fecha));
+   let endpoint,headers;
+   // Antes de contactar al portal, resolver la conexión una sola vez.
+   const remaining=dates.filter(d=>!complete.has(d));
+   if(remaining.length){
+     const url=localStorage.getItem('gorraiz_kstar_url_v1')||'';
+     const key=localStorage.getItem('gorraiz_kstar_clave_v1')||
+       sessionStorage.getItem('gorraiz_kstar_key_sesion_v1')||'';
+     if(url){
+       const worker=new URL(url);
+       if(worker.protocol!=='https:'||!worker.hostname.endsWith('.workers.dev')||
+         worker.username||worker.password||worker.search||worker.hash||
+         worker.pathname!=='/'||key.length<24)
+         throw Error('El Worker KSTAR aislado o su clave no son válidos.');
+       endpoint=worker.origin+'/spc/intercambio';
+       headers={'content-type':'application/json','X-KSTAR-Test-Key':key};
+     }else{
+       const cfg=settings();
+       endpoint=cfg.url+'/spc/intercambio';
+       headers={'content-type':'application/json','X-Panel-Key':cfg.key};
+     }
+   }
+   for(let i=0;i<dates.length;i++){
+     const date=dates[i];
+     if(complete.has(date)){
+       result.skipped++;
+     }else{
+       notify('SPC '+(i+1)+'/'+dates.length+
+         ': consultando KSTAR del '+date+'; un único día por solicitud…');
+       try{
+         const response=await fetch(endpoint,{method:'POST',cache:'no-store',headers,
+           body:JSON.stringify({desde:date,hasta:date})});
+         const p=await response.json().catch(()=>({}));
+         if(!response.ok){
+           const error=new Error(p.error||('KSTAR SPC HTTP '+response.status));
+           error.status=response.status;
+           throw error;
+         }
+         if(p?.meta?.fuente!=='spc'||
+           p.meta.stationId!=='2026032317114373'||
+           p.meta.meterId!=='210261430F3060020000661'||
+           p.daily?.length!==1||p.daily[0]?.date!==date||
+           !Array.isArray(p.rows)||
+           (p.meta.desde&&p.meta.desde!==date)||
+           (p.meta.hasta&&p.meta.hasta!==date))
+           throw Error('SPC devolvió estación, contador, día o estructura inesperados.');
+         // Primero guardar la copia local; un fallo central nunca la borra.
+         await writeLocal([{tipo:'S',fecha:date,payload:p}]);
+         const closed=p.meta.completo===true;
+         if(closed)result.downloaded++;
+         else result.partial++;
+         try{
+           const saved=await central('/historico/guardar',{items:[
+             {tipo:'S',fecha:date,payload:p}]});
+           if(saved.guardadas!==1)
+             throw Error(saved.incidencias?.[0]?.motivo||
+               'La base central no confirmó el día SPC.');
+           result.central++;
+         }catch(error){
+           result.localOnly++;
+           result.errors.push(date+': copia local conservada; falta base central: '+error.message);
+         }
+       }catch(e){
+         result.errors.push(date+': '+e.message);
+         // No repetir autenticaciones inválidas ni insistir frente a 429.
+         if([401,403,429].includes(e.status)){
+           result.stopped=true;
+           break;
+         }
+       }
+     }
+     notify('SPC '+(i+1)+'/'+dates.length+' · '+summary()+
+       (result.errors.length?' Última incidencia: '+result.errors.at(-1):''));
+   }
+   notify('Descarga SPC por rango finalizada · '+summary()+
+     (result.stopped?' Detenida para no insistir ante el rechazo del Worker.':'')+
+     (result.localOnly?' Usa «Compartir copia local» para reintentar la base central.':'')+
+     (result.errors.length?' Incidencias: '+
+       result.errors.slice(0,2).join(' | ')+
+       (result.errors.length>2?' y '+(result.errors.length-2)+' más':'')+'.':''));
  }catch(e){
-  notify('No se pudo preparar KSTAR: '+e.message+
-    '. Configura su Worker aislado o el Worker central con SPC de solo lectura.');
-  return false;
+   result.errors.push('Error previo a la descarga: '+e.message);
+   notify('SPC '+desde+' → '+hasta+': '+e.message+
+     '. No se ha consultado Solarman. Se mantiene el histórico existente.');
+ }finally{
+   busy=false;
+   if(mainButton)mainButton.disabled=false;
+   if(pendingButton)pendingButton.disabled=false;
  }
- busy=true;const btn=$('fetchSPC');if(btn)btn.disabled=true;
- try{
-  const response=await fetch(endpoint,{
-   method:'POST',cache:'no-store',headers,
-   body:JSON.stringify({desde:date,hasta:date})});
-  const p=await response.json().catch(()=>({}));
-  if(!response.ok)throw Error(p.error||('Respuesta SPC HTTP '+response.status));
-  if(p?.meta?.fuente!=='spc'||p.meta.stationId!=='2026032317114373'||
-    p.meta.meterId!=='210261430F3060020000661'||p.daily?.[0]?.date!==date||
-    !Array.isArray(p.rows))throw Error('SPC devolvió una identidad o formato incorrectos.');
-  await writeLocal([{tipo:'S',fecha:date,payload:p}]);
-  try{
-   const saved=await central('/historico/guardar',{items:[{tipo:'S',fecha:date,payload:p}]});
-   if(saved.guardadas!==1)throw Error(saved.incidencias?.[0]?.motivo||'El archivo central no confirmó el día');
-   notify('SPC '+date+': '+p.rows.length+' muestras descargadas · día guardado en archivo compartido. Solarman no consultado.');
-  }catch(e){notify('SPC '+date+' guardado localmente, pero no se pudo copiar al servidor: '+e.message)}
-  return true;
- }catch(e){notify('No se pudo descargar SPC: '+e.message+'. Sin borrar histórico previo.');return false}
- finally{busy=false;if(btn)btn.disabled=false}
+ return result;
+}
+export async function downloadSpcDay(date){
+ const r=await downloadSpcRange(date,date);
+ return Boolean(r&&(r.downloaded+r.partial)>0);
 }

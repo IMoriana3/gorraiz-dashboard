@@ -2,7 +2,7 @@ import {availableDays,buildSeries,numeric} from './scada-data.mjs';
 import {spcBacklog,dailyCoverage,dailyPvInventory,pvDayDiagnosis} from './scada-coverage.mjs';
 import {contrastDay,contrastCsv} from './scada-contrast.mjs';
 import {signedExportKW,signedExportSeries} from './scada-grid-sign.mjs';
-import {pullShared,pushShared,downloadSpcDay} from './scada-sync.mjs';
+import {pullShared,pushShared,downloadSpcDay,downloadSpcRange} from './scada-sync.mjs';
 import {SCADA_POLL_MS,SCADA_QUOTA_KEY,SCADA_LOCK_NAME,quotaState,reserveAttempt} from './scada-quota.mjs';
 
 const $=id=>document.getElementById(id);
@@ -191,9 +191,12 @@ function showSourceCoverage(){
  button.disabled=!closed.length;
  button.dataset.date=closed.at(-1)||'';
  const backlog=spcBacklog(stored,madridToday());
- const spcDate=$('spcDownloadDate');
- if(!spcDate.dataset.manualChoice)spcDate.value=backlog.firstPending||backlog.lastClosed||'';
- spcDate.max=new Date(Date.parse(madridToday()+'T00:00:00Z')-86400000).toISOString().slice(0,10);
+ const spcDate=$('spcDownloadDate'),spcHasta=$('spcDownloadHasta');
+ const defaultSPC=backlog.firstPending||backlog.lastClosed||'';
+ const lastClosed=new Date(Date.parse(madridToday()+'T00:00:00Z')-86400000).toISOString().slice(0,10);
+ spcDate.max=lastClosed;spcHasta.max=lastClosed;
+ if(!spcDate.dataset.manualChoice)spcDate.value=defaultSPC;
+ if(!spcHasta.dataset.manualChoice)spcHasta.value=spcDate.value;
  const lag=$('spcLag'),fetchPending=$('fetchPendingSPC');
  lag.hidden=backlog.pendingCount===0;
  fetchPending.disabled=backlog.pendingCount===0;
@@ -475,6 +478,11 @@ function initConnections(){
  });
  $('spcDownloadDate').addEventListener('change',()=>{
    $('spcDownloadDate').dataset.manualChoice='true';
+   if(!$('spcDownloadHasta').dataset.manualChoice)
+     $('spcDownloadHasta').value=$('spcDownloadDate').value;
+ });
+ $('spcDownloadHasta').addEventListener('change',()=>{
+   $('spcDownloadHasta').dataset.manualChoice='true';
  });
  connectionStatus();
 }
@@ -545,11 +553,12 @@ $('reload').addEventListener('click',()=>reload());
 $('pullHistory').addEventListener('click',async()=>{await pullShared({all:true,date:day});await reload({sinRed:true})});
 $('pushHistory').addEventListener('click',pushShared);
 $('fetchSPC').addEventListener('click',async()=>{
- const date=$('spcDownloadDate').value;
- if(await downloadSpcDay(date)){
-  day=date;$('day').value=date;
-  $('spcDownloadDate').dataset.manualChoice='';
-  await reload({keepDay:true,sinRed:true});
+ const desde=$('spcDownloadDate').value,hasta=$('spcDownloadHasta').value;
+ const result=await downloadSpcRange(desde,hasta);
+ if(result && (result.downloaded+result.partial+result.skipped)>0){
+   // Recuperar los días nuevos del propio IndexedDB sin llamar a los proveedores.
+   day=hasta;$('day').value=hasta;
+   await reload({keepDay:true,sinRed:true});
  }
 });
 $('fetchPendingSPC').addEventListener('click',async()=>{
@@ -560,6 +569,7 @@ $('fetchPendingSPC').addEventListener('click',async()=>{
  if(await downloadSpcDay(date)){
   day=date;$('day').value=date;
   $('spcDownloadDate').dataset.manualChoice='';
+  $('spcDownloadHasta').dataset.manualChoice='';
   await reload({keepDay:true,sinRed:true});
  }
 });

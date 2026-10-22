@@ -82,8 +82,15 @@ test('Informe y SCADA escriben FV/SPC en la misma base central sin forzar provee
   assert.match(html,/historico\/datos/);
   assert.match(html,/historico\/guardar/);
   // SPC se descarga por fecha cerrada y se guarda en el mismo archivo central.
-  assert.match(html,/const centralized=await guardaDiaSpcCentral\(dia,p\)/);
+  assert.match(html,/const central=await guardaDiaSpcCentral\(dia,p\)/);
   assert.match(html,/await guardaDiaSpcCentral\(dia,p\)/);
+  for(const id of ['spcDiaManual','spcHastaManual','btnSpcSolo'])
+    assert.match(html,new RegExp('id="'+id+'"'),id);
+  assert.match(html,/function spcRangoManual\(desde,hasta\)/);
+  assert.match(html,/size>14/);
+  assert.match(html,/for\(let i=0;i<total;i\+\+\)/);
+  assert.match(html,/await consultarYGuardarSpc\(fecha\)/);
+  assert.match(html,/if\(already\.has\(fecha\)\)/);
   assert.match(html,/\.then\(\(\)=>bajaHistoricoCompartido\(\)\)/);
   // Recuperar meses recientes no debe eliminar meses centrales ya importados.
   assert.match(html,/const antes=PROD_FUENTES\[tipo\]\.find/);

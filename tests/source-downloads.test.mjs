@@ -13,6 +13,7 @@ function context({quota=false,range=false}={}){
  const calls=[],saved=[],tables={
   aDesde:{value:range?'2026-09-01':'2026-10-21'},aHasta:{value:'2026-10-21'},
   spcDiaManual:{value:'2026-10-21',dataset:{},addEventListener(){}},
+  spcHastaManual:{value:'2026-10-21',dataset:{},addEventListener(){}},
   stAuto:{textContent:''},spcAccion:{textContent:''},
   btnAuto:{disabled:false,textContent:'Descargar Solarman'},
   btnSpcSolo:{disabled:false,textContent:'Descargar SPC'},
@@ -21,8 +22,11 @@ function context({quota=false,range=false}={}){
  let spcCalls=0,centralWrites=0;
  const testCtx=vm.createContext({
   Date,Number,Math,Promise,Error,Array,JSON,
-  $:id=>tables[id],spcFecha:date=>/^\d{4}-\d{2}-\d{2}$/.test(date),
-  spcHoy:()=> '2026-10-22',SPC_FUENTES:[],
+  $:id=>tables[id],spcFecha:date=>typeof date==='string'&&
+    /^\d{4}-\d{2}-\d{2}$/.test(date)?date:'',
+  spcHoy:()=> '2026-10-22',
+  spcSumaDias:(d,n)=>new Date(Date.parse(d+'T00:00:00Z')+n*864e5).toISOString().slice(0,10),
+  SPC_FUENTES:[],
   API_ESTADO:{solarman:true,spc:true},
   estadoApi:async()=>{},pintaSpc:()=>{},chk:()=>{},fdmy:s=>s,fn:n=>String(n),
   kstarCfg:()=>({url:'https://qa-spc.workers.dev',key:'x'.repeat(30)}),
@@ -30,9 +34,11 @@ function context({quota=false,range=false}={}){
   incorporaSpc:()=>1,
   guardar:()=>{},
   guardaDiaSpcCentral:async()=>{centralWrites++;return true},
-  kstarCall:async()=>{spcCalls++;return{
-    rows:[{saveTime:'2026-10-21 10:00:00'}],
-    daily:[{date:'2026-10-21',importKWh:100,exportKWh:0}],
+  kstarCall:async(desde,hasta)=>{spcCalls++;
+    assert.equal(desde,hasta,'el backend SPC solo recibe un día');
+    return{
+    rows:[{saveTime:desde+' 10:00:00'}],
+    daily:[{date:desde,importKWh:100,exportKWh:0}],
     meta:{fuente:'spc',stationId:'2026032317114373',
       meterId:'210261430F3060020000661',completo:true,
       actualizado:'2026-10-22T10:00:00Z'}
@@ -72,7 +78,7 @@ test('Informe descarga SOLO SPC para el día elegido, sin consultar Solarman',as
  assert.equal(t.spcCalls,1);
  assert.equal(t.centralWrites,1);
  assert.deepEqual(t.calls,[]);
- assert.match(t.tables.spcAccion.textContent,/Solarman no consultado/);
+ assert.match(t.tables.spcAccion.textContent,/No se ha consultado Solarman/);
 });
 test('Cupo Solarman bloqueado no hace consulta SPC ni borra datos',async()=>{
  const t=context({quota:true});
@@ -95,4 +101,62 @@ test('SPC completo ya guardado se reutiliza sin repetir HTTP',async()=>{
  assert.equal(t.spcCalls,0);
  assert.equal(t.centralWrites,0);
  assert.match(t.tables.spcAccion.textContent,/ya guardado/);
+});
+
+test('Informe: rango SPC de 3 días omite completo, guarda otros y no llama Solarman',async()=>{
+ const t=context();
+ t.tables.spcDiaManual.value='2026-10-19';
+ t.tables.spcHastaManual.value='2026-10-21';
+ t.testCtx.SPC_FUENTES.push({date:'2026-10-20',meta:{completo:true}});
+ await vm.runInContext('descargarSoloSpc()',t.testCtx);
+ assert.equal(t.spcCalls,2);
+ assert.equal(t.centralWrites,2);
+ assert.deepEqual(t.calls,[]);
+ assert.match(t.tables.spcAccion.textContent,/2 días completos nuevos/);
+ assert.match(t.tables.spcAccion.textContent,/1 ya guardados/);
+ assert.match(t.tables.spcAccion.textContent,/No se ha consultado Solarman/);
+});
+test('Informe: rango SPC de 14 días permite 14 solicitudes secuenciales',async()=>{
+ const t=context();
+ t.tables.spcDiaManual.value='2026-10-08';
+ t.tables.spcHastaManual.value='2026-10-21';
+ await vm.runInContext('descargarSoloSpc()',t.testCtx);
+ assert.equal(t.spcCalls,14);
+ assert.equal(t.centralWrites,14);
+ assert.deepEqual(t.calls,[]);
+ assert.match(t.tables.spcAccion.textContent,/14 días completos nuevos/);
+});
+test('Informe: 15 días SPC no dispara ninguna petición a proveedores ni escritura',async()=>{
+ const t=context();
+ t.tables.spcDiaManual.value='2026-10-07';
+ t.tables.spcHastaManual.value='2026-10-21';
+ await vm.runInContext('descargarSoloSpc()',t.testCtx);
+ assert.equal(t.spcCalls,0);
+ assert.equal(t.centralWrites,0);
+ assert.deepEqual(t.calls,[]);
+ assert.match(t.tables.spcAccion.textContent,/máximo 14 días/);
+});
+test('Informe: día SPC en curso se rechaza antes de consultar API',async()=>{
+ const t=context();
+ t.tables.spcDiaManual.value='2026-10-21';
+ t.tables.spcHastaManual.value='2026-10-22';
+ await vm.runInContext('descargarSoloSpc()',t.testCtx);
+ assert.equal(t.spcCalls,0);
+ assert.match(t.tables.spcAccion.textContent,/anterior a hoy/);
+});
+test('Informe: un día SPC con error no detiene los siguientes',async()=>{
+ const t=context();
+ t.tables.spcDiaManual.value='2026-10-19';
+ t.tables.spcHastaManual.value='2026-10-21';
+ const original=t.testCtx.kstarCall;
+ t.testCtx.kstarCall=async(desde,hasta)=>{
+  if(desde==='2026-10-20')throw Error('KSTAR no disponible 20/10');
+  return original(desde,hasta);
+ };
+ await vm.runInContext('descargarSoloSpc()',t.testCtx);
+ assert.equal(t.spcCalls,2);
+ assert.equal(t.centralWrites,2);
+ assert.match(t.tables.spcAccion.textContent,/1 errores/);
+ assert.match(t.tables.spcAccion.textContent,/2026-10-20/);
+ assert.match(t.tables.spcAccion.textContent,/2 días completos nuevos/);
 });
