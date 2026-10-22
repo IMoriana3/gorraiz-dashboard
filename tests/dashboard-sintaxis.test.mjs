@@ -135,3 +135,64 @@ test('SPC completo más reciente nunca se sobrescribe con día parcial ni versi�
   const old={...partial,payload:{rows:[],meta:{completo:true,fetchedAt:'2026-10-21T11:00:00Z'}}};
   assert.strictEqual(merge(existing,old),existing);
 });
+
+test('el Informe convierte W antiguas por procedencia sin inventar unidad de XLSX',()=>{
+ const start=html.indexOf('function unidadPotenciaLocal(');
+ const end=html.indexOf('async function guardaDiaSpcCentral(',start);
+ assert.ok(start>=0&&end>start);
+ const elements={unidadXlsxLegacy:{value:'desconocida'}};
+ const context=vm.createContext({
+   Date,Map,Number,Promise,
+   $:id=>elements[id],spcFecha:()=>true,dk:()=> '2026-10-19',
+   apiCfg:()=>({url:'https://qa.invalid',key:'fictional'}),
+   SPC_FUENTES:[],PROD_FUENTES:{A:[],B:[]},
+   fn:x=>String(x),centroMensaje:()=>{},
+   HIST_CENTRO_OCUPADO:false,apiCall:async()=>({guardadas:1})
+ });
+ const funcs=html.slice(start,end);
+ vm.runInContext(funcs,context);
+ const ask=text=>vm.runInContext(text,context);
+ assert.equal(ask("unidadPotenciaLocal({nombre:'Solarman 2026-10-19'})"),'W');
+ assert.equal(ask("unidadPotenciaLocal({nombre:'Solarman 2026-10-19',unidadPotencia:'kW'})"),'kW');
+ assert.equal(ask("unidadPotenciaLocal({nombre:'Ficheros'})"),'desconocida');
+ const source="{nombre:'Solarman 2026-10-19',rows:[{ts:new Date('2026-10-19T08:05:00Z'),pot:35000,dia:150,acum:35000}]}";
+ const normalized=ask("fuenteDiaNormalizada('A',"+source+", "+source+".rows[0])");
+ assert.equal(normalized.row.pot,35);
+ elements.unidadXlsxLegacy.value='W';
+ assert.equal(ask("unidadPotenciaLocal({nombre:'Ficheros'})"),'W');
+ elements.unidadXlsxLegacy.value='desconocida';
+ assert.equal(ask("unidadPotenciaLocal({nombre:'Ficheros'})"),'desconocida');
+});
+test('si un solo día falla el resto de la migración continúa y se conserva local',async()=>{
+ const start=html.indexOf('function unidadPotenciaLocal(');
+ const end=html.indexOf('async function guardaDiaSpcCentral(',start);
+ assert.ok(start>=0&&end>start);
+ const elements={btnCentroSubir:{disabled:false},unidadXlsxLegacy:{value:'desconocida'}};
+ const messages=[],sent=[];
+ const dateArray=Array.from({length:40},(_,i)=>new Date(Date.parse('2026-01-01T00:00:00Z')+i*864e5).toISOString().slice(0,10));
+ const context=vm.createContext({
+   Date,Map,Number,Promise,
+   $:id=>elements[id],spcFecha:()=>true,
+   dk:d=>d.toISOString().slice(0,10),
+   apiCfg:()=>({url:'https://qa.invalid',key:'fictional'}),
+   SPC_FUENTES:[],PROD_FUENTES:{
+     A:[{nombre:'Solarman 2026',rows:dateArray.map(d=>({
+       ts:new Date(d+'T10:00:00Z'),pot:35000,dia:150,acum:35000}))}],
+     B:[]
+   },
+   centroMensaje:msg=>messages.push(msg),HIST_CENTRO_OCUPADO:false,
+   apiCall:async(route,body)=>{
+     assert.equal(route,'/historico/guardar');
+     if(body.items.some(s=>s.fecha==='2026-01-10'))throw Error('Día con marca corrupta');
+     sent.push(...body.items);
+     return{guardadas:body.items.length,pendientesPotencia:0}
+   }
+ });
+ vm.runInContext(html.slice(start,end),context);
+ await vm.runInContext('subeHistoricoLocal()',context);
+ assert.equal(sent.length,39,'guardar 39/40 sin detenerse en el primer lote');
+ assert.equal(sent[0].rows[0].pot,35,'las W se guardan como kW');
+ assert.match(messages.at(-1),/39\/40/);
+ assert.match(messages.at(-1),/1 pendientes de revisar/);
+ assert.equal(elements.btnCentroSubir.disabled,false,'el botón queda habilitado tras migrar');
+});
