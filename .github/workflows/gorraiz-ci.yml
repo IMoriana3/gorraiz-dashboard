@@ -81,6 +81,39 @@ jobs:
           PY
       - name: Compilar Worker sin credenciales ni despliegue
         run: npx --yes wrangler@4.145.0 deploy --dry-run --config worker/wrangler.toml
+      - name: Probar el Durable Object de cupo en workerd local, sin llamar al proveedor
+        run: |
+          npx --yes wrangler@4.145.0 dev --local --config worker/wrangler.toml \
+            --ip 127.0.0.1 --port 8799 --var PANEL_KEY:clave-sintetica \
+            --var SOLARMAN_APPID:appId-sintetico \
+            --show-interactive-dev-session=false > /tmp/gorraiz-workerd.log 2>&1 &
+          PID=$!
+          trap 'kill "$PID" 2>/dev/null || true; cat /tmp/gorraiz-workerd.log' EXIT
+          python - <<'PY'
+          import json, time, urllib.request, urllib.error
+          url='http://127.0.0.1:8799/produccion'
+          headers={'Origin':'https://imoriana3.github.io',
+                   'X-Panel-Key':'clave-sintetica','Content-Type':'application/json'}
+          # Una fecha imposible pasa el filtro de formato público y debe ser
+          # rechazada por el DO *antes* de intentar acceder a Solarman.
+          req=urllib.request.Request(url,
+              data=json.dumps({'desde':'2026-02-30','hasta':'2026-02-30'}).encode(),
+              headers=headers, method='POST')
+          for attempt in range(45):
+              try:
+                  urllib.request.urlopen(req,timeout=2)
+                  raise AssertionError('El DO no debe admitir fecha imposible')
+              except urllib.error.HTTPError as exc:
+                  body=json.load(exc)
+                  assert exc.code==400,(exc.code,body)
+                  assert 'Rango Solarman' in body.get('error',''),body
+                  print('workerd local: binding DO activo, ruta protegida, rechazo 400 previo al proveedor')
+                  break
+              except (urllib.error.URLError,TimeoutError):
+                  time.sleep(1)
+          else:
+              raise AssertionError('workerd no inició; revisar /tmp/gorraiz-workerd.log')
+          PY
 
   scada-chromium:
     name: SCADA Chromium · QA sin datos privados
