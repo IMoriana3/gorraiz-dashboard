@@ -104,6 +104,10 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
 .coverage-detail .foot{font-size:11px;color:var(--dim);margin:9px 0 0}
 .coverage-table-wrap{overflow-x:auto}
 @media(max-width:580px){.coverage-table th,.coverage-table td{padding:6px}}
+
+#connections .controls input[type=url],#connections .controls input[type=password]{font:inherit;min-width:200px;max-width:320px;flex:1;background:#192d36;color:var(--text);border:1px solid #3b525c;border-radius:7px;padding:8px}
+#connections{margin-bottom:12px}
+@media(max-width:560px){#connections .controls input[type=url],#connections .controls input[type=password]{min-width:0;width:100%;max-width:none}}
 </style>
 </head>
 <body><div class="frame">
@@ -141,13 +145,33 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
   <button id="reload" type="button">↻ Leer histórico común</button>
   <button id="pullHistory" type="button" title="Consulta el histórico central completo sin llamar a Solarman ni KSTAR">↓ Recuperar todo</button>
   <button id="pushHistory" type="button" title="Copia el histórico de este navegador en el archivo central sin descargar de proveedores">↑ Compartir copia local</button>
-  <button id="fetchSPC" type="button" title="Solo a petición: consulta UN día cerrado al Worker aislado KSTAR y lo guarda en el archivo compartido. Requiere cuenta SPC de lectura limitada.">↓ SPC día cerrado</button>
-  <button id="updatePV" type="button" title="Máximo un intento por hora en este navegador, compartido con el modo automático">↓ Actualizar Solarman (1/h)</button>
+  <label for="spcDownloadDate" class="muted tiny">Día SPC cerrado</label>
+  <input type="date" id="spcDownloadDate" title="Fecha independiente de los gráficos y de la selección Solarman">
+  <button id="fetchSPC" type="button" title="Consulta solo KSTAR del día cerrado elegido. No consume cuota Solarman.">↓ Descargar SPC</button>
+  <button id="updatePV" type="button" title="Solo Solarman: máximo 1 lote nuevo por hora para toda la instalación">↓ Descargar Solarman (1/h)</button>
   <label class="check" title="Optativo; una consulta a Solarman cada 60 minutos como máximo en este navegador. No consulta KSTAR."><input id="auto" type="checkbox"> Automático FV / 60 min</label>
   <label class="check" title="Permite el cálculo aproximado del consumo con relojes SPC/Solarman sin conciliar; nunca afecta a los informes."><input id="provisional" type="checkbox"> Cruce horario provisional</label>
  </div>
  <div id="rateInfo" class="muted tiny" style="padding:0 0 6px" role="status">Controlando cupo horario de Solarman…</div>
  <div id="sharedState" class="muted tiny" role="status" style="padding:0 0 10px">Base común de Gorraiz: pendiente de sincronización. Leer esta base no consume cupo de Solarman ni consultas KSTAR.</div>
+ <details id="connections" class="coverage-detail">
+  <summary>Configurar conexiones del SCADA (Solarman y SPC independientes)</summary>
+  <div class="controls" style="padding:9px 0 4px">
+   <label for="scadaCentralUrl" class="muted tiny">Worker central</label>
+   <input id="scadaCentralUrl" type="url" placeholder="https://tu-worker.workers.dev" autocomplete="off">
+   <label for="scadaCentralKey" class="muted tiny">Clave panel</label>
+   <input id="scadaCentralKey" type="password" placeholder="Solo para guardar/cambiar clave" autocomplete="new-password">
+   <button id="saveCentral" type="button">Guardar Solarman/archivo</button>
+  </div>
+  <div class="controls" style="padding:4px 0 5px">
+   <label for="scadaSpcUrl" class="muted tiny">Worker KSTAR aislado</label>
+   <input id="scadaSpcUrl" type="url" placeholder="https://tu-spc.workers.dev" autocomplete="off">
+   <label for="scadaSpcKey" class="muted tiny">Clave SPC</label>
+   <input id="scadaSpcKey" type="password" placeholder="Solo para guardar/cambiar clave" autocomplete="new-password">
+   <button id="saveSpc" type="button">Guardar KSTAR SPC</button>
+  </div>
+  <p class="muted tiny" id="connectionStatus" role="status">Las conexiones se comparten con el Informe del mismo navegador. Guardarlas no consulta ninguna API. SPC continúa solo manual: Cloudflare → portal KSTAR puede utilizar HTTP sin cifrar.</p>
+ </details>
  <div class="coverage-sources" aria-label="Cobertura del almacenamiento local">
   <div class="coverage-source"><strong>Solarman · Inversor A</strong><span id="coverageA">Comprobando memoria…</span></div>
   <div class="coverage-source"><strong>Solarman · Inversor B</strong><span id="coverageB">Comprobando memoria…</span></div>
@@ -281,6 +305,6 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
    <p class="footnote">No hay funciones de mando sobre KSTAR ni confirmación de estado «en línea». Una muestra reciente o histórica no garantiza ausencia de averías.</p>
  </section>
 </main></div>
-<script type="module" src="./scada-app.mjs?v=20261022d"></script>
+<script type="module" src="./scada-app.mjs?v=20261022f"></script>
 </body>
 </html>
