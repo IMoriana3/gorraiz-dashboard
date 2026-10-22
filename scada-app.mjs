@@ -650,13 +650,23 @@ async function refreshPV({auto=false}={}){
  }finally{pvBusy=false;btn.disabled=false;showQuota()}
 }
 function setRange(n){
- range=n;$('one').setAttribute('aria-pressed',String(n===1));
+ range=n;selectedPointKey=null; // otro intervalo; elegir el último cruce disponible
+ $('one').setAttribute('aria-pressed',String(n===1));
  $('seven').setAttribute('aria-pressed',String(n===7));repaint();
 }
 $('one').addEventListener('click',()=>setRange(1));
 $('seven').addEventListener('click',()=>setRange(7));
-$('day').addEventListener('change',()=>{day=$('day').value;repaint()});
-$('today').addEventListener('click',()=>{day=madridToday();$('day').value=day;repaint()});
+$('day').addEventListener('change',()=>{day=$('day').value;selectedPointKey=null;repaint()});
+$('today').addEventListener('click',()=>{day=madridToday();$('day').value=day;
+ selectedPointKey=null;repaint()});
+$('snapshotMatched').addEventListener('click',()=>selectSnapshot('matched'));
+$('snapshotSpc').addEventListener('click',()=>selectSnapshot('spc'));
+$('snapshotSlider').addEventListener('input',()=>{
+ const r=renderedSnapshotSeries;
+ const index=Number($('snapshotSlider').value);
+ if(!r||!Number.isInteger(index)||index<0||index>=r.keys.length)return;
+ selectedPointKey=r.keys[index];renderSnapshot(r);
+});
 $('reload').addEventListener('click',()=>reload());
 $('pullHistory').addEventListener('click',async()=>{await pullShared({all:true,date:day});await reload({sinRed:true})});
 $('pushHistory').addEventListener('click',pushShared);
@@ -665,7 +675,7 @@ $('fetchSPC').addEventListener('click',async()=>{
  const result=await downloadSpcRange(desde,hasta);
  if(result && (result.downloaded+result.partial+result.skipped)>0){
    // Recuperar los días nuevos del propio IndexedDB sin llamar a los proveedores.
-   day=hasta;$('day').value=hasta;
+   day=hasta;$('day').value=hasta;selectedPointKey=null;
    await reload({keepDay:true,sinRed:true});
  }
 });
@@ -675,7 +685,7 @@ $('fetchPendingSPC').addEventListener('click',async()=>{
  // El usuario ha pulsado expresamente: UNA consulta a KSTAR del día cerrado
  // pendiente; no consulta Solarman ni activa ningún cron de SPC.
  if(await downloadSpcDay(date)){
-  day=date;$('day').value=date;
+  day=date;$('day').value=date;selectedPointKey=null;
   $('spcDownloadDate').dataset.manualChoice='';
   $('spcDownloadHasta').dataset.manualChoice='';
   await reload({keepDay:true,sinRed:true});
