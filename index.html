@@ -855,21 +855,47 @@ $('spcDiaManual').addEventListener('change',()=>{
   $('spcDiaManual').dataset.manualChoice='1';
 });
 async function comprobarSpc(){
+  // Reconsulta SPC de forma explícita, tanto mediante Worker aislado como
+  // mediante el Worker central; nunca toca el cupo de Solarman.
   if(SPC_OCUPADO)return;
-  const dia=$('spcDiaManual').value||spcHoy();
-  if(!spcFecha(dia)){$('spcAccion').textContent='Indica una fecha válida en «Hasta».';return}
-  SPC_OCUPADO=true;pintaSpc();$('spcAccion').textContent=`Comprobando SPC para el ${fdmy(dia)}…`;
+  const dia=$('spcDiaManual').value;
+  if(!spcFecha(dia)||dia>=spcHoy('Europe/Madrid')){
+    $('spcAccion').textContent='Elige un día cerrado anterior a hoy (Madrid).';
+    return;
+  }
+  SPC_OCUPADO=true;pintaSpc();
+  $('spcAccion').textContent='Consultando únicamente KSTAR SPC del '+fdmy(dia)+'…';
   try{
     const separado=!!kstarCfg().url;
-    const p=separado?await kstarCall(dia,dia):await apiCall('/spc/diagnostico',{dia});
-    if(!separado&&p.ok!==true)throw new Error(p.error||'SPC no ha confirmado la consulta.');
-    const n=separado?p.rows.length:p.registros||0;
-    const completo=separado?p.meta.completo:p.complete;
-    if(separado){incorporaSpc(p,{desde:dia,hasta:dia});await guardaDiaSpcCentral(dia,p);}
-    SPC_PRUEBA={ok:true,actualizado:p.meta?.actualizado||p.actualizado||new Date().toISOString()};
-    $('spcAccion').textContent=`KSTAR: ${fn(n)} lecturas. ${completo?'Día cerrado guardado en el navegador.':'Día parcial, aún no válido para el balance.'}`;
-  }catch(e){SPC_PRUEBA={ok:false,error:e.message};$('spcAccion').innerHTML=`<span class="err">No se pudo comprobar SPC: ${esc(e.message)}</span>`}
-  finally{SPC_OCUPADO=false;await estadoApi();pintaSpc()}
+    const p=separado?await kstarCall(dia,dia):
+      await apiCall('/spc/intercambio',{desde:dia,hasta:dia});
+    if(!spcTieneDatos(p)||!Array.isArray(p.rows)||!Array.isArray(p.daily))
+      throw Error('El Worker SPC no devolvió registros válidos para este día.');
+    // Revalidar identidad: el histórico central no debe recibir datos de
+    // otro emplazamiento ni de otro contador.
+    if(p.meta?.fuente!=='spc'||p.meta?.stationId!==KSTAR_STATION||
+       p.meta?.meterId!==KSTAR_METER||p.daily[0]?.date!==dia)
+      throw Error('Estación, contador o fecha SPC no corresponden a Gorraiz.');
+    const incorporated=incorporaSpc(p,{desde:dia,hasta:dia});
+    if(!incorporated)throw Error('No se ha sustituido la copia anterior: conserva su estado más completo.');
+    if(guardando)await guardando; // Confirmar IndexedDB antes de mostrar éxito.
+    const centralized=await guardaDiaSpcCentral(dia,p);
+    SPC_PRUEBA={ok:true,actualizado:p.meta?.actualizado||new Date().toISOString()};
+    $('spcAccion').textContent='SPC '+fdmy(dia)+': '+p.rows.length+
+      ' lecturas · '+(p.meta?.completo===true?'día cerrado':'día parcial')+
+      ' guardado localmente · '+(centralized?'base central actualizada':
+      'base central pendiente de compartir')+
+      '. Solarman no consultado.';
+    $('spcDiaManual').dataset.manualChoice='';
+  }catch(e){
+    SPC_PRUEBA={ok:false,error:e.message};
+    $('spcAccion').textContent='SPC '+fdmy(dia)+': '+e.message+
+      '. Los datos anteriores se conservan; Solarman no se ha consultado.';
+  }finally{
+    SPC_OCUPADO=false;
+    await estadoApi();
+    pintaSpc();
+  }
 }
 
 // ═══ CONTRASTE i-DE ↔ KSTAR ═══
@@ -1823,11 +1849,20 @@ async function subeHistoricoLocal(){
 }
 
 async function guardaDiaSpcCentral(fecha,payload){
- if(!apiCfg().url||!apiCfg().key)return;
+ if(!apiCfg().url||!apiCfg().key){
+   centroMensaje('SPC '+fecha+': copia local guardada; falta configuración del Worker central.');
+   return false;
+ }
  try{
-  await apiCall('/historico/guardar',{items:[{tipo:'S',fecha,payload}]});
-  centroMensaje('SPC '+fecha+' guardado también en el histórico central. Sin consultas adicionales a KSTAR.');
- }catch(e){centroMensaje('SPC '+fecha+' permanece local, pero no se pudo compartir: '+e.message)}
+   const result=await apiCall('/historico/guardar',{items:[{tipo:'S',fecha,payload}]});
+   if(result.guardadas!==1)
+     throw Error(result.incidencias?.[0]?.motivo||'El archivo central no confirmó este día.');
+   centroMensaje('SPC '+fecha+' guardado también en el histórico central; sin consultas adicionales a KSTAR.');
+   return true;
+ }catch(e){
+   centroMensaje('SPC '+fecha+' sigue local; no se pudo compartir: '+e.message);
+   return false;
+ }
 }
 
 let API_ESTADO=null;
