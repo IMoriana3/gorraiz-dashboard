@@ -216,6 +216,9 @@ try {
   await page.locator('#day').dispatchEvent('change');
   await page.waitForFunction(()=>document.querySelector('#blankState')?.hidden===false);
   assert.match(await page.locator('#blankDetail').innerText(),/No hay muestras válidas/);
+  assert.match(await page.locator('#pvDayAudit').innerText(),/No constan filas originales FV/);
+  assert.match(await page.locator('#coverageDayRows').innerText(),/0 \/ 0/);
+  assert.equal(requests,0,'diagnosticar las fuentes originales no consume cuota Solarman');
   await page.locator('.scada-nav [data-view-link="red"]').click();
   await page.waitForFunction(()=>document.querySelector('#blankDetail')?.textContent.includes('No hay intervalos KSTAR'));
   assert.match(await page.locator('#blankDetail').innerText(),/No hay intervalos KSTAR/);
