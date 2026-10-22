@@ -53,16 +53,27 @@ const valueAt = (obj,key) => obj&&obj[key]!==undefined?numeric(obj[key]):null;
 
 function inverterMap(items,type,days){
   const allowed=new Set(days), map=new Map(), dayEnergy=new Map();
+  // Los registros anteriores de Solarman y un refresco de SCADA pueden
+  // coexistir. El más reciente debe ganar incluso si IndexedDB ordena ids
+  // de manera distinta: NO fiarse del orden alfabético de objectStore.getAll().
+  const oldest=Date.parse(days[0]+'T00:00:00Z')-86400000;
+  const newest=Date.parse(days.at(-1)+'T00:00:00Z')+2*86400000;
   for(const source of items.filter(x=>x.tipo===type)){
+    const priority=Number.isFinite(Date.parse(source.updatedAt))?Date.parse(source.updatedAt):0;
     for(const row of Array.isArray(source.rows)?source.rows:[]){
+      const timestamp=row.ts instanceof Date?+row.ts:+new Date(row.ts);
+      if(!Number.isFinite(timestamp)||timestamp<oldest||timestamp>newest)continue;
       const stamp=invStamp(row.ts);
       if(!stamp||!allowed.has(stamp.date))continue;
       const n=numeric(row.pot),daily=numeric(row.dia);
-      if(daily!==null&&daily>=0&&daily<=1000)
-        dayEnergy.set(stamp.date,Math.max(daily,dayEnergy.get(stamp.date)||0));
+      const oldDaily=dayEnergy.get(stamp.date);
+      if(daily!==null&&daily>=0&&daily<=1000&&
+         (!oldDaily||priority>oldDaily.priority||priority===oldDaily.priority&&daily>oldDaily.value)){
+        dayEnergy.set(stamp.date,{value:daily,priority});
+      }
       if(n===null||n<0||n>MAX_INV_KW)continue;
-      const key=slot(stamp);
-      if(key)map.set(key,{kw:n,stamp,source:type});
+      const key=slot(stamp),old=map.get(key);
+      if(key&&(!old||priority>=old.priority))map.set(key,{kw:n,stamp,priority});
     }
   }
   return {map,dayEnergy};
@@ -164,7 +175,7 @@ export function buildSeries(items,{date,range=1,allowProvisional=false}={}){
   }
   const reportDay=dates.at(-1);
   const summary=gridState[reportDay]?.daily||null;
-  const aDay=A.dayEnergy.get(reportDay)??null,bDay=B.dayEnergy.get(reportDay)??null;
+  const aDay=A.dayEnergy.get(reportDay)?.value??null,bDay=B.dayEnergy.get(reportDay)?.value??null;
   const productionDay=aDay!==null&&bDay!==null?aDay+bDay:null;
   const imp=summary?valueAt(summary,'importKWh'):null,exp=summary?valueAt(summary,'exportKWh'):null;
   const consumptionDay=productionDay!==null&&imp!==null&&exp!==null&&productionDay>=exp
