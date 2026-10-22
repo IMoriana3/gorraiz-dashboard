@@ -22,7 +22,8 @@ const server=createServer((req,res)=>{
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const addr='http://127.0.0.1:'+server.address().port;
 const browser=await chromium.launch({headless:true});
-let requests=0,archiveReads=0,archiveWrites=0,kstarCalls=0;const errors=[],archive=new Map();
+let requests=0,archiveReads=0,archiveWrites=0,kstarCalls=0;
+const kstarDates=[],errors=[],archive=new Map();
 try {
   const context=await browser.newContext({viewport:{width:1440,height:900},deviceScaleFactor:1});
   const page=await context.newPage();
@@ -45,7 +46,8 @@ try {
     kstarCalls++;
     const data=route.request().postDataJSON();
     const date=data.desde;
-    assert.equal(date,'2026-10-18','se consulta la fecha SPC independiente');
+    kstarDates.push(date);
+    assert.ok(date<='2026-10-21','SPC solo día cerrado');
     assert.equal(data.desde,data.hasta,'KSTAR solo consulta un día');
     const body={rows:[
        {saveTime:date+' 10:00:00',positiveActiveElec:100,reverseActiveElec:0},
@@ -198,6 +200,8 @@ try {
   assert.equal(archiveReads,originalArchiveReads,'guardar configuración no lee servidor');
   await page.locator('#spcDownloadDate').fill('2026-10-18');
   await page.locator('#spcDownloadDate').dispatchEvent('change');
+  await page.locator('#spcDownloadHasta').fill('2026-10-18');
+  await page.locator('#spcDownloadHasta').dispatchEvent('change');
   await page.locator('#fetchSPC').click();
   await page.waitForFunction(()=>document.querySelector('#sharedState')?.textContent.includes('SPC 2026-10-18'));
   assert.equal(kstarCalls,1,'un clic SPC provoca una sola consulta KSTAR');
@@ -208,6 +212,28 @@ try {
   await page.locator('#spcDownloadDate').fill('2026-10-18');
   await page.locator('#fetchSPC').click();
   assert.equal(kstarCalls,1,'el SPC completo no se vuelve a consultar');
+
+  // Descarga multifecha solo SPC: los días completos 18 y 19 se omiten.
+  await page.locator('#spcDownloadDate').fill('2026-10-16');
+  await page.locator('#spcDownloadDate').dispatchEvent('change');
+  await page.locator('#spcDownloadHasta').fill('2026-10-19');
+  await page.locator('#spcDownloadHasta').dispatchEvent('change');
+  await page.locator('#fetchSPC').click();
+  await page.waitForFunction(()=>document.querySelector('#sharedState')?.textContent.includes('Descarga SPC por rango finalizada'));
+  assert.deepEqual(kstarDates,['2026-10-18','2026-10-16','2026-10-17'],
+    'solo se consulta KSTAR de los días pendientes y uno por solicitud');
+  assert.equal(kstarCalls,3);
+  assert.ok(archive.has('S|2026-10-16')&&archive.has('S|2026-10-17'),
+    'los días nuevos quedan en la misma base central');
+  assert.equal(requests,0,'descargar SPC por rango no gasta cuota Solarman');
+  await page.locator('#spcDownloadDate').fill('2026-10-01');
+  await page.locator('#spcDownloadDate').dispatchEvent('change');
+  await page.locator('#spcDownloadHasta').fill('2026-10-18');
+  await page.locator('#spcDownloadHasta').dispatchEvent('change');
+  await page.locator('#fetchSPC').click();
+  await page.waitForFunction(()=>document.querySelector('#sharedState')?.textContent.includes('14 días'));
+  assert.equal(kstarCalls,3,'rango SPC >14 no emite llamadas');
+  assert.equal(requests,0,'rango SPC inválido no consulta Solarman');
   await page.locator('#day').fill('2026-10-19');
   await page.locator('#day').dispatchEvent('change');
   assert.equal(requests,0);
@@ -284,7 +310,7 @@ try {
   await page.locator('#contrastZero').click();
   assert.equal(await page.locator('#contrastShiftValue').innerText(),'0 min');
   assert.equal(requests,0,'desfasar SPC y calcular demanda no consulta Solarman');
-  assert.equal(kstarCalls,1,'desfasar SPC y calcular demanda no consulta KSTAR');
+  assert.equal(kstarCalls,3,'desfasar SPC y calcular demanda no consulta KSTAR');
   await page.locator('.scada-nav [data-view-link="general"]').click();
   await page.locator('#auto').check();
   await page.waitForTimeout(350);
