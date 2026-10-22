@@ -7,7 +7,7 @@ const addDays=(d,n)=>new Date(Date.parse(d+'T00:00:00Z')+n*86400000).toISOString
 const inverter=(type,date,daily,accum,time='18:00')=>({
  tipo:type,unidadPotencia:'kW',
  rows:[{ts:date+'T10:00:00+02:00',pot:20,dia:daily*0.2,acum:accum-daily*.8},
- {ts:date+'T'+time+':00+02:00',pot:0,dia:daily,acum}]
+ {ts:date+'T'+time+':00+02:00',pot:0,dia:daily,acum:accum}]
 });
 function grid(date,imp,exp,{complete=true,self=40}={}){
  const rows=[];
