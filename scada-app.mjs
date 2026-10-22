@@ -1,6 +1,7 @@
 import {availableDays,buildSeries,numeric} from './scada-data.mjs';
 import {spcBacklog,dailyCoverage,dailyPvInventory,pvDayDiagnosis} from './scada-coverage.mjs';
 import {contrastDay,contrastCsv} from './scada-contrast.mjs';
+import {signedExportKW,signedExportSeries} from './scada-grid-sign.mjs';
 import {pullShared,pushShared,downloadSpcDay} from './scada-sync.mjs';
 import {SCADA_POLL_MS,SCADA_QUOTA_KEY,SCADA_LOCK_NAME,quotaState,reserveAttempt} from './scada-quota.mjs';
 
@@ -18,6 +19,7 @@ function madridToday(){
 function text(id,value){$(id).textContent=value}
 function kw(v){return v===null||v===undefined?'—':fmt.format(v)+' kW'}
 function kwh(v){return v===null||v===undefined?'—':fmt2.format(v)+' kWh'}
+function exportKW(v){return kw(signedExportKW(v))}
 function hh(key){return key?key.slice(11,16):'—'}
 function safeState(message){text('notice',message)}
 function getDb(){
@@ -122,10 +124,10 @@ function updateDetailPanels(r,labels){
    makeSeries('Inversor B',r.series.b,paints.b,true)];
  const gridCurves=[
    makeSeries('Importación · media estimada',r.series.import,paints.import),
-   makeSeries('Exportación · media estimada',r.series.export,paints.export)];
+   makeSeries('Exportación (−) · media SPC',signedExportSeries(r.series.export),paints.export)];
  const commonCurves=[
    makeSeries('Generación',r.series.generation,paints.generation),
-   makeSeries('Consumo calculado',r.series.consumption,paints.consumption,true),
+   makeSeries('Consumo estimado · RELOJ SIN VALIDAR',r.series.consumption,paints.consumption,true),
    ...gridCurves];
  text('plantNow',kw(r.last.generation?.value));
  text('plantDay',kwh(r.summary.generation));
@@ -147,15 +149,18 @@ function updateDetailPanels(r,labels){
  text('historyDates',from+' → '+to);
  text('historyCoverage','En '+r.keys.length+' intervalos posibles se observan '+solarCount+
    ' con generación simultánea, '+gridCount+' con medición derivada de KSTAR y '+
-   r.common+' con consumo calculable. Los demás quedan vacíos; no equivalen a cero.');
+   r.common+' con consumo estimado '+(r.provisional?'SIN VALIDAR':'')+
+   '. Los demás quedan vacíos; no equivalen a cero.');
  paint('historyChart',commonCurves,labels);
  text('diagPv',String(solarCount));
  text('diagGrid',String(gridCount));
  text('diagCons',String(r.common));
  text('diagClock',clockVerified?'Metadato SPC: huso horario verificado para '+to+'.':
-   'Reloj del SPC sin contrastar frente a Solarman para '+to+
-   '. El consumo horario no se confirma salvo cruce provisional explícito.');
+   'Reloj del SPC SIN VALIDAR frente a Solarman para '+to+
+   '. El consumo solo es una ESTIMACIÓN provisional a partir de las casillas FV/SPC coincidentes; no es una medida certificada.');
  const warningLines=[...r.warnings];
+ if(r.negativePairs)warningLines.push(r.negativePairs+
+   ' intervalos FV/SPC rechazados: consumo estimado negativo (revisar sincronía y potencia instantánea frente a media).');
  if(!r.gridState[to])warningLines.push('Sin jornada SPC con intervalos conciliados el '+to+'.');
  if(!solarCount)warningLines.push('No coinciden los dos inversores en ningún punto de este periodo.');
  if(!warningLines.length)warningLines.push('Sin incidencias de cobertura detectadas en el intervalo. No se supervisan alarmas de hardware.');
@@ -253,7 +258,7 @@ function runContrast(){
  const plots=[
   makeSeries('FV Solarman · kW AC',audit.readings.generation,paints.generation),
   makeSeries('SPC importación · kW medio',audit.readings.import,paints.import),
-  makeSeries('SPC exportación · kW medio',audit.readings.export,paints.export)];
+  makeSeries('SPC exportación (−) · kW medio',signedExportSeries(audit.readings.export),paints.export)];
  if(showLoad)plots.push(makeSeries('Consumo calculado · NO VALIDADO',audit.readings.load,paints.consumption,true));
  paint('contrastChart',plots,audit.keys,{dayOnly:true});
  text('contrastPvPoints',String(p.solarmanPoints)+' / 288');
@@ -299,7 +304,7 @@ function runContrast(){
  hourlyBody.replaceChildren();
  for(const hour of audit.hourly){
   const tr=document.createElement('tr');
-  const cells=[hour.hour,kw(hour.generation),kw(hour.import),kw(hour.export),
+  const cells=[hour.hour,kw(hour.generation),kw(hour.import),exportKW(hour.export),
    hour.comparedCount+' / 12',showLoad?kw(hour.load):'—'];
   for(const c of cells){const td=document.createElement('td');td.textContent=c;tr.appendChild(td)}
   hourlyBody.appendChild(tr);
@@ -333,16 +338,17 @@ function repaint(){
  const labels=r.keys;
  paint('mainChart',[
   makeSeries('Generación FV · medida',r.series.generation,paints.generation),
-  makeSeries('Consumo · derivado',r.series.consumption,paints.consumption,true),
+  makeSeries('Consumo estimado · SIN VALIDAR',r.series.consumption,paints.consumption,true),
   makeSeries('Importación · media estimada',r.series.import,paints.import),
-  makeSeries('Exportación · media estimada',r.series.export,paints.export)],labels);
+  makeSeries('Exportación (−) · media SPC',signedExportSeries(r.series.export),paints.export)],labels);
  paint('pvChart',[
   makeSeries('Generación',r.series.generation,paints.generation),
   makeSeries('Inversor A',r.series.a,paints.a,true),
   makeSeries('Inversor B',r.series.b,paints.b,true)],labels);
- paint('consChart',[makeSeries('Consumo calculado',r.series.consumption,paints.consumption)],labels);
+ paint('consChart',[makeSeries('Consumo estimado · RELOJ NO VALIDADO',
+  r.series.consumption,paints.consumption,true)],labels);
  paint('gridChart',[makeSeries('Importación',r.series.import,paints.import),
-  makeSeries('Exportación',r.series.export,paints.export)],labels);
+  makeSeries('Exportación (−)',signedExportSeries(r.series.export),paints.export)],labels);
 
  updateBlankNotice(r);
  paintCoverageByDay(r);
@@ -351,18 +357,22 @@ function repaint(){
  text('powerGen',kw(r.last.generation?.value));
  text('powerCons',kw(r.last.consumption?.value));
  text('powerImp',kw(r.last.import?.value));
- text('powerExp',kw(r.last.export?.value));
+ text('powerExp',exportKW(r.last.export?.value));
  text('powerSelf',kwh(r.summary.spcAutoconsumption));
  text('subGen',r.last.generation?'Último punto '+hh(r.last.generation.key)+' · Solarman':'Sin medidas A+B simultáneas');
- text('subCons',r.last.consumption?(r.provisional?'Estimación provisional · '+hh(r.last.consumption.key):
-  'Cruce horario validado · '+hh(r.last.consumption.key)):'Pendiente de reloj SPC y ambos inversores');
+ const dayLoad=r.summary.consumption!==null?' · día ≈'+kwh(r.summary.consumption):'';
+ text('subCons',r.last.consumption?
+  (r.provisional?'Estimación NO VALIDADA':'Cruce validado')+
+  ' · último par '+hh(r.last.consumption.key)+dayLoad:
+  (!$('provisional').checked?'Estimación desactivada':
+    'Sin muestras FV+SPC compatibles')+dayLoad);
  text('subImp',r.last.import?'Media intervalo · '+hh(r.last.import.key):'KSTAR sin intervalos conciliados');
  text('subExp',r.last.export?'Media intervalo · '+hh(r.last.export.key):'KSTAR sin intervalos conciliados');
  text('flowGen',kw(r.last.generation?.value));
  text('flowInv',kw(r.last.generation?.value));
  text('flowLoad',kw(r.last.consumption?.value));
  text('flowImp',kw(r.last.import?.value));
- text('flowExp',kw(r.last.export?.value));
+ text('flowExp',exportKW(r.last.export?.value));
  text('invA',r.last.a?kw(r.last.a.value)+' · '+hh(r.last.a.key):'Sin lectura');
  text('invB',r.last.b?kw(r.last.b.value)+' · '+hh(r.last.b.key):'Sin lectura');
  setDevice('dotA','invA',r.last.a);setDevice('dotB','invB',r.last.b);
@@ -370,9 +380,13 @@ function repaint(){
  $('dotSPC').classList.toggle('off',!isSpc);$('dotSPC').classList.toggle('warn',isSpc);
  text('spcState',isSpc?'Intervalos históricos':'Sin intervalo validado');
  $('dotBalance').classList.toggle('off',!r.common);$('dotBalance').classList.toggle('warn',!!r.common);
- text('balanceState',r.common?r.common+' pares de muestras':'Falta cruce horario');
+ text('balanceState',r.common?
+  r.common+' pares · '+(r.provisional?'estimados (reloj no verificado)':'reloj validado'):
+  'Sin pares válidos de FV y SPC');
  text('miniGen',r.last.generation?kw(r.last.generation.value):'Sin potencia');
- text('miniCons',r.last.consumption?(r.provisional?'Provisional':'Derivado'):'Sin correspondencia temporal');
+ text('miniCons',r.last.consumption?
+  (r.provisional?'Estimado · RELOJ SIN VALIDAR':'Calculado · reloj verificado')+
+  ' · '+r.common+' tramos':'Sin pares válidos de FV y SPC');
  text('dailyGen',kwh(r.summary.generation));
  text('dailyCons',kwh(r.summary.consumption));
  text('dailyExp',kwh(r.summary.export));
@@ -397,7 +411,8 @@ function repaint(){
   ' · A+B '+r.series.generation.filter(x=>x!==null).length+
   ' muestras · SPC '+r.series.import.filter(x=>x!==null).length+
   ' intervalos · consumo '+r.common+' puntos'+
-  (r.provisional?' · cruce provisional SIN validar':'')+'.');
+  (r.provisional?' · CONSUMO ESTIMADO / RELOJ SIN VALIDAR':'')+
+  (r.negativePairs?' · '+r.negativePairs+' incompatibilidades omitidas':'')+'.');
 }
 async function reload({keepDay=true,sinRed=false}={}){
  if(!sinRed)await pullShared({date:$('day').value||null});

@@ -9,8 +9,8 @@ El SCADA y el Informe comparten el **archivo central SQLite de Gorraiz** en el W
 | Generación FV (kW) | Solarman: `APo_t1` de los dos G50KT, suma solo de muestras simultáneas | Medida de potencia AC |
 | Inversor A y B (kW) | Solarman: `pot` del histórico local | Medida de potencia AC |
 | Importación (kW) | `positiveActiveElec` KSTAR | Potencia **media estimada por intervalo** entre contadores en kWh |
-| Exportación (kW) | `reverseActiveElec` KSTAR | Potencia **media estimada por intervalo** entre contadores en kWh |
-| Consumo (kW) | Generación + importación − exportación | **Derivación** solo con muestras emparejables; por defecto no se mezcla el reloj SPC sin validar |
+| Exportación (kW) | `reverseActiveElec` KSTAR | Media estimada por intervalo a partir de acumulados; **se dibuja NEGATIVA como flujo saliente** (el contador y kWh diarios siguen positivos) |
+| Consumo (kW) | Generación + importación − exportación | **ESTIMACIÓN NO VALIDADA** cuando coinciden muestras A+B y SPC en la misma casilla; se muestra por defecto, con opción de ocultarla, sin certificar la hora del SPC |
 | Autoconsumo (kWh) | `daily.selfConsumptionKWh` SPC | Energía diaria; **no** potencia instantánea |
 | Balance diario (kWh) | Producción diaria de ambos inversores y resumen SPC del mismo día | Derivado; parcial para días en curso |
 
@@ -21,7 +21,7 @@ La instalación cuenta con **123,84 kWp DC** y **2 × 50 kW AC nominales**; el r
 1. **Ninguna medida a cero por ausencia de datos:** se representa con `null`, etiqueta «—» y hueco gráfico (`spanGaps:false`).
 2. **SPC requiere** día `meta.completo=true`, datos de medidor único (o metadato sin recuento) y conciliación del incremento primero–último de contadores con el resumen diario (desviación máxima: mayor de 1 kWh y 2 % del total).
 3. Se descartan diferencias negativas, reinicios de contador, intervalos inferiores a 2 o superiores a 10 minutos y picos físicamente anómalos. No se interpolan huecos ni se reparte energía diaria ficticiamente entre horas.
-4. La marca de tiempo SPC **no tiene huso verificado**. La curva KSTAR usa la hora literal de su dispositivo, señalando esa limitación. El consumo horario permanece sin curva hasta `timezoneVerified=true`, salvo si el usuario activa expresamente el *cruce provisional*. Esa opción es **solo visual** y no altera el informe ni declara válida la medida.
+4. La marca temporal SPC **no tiene huso verificado**. La curva KSTAR utiliza la hora literal del medidor. Por petición expresa, el SCADA muestra por defecto el **consumo estimado provisional** con esa correspondencia horaria aún sin validar, siempre que coincidan A+B y el intervalo SPC. Puede ocultarse con la casilla «Consumo estimado (relojes SIN validar)». La curva, en azul discontinuo, no supone medición real ni altera el informe. Ausencias o balances negativos siguen siendo huecos, no ceros.
 5. `totalActivePower` no se utiliza como kW porque no se han validado escala, signo ni transformadores de corriente.
 6. Las tarjetas de equipo indican **disponibilidad de muestra**, no salud real, órdenes de control ni enlace en línea confirmado.
 7. Las gráficas **24 h** y **7 días** comparten resolución nominal de 5 minutos y conservan muestras faltantes. Las transiciones DST deben estudiarse antes de afirmar que los relojes de ambas fuentes se encuentran reconciliados; el período seleccionado se representa por reloj civil y no se pretende certificar el número real de minutos de los días de cambio horario.
@@ -68,7 +68,7 @@ La nueva pestaña **Contraste FV ↔ SPC** trabaja exclusivamente con el histór
 
 **Señales:** FV representa la suma AC de los inversores A+B obtenida de muestras Solarman en kW. Importación y exportación son potencias medias estimadas mediante diferencias de contadores acumulados SPC. Estos valores de red no equivalen exactamente a una muestra instantánea de Solarman. No se interpolan huecos ni saltos de contadores.
 
-**Consumo inferido:** potencia de consumo = potencia FV + importación SPC − exportación SPC. No es una medida independiente. Solo aparece en la curva y tabla horaria después de activar «Mostrar consumo calculado (no validado)». Consumos calculados inferiores a -0,2 kW se contabilizan como incidencias y se dejan vacíos en la curva, sin inventar consumos positivos.
+**Consumo inferido:** potencia de consumo = potencia FV + importación SPC − exportación SPC. No es medida independiente. En SCADA se representa por defecto como **estimación NO VALIDADA**, y puede ocultarse. La tabla de contraste permite desactivarlo por separado. Valores calculados inferiores a −0,2 kW se cuentan como incidencias, sin rellenarlos ni inventar consumos positivos.
 
 **Desfase horario:** el slider permite trasladar el reloj *visual* de SPC entre −180 y +180 minutos en pasos de cinco minutos. «SPC +5 minutos» dibuja una lectura original de SPC 09:55 junto a la hora FV 10:00. El ajuste no altera IndexedDB, el Worker, los ficheros, los timestamps ni la marca de huso verificado. Los tramos desplazados fuera de los límites del día se dejan vacíos y no se arrastran de días vecinos. Un desplazamiento visual que reduzca anomalías no acredita por sí solo la sincronización real.
 
@@ -77,3 +77,13 @@ La nueva pestaña **Contraste FV ↔ SPC** trabaja exclusivamente con el histór
 **Limitación importante:** la identidad del balance es algebraica y no constituye por sí sola una validación de los relojes. Es necesario cotejar la hora UTC de Solarman y el reloj/configuración SPC frente a una referencia externa, y de ser posible una señal de potencia independiente. Los días de cambio horario de verano requieren tratamiento particular de los intervalos de 23 o 25 horas; los 288 intervalos nominales no deben interpretarse como cobertura real completa de esos días.
 
 **CSV:** se exportan las casillas horarias de 5 minutos con kW, desfase exploratorio y marca «relojes certificados: NO». Si la casilla de visualización del consumo está desmarcada, la columna de consumo inferido se entrega vacía. No se descargan ni envían datos adicionales al proveedor.
+
+
+## Convención de signos (22/10/2026)
+
+- Importación de red: positiva en kW.
+- Exportación de red: **negativa en las gráficas de potencia**, tarjetas de potencia y sinóptico, para que quede por debajo del eje cero. La exportación guardada en los acumulados SPC y en los totales diarios **permanece positiva en kWh**: el signo es una transformación solo de visualización.
+- Consumo estimado de potencia: FV + importación + (exportación ya con signo negativo) = FV + importación − exportación (magnitud positiva del contador). Nunca restar dos veces el flujo exportado.
+- Los intervalos de consumo estimado requieren simultaneidad nominal de dos inversores y SPC, sin interpolar los huecos. La opción se muestra marcada inicialmente a petición del usuario, con identificación explícita «RELOJ SIN VALIDAR». No equivale a verificar la hora, potencia del contador ni ausencia de acumulación eléctrica.
+- La tarjeta de consumo indica el último par temporal con estimación disponible, no una lectura actual del edificio. El cálculo diario en kWh requiere día SPC cerrado y totales de generación más importación y exportación disponibles. No se extrapolan valores instantáneos para compensar huecos nocturnos. Los intervalos que arrojan demanda negativa menor que −0,2 kW se registran como anomalías y no se grafican como consumo.
+- El CSV de contraste representa potencia exportada con signo negativo y cabecera explícita. Las series internas y los resúmenes de energía conservan magnitudes de origen positivas.

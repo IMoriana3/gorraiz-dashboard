@@ -101,3 +101,18 @@ test('no inventar offsets subminutales, ni aceptar 7 días como jornada única',
  assert.throws(()=>contrastDay(d,{offsetMinutes:185}),/desfase SPC/);
  assert.throws(()=>contrastDay({...d,dates:['2026-10-20',DAY]}),/único día/);
 });
+
+test('CSV de comparación usa exportación negativa sin cambiar los cálculos de energía',()=>{
+ const d=day();
+ d.series.generation[130]=60;
+ d.series.import[130]=0;
+ d.series.export[130]=12.75;
+ const result=contrastDay(d);
+ assert.equal(result.readings.export[130],12.75,
+   'el contador SPC almacena exportación como magnitud positiva');
+ assert.equal(result.readings.netGrid[130],-12.75);
+ assert.equal(result.readings.load[130],47.25);
+ const csv=contrastCsv(result,{showLoad:true});
+ assert.match(csv,/exportacion_SPC_kW_signo_negativo/);
+ assert.match(csv,/2026-10-21T10:50;60.000;0.000;-12.750;47.250;0;NO/);
+});

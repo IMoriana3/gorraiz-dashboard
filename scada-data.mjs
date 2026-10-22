@@ -162,7 +162,7 @@ export function buildSeries(items,{date,range=1,allowProvisional=false}={}){
     if(state.ready)for(const g of state.intervals)grid.set(g.key,g);
   }
   const series={generation:[],a:[],b:[],import:[],export:[],consumption:[]};
-  let common=0,provisional=false;
+  let common=0,provisional=false,negativePairs=0;
   for(const key of keys){
     const a=A.map.get(key)?.kw??null,b=B.map.get(key)?.kw??null,g=grid.get(key);
     const prod=a!==null&&b!==null?a+b:null;
@@ -170,6 +170,7 @@ export function buildSeries(items,{date,range=1,allowProvisional=false}={}){
     if(prod!==null&&g&&(g.clockVerified||allowProvisional)){
       const computed=prod+g.importKW-g.exportKW;
       if(computed>=-0.2){consumption=Math.max(0,computed);common++;if(!g.clockVerified)provisional=true}
+      else negativePairs++; // no se inventa consumo negativo/positivo por forzar el balance
     }
     series.a.push(a);series.b.push(b);series.generation.push(prod);
     series.import.push(g?g.importKW:null);series.export.push(g?g.exportKW:null);
@@ -180,7 +181,8 @@ export function buildSeries(items,{date,range=1,allowProvisional=false}={}){
   const aDay=A.dayEnergy.get(reportDay)?.value??null,bDay=B.dayEnergy.get(reportDay)?.value??null;
   const productionDay=aDay!==null&&bDay!==null?aDay+bDay:null;
   const imp=summary?valueAt(summary,'importKWh'):null,exp=summary?valueAt(summary,'exportKWh'):null;
-  const consumptionDay=productionDay!==null&&imp!==null&&exp!==null&&productionDay>=exp
+  const consumptionDay=gridState[reportDay]?.meta?.completo===true&&
+    productionDay!==null&&imp!==null&&exp!==null&&productionDay>=exp
     ?productionDay+imp-exp:null;
   const last = values => {
     for(let i=values.length-1;i>=0;i--)if(values[i]!==null)return {value:values[i],key:keys[i]};
@@ -191,13 +193,15 @@ export function buildSeries(items,{date,range=1,allowProvisional=false}={}){
     import:last(series.import),export:last(series.export),consumption:last(series.consumption)
   },summary:{generation:productionDay,import:imp,export:exp,consumption:consumptionDay,
     spcAutoconsumption:summary?valueAt(summary,'selfConsumptionKWh'):null},
-    gridState,common,provisional,
+    gridState,common,provisional,negativePairs,
     warnings:[
       ...(!keys.some(k=>A.map.has(k)&&B.map.has(k))?['Sin puntos simultáneos de ambos inversores']:[]),
       ...(dates.some(d=>gridState[d]?.reason)?['SPC: '+dates.filter(d=>gridState[d]?.reason).map(d=>d+' '+gridState[d].reason).join('; ')]:[]),
       ...(dates.some(d=>gridState[d]?.ready&&gridState[d].meta.timezoneVerified!==true)?
         ['Reloj SPC sin validar frente a Solarman. La importación/exportación son medias por intervalo, no valores instantáneos.']:[]),
       ...(!common?['Consumo horario sin muestra temporalmente conciliada; no se rellena con valores inventados.']:[]),
-      ...(provisional?['Consumo estimado provisional: superposición horaria SPC–Solarman sin verificar.']:[])
+      ...(provisional?['Consumo estimado provisional: superposición horaria SPC–Solarman sin verificar.']:[]),
+      ...(negativePairs?['Consumo no calculable en '+negativePairs+
+        ' intervalos por balance negativo inferior a -0,2 kW. Las medidas originales se conservan.']:[])
     ]};
 }
