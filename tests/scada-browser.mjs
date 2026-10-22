@@ -121,6 +121,13 @@ try {
       rows.push({saveTime:date+' '+time+':00',
         positiveActiveElec:100+imp,reverseActiveElec:10+exp});
     }
+    // Dos lecturas SPC posteriores al último punto FV: situación que
+    // evidenció el usuario (FV 19:25 frente a SPC 23:55).
+    for(const time of ['14:25','14:30']){
+      imp+=30/12;
+      rows.push({saveTime:date+' '+time+':00',
+        positiveActiveElec:100+imp,reverseActiveElec:10+exp});
+    }
     const entries=[
       {id:'A|Fichero QA',tipo:'A',nombre:'SINTÉTICO QA A',unidadPotencia:'kW',rows:A},
       {id:'B|Fichero QA',tipo:'B',nombre:'SINTÉTICO QA B',unidadPotencia:'kW',rows:B},
@@ -169,6 +176,50 @@ try {
   assert.equal(await page.locator('#provisional').isChecked(),true,
     'solicitud del usuario: mostrar estimación provisional por defecto');
   assert.equal(reading.labels,288);
+  assert.match(await page.locator('#snapshotStamp').innerText(),/19\/10 14:20/);
+  assert.match(await page.locator('#snapshotSources').innerText(),/última SPC: 19\/10 14:30/);
+  assert.match(await page.locator('#snapshotSources').innerText(),/Última FV: 19\/10 14:20/);
+  assert.equal(await page.locator('#snapshotMatched').isEnabled(),true);
+  const initialTime=await page.locator('#snapshotStamp').innerText();
+  const initialReading={
+   generation:await page.locator('#powerGen').innerText(),
+   consumption:await page.locator('#powerCons').innerText(),
+   import:await page.locator('#powerImp').innerText()
+  };
+  assert.equal(initialTime.includes('14:20'),true);
+  // Una instantánea conjunta toma todas las potencias del mismo timestamp:
+  // la importación no puede usar el último dato SPC de las 14:30.
+  assert.ok(Math.abs(value(initialReading.generation)+value(initialReading.import)+
+    value(reading.exp)-value(initialReading.consumption))<.3);
+  await page.locator('#snapshotSpc').click();
+  assert.match(await page.locator('#snapshotStamp').innerText(),/14:30/);
+  assert.equal(await page.locator('#powerGen').innerText(),'—',
+    'SPC posterior no inventa cero FV al acabar Solarman');
+  assert.equal(await page.locator('#powerCons').innerText(),'—',
+    'SPC posterior no reutiliza un consumo de 14:20');
+  assert.ok(value(await page.locator('#powerImp').innerText())>0,
+    'la lectura de SPC más reciente sí es visible a la hora seleccionada');
+  assert.match(await page.locator('#snapshotInterpretation').innerText(),/falta generación FV/);
+  assert.match(await page.locator('#flowTime').innerText(),/14:30/);
+  assert.equal(await page.locator('#flowLoad').innerText(),'—');
+  await page.locator('#snapshotMatched').click();
+  assert.match(await page.locator('#snapshotStamp').innerText(),/14:20/);
+  assert.ok(value(await page.locator('#powerCons').innerText())>0);
+  // Desplazar el cursor por el gráfico NO hace peticiones a proveedores.
+  await page.locator('#snapshotSlider').evaluate(el=>{
+    el.value=String(14*12+6);
+    el.dispatchEvent(new Event('input',{bubbles:true}));
+  });
+  assert.match(await page.locator('#snapshotStamp').innerText(),/14:30/);
+  assert.equal(await page.locator('#powerGen').innerText(),'—');
+  await page.locator('#snapshotMatched').click();
+  assert.equal(requests,0,'selección horaria histórica no consulta a Solarman');
+  assert.equal(kstarCalls,0,'selección horaria histórica no consulta a KSTAR');
+  await page.setViewportSize({width:1200,height:900});
+  const cardPositions=await page.locator('#view-general > .cards > .card').evaluateAll(
+    elements=>elements.map(el=>Math.round(el.getBoundingClientRect().top)));
+  assert.equal(new Set(cardPositions).size,1,'cinco tarjetas en una fila a 1200 px');
+  await page.setViewportSize({width:1440,height:900});
   assert.equal(requests,0,'abrir el SCADA no debe consumir ninguna llamada API');
   // Ambos paneles usan las mismas rutas de archivo, sin consultar proveedores.
   await page.locator('#pushHistory').click();
