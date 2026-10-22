@@ -568,7 +568,28 @@ function mergeIBR(){
   chk();pintaSpc();
 }
 
-function clearIBR(){IBR_FILES=[];RAW.I=[];$('fI').value='';mergeIBR();log('i-DE: ficheros de consumo vaciados')}
+function clearIBR(){
+  IBR_FILES=[];RAW.I=[];$('fI').value='';mergeIBR();
+  // Borrado explícito SOLO del origen I; nunca borrar la producción o el SPC.
+  guardando=(guardando||Promise.resolve()).then(async()=>{
+    try{
+      const d=await abreDB();
+      await new Promise((ok,mal)=>{
+        const tx=d.transaction(DB_STORE,'readwrite'),st=tx.objectStore(DB_STORE);
+        const cursor=st.openCursor();
+        cursor.onsuccess=()=>{
+          const c=cursor.result;
+          if(!c)return;
+          if(String(c.key).startsWith('I|'))c.delete();
+          c.continue();
+        };
+        tx.oncomplete=ok;tx.onerror=()=>mal(tx.error);
+      });
+      d.close();
+    }catch(e){log('⚠ No se han podido borrar las fuentes i-DE locales: '+e.message)}
+  });
+  log('i-DE: ficheros de consumo vaciados (sin alterar las fuentes FV y SPC)');
+}
 
 // ═══ PROPORCIÓN DE LAS GRÁFICAS ═══
 // Se envuelve cada lienzo en una caja de proporción fija y se le dice a Chart.js
@@ -1313,17 +1334,63 @@ function abreDB(){
   });
 }
 let guardando=null;
+function mezclaFuenteLocal(existente,nueva){
+  if(!existente)return nueva;
+  if(nueva.tipo==='S'){
+    const a=existente.payload?.meta||{},b=nueva.payload?.meta||{};
+    if(a.completo===true&&b.completo!==true)return existente;
+    const time=x=>Date.parse(x.fetchedAt||x.actualizado||'')||0;
+    // Una lectura SPC completa más reciente no puede perderse por abrir
+    // un Informe que aún tenga una copia anterior en otra pestaña.
+    if(a.completo===true&&b.completo===true&&time(a)>time(b))return existente;
+    if(a.completo===true&&b.completo===true&&time(a)===time(b)&&
+       (existente.payload.rows?.length||0)>(nueva.payload.rows?.length||0))return existente;
+    return nueva;
+  }
+  if(nueva.tipo==='A'||nueva.tipo==='B'){
+    const preferirViejo=(Date.parse(existente.updatedAt||'')||0)>
+      (Date.parse(nueva.updatedAt||'')||0);
+    const filas=new Map();
+    const key=r=>{
+      const date=r?.ts instanceof Date?r.ts:new Date(r?.ts);
+      return Number.isFinite(+date)?String(+date):String(r?.ts||'');
+    };
+    for(const row of existente.rows||[])filas.set(key(row),row);
+    for(const row of nueva.rows||[]){
+      const id=key(row),old=filas.get(id);
+      if(old){
+        const primary=preferirViejo?old:row,backup=preferirViejo?row:old;
+        filas.set(id,{...backup,...primary,
+          pot:primary.pot??backup.pot??null,
+          acum:primary.acum??backup.acum??null,
+          dia:primary.dia??backup.dia??null});
+      }else filas.set(id,row);
+    }
+    return {...nueva,updatedAt:preferirViejo?existente.updatedAt:nueva.updatedAt,
+      rows:[...filas.values()].sort((x,y)=>+new Date(x.ts)-+new Date(y.ts))};
+  }
+  return nueva;
+}
 function guardaFuentes(){
-  // Se encadena para no solapar escrituras cuando entran A y B casi a la vez.
+  // Ya no se usa clear(): con dos pestañas abiertas, la rutina antigua podía
+  // borrar lecturas que SCADA acababa de recuperar en el mismo IndexedDB.
+  // Se fusionan exclusivamente las claves propias, sin tocar las demás.
   guardando=(guardando||Promise.resolve()).then(async()=>{
     try{
       const d=await abreDB();
       await new Promise((ok,mal)=>{
         const tx=d.transaction(DB_STORE,'readwrite'),st=tx.objectStore(DB_STORE);
-        st.clear();
-        IBR_FILES.forEach(f=>st.put({id:'I|'+f.name,tipo:'I',nombre:f.name,rows:f.rows}));
-        ['A','B'].forEach(k=>PROD_FUENTES[k].forEach(f=>st.put({id:k+'|'+f.nombre,tipo:k,nombre:f.nombre,rows:f.rows})));
-        SPC_FUENTES.forEach(f=>st.put({id:'S|'+f.date,tipo:'S',fecha:f.date,payload:f}));
+        const entries=[];
+        IBR_FILES.forEach(f=>entries.push({id:'I|'+f.name,tipo:'I',nombre:f.name,rows:f.rows}));
+        ['A','B'].forEach(k=>PROD_FUENTES[k].forEach(f=>
+          entries.push({id:k+'|'+f.nombre,tipo:k,nombre:f.nombre,rows:f.rows,
+            ...(f.updatedAt?{updatedAt:f.updatedAt}:{})})));
+        SPC_FUENTES.forEach(f=>entries.push({id:'S|'+f.date,tipo:'S',fecha:f.date,payload:f}));
+        for(const source of entries){
+          if(source.tipo==='I'){st.put(source);continue}
+          const request=st.get(source.id);
+          request.onsuccess=()=>st.put(mezclaFuenteLocal(request.result,source));
+        }
         tx.oncomplete=ok;tx.onerror=()=>mal(tx.error);
       });
       d.close();pintaMemoria();
@@ -1343,7 +1410,7 @@ async function cargaFuentes(){
     todo.forEach(f=>{
       if(f.tipo==='I')IBR_FILES.push({name:f.nombre,size:0,dias:0,rows:f.rows});
       else if(f.tipo==='S'&&f.payload)ponFuenteSpc(f.fecha,f.payload);
-      else if(PROD_FUENTES[f.tipo])PROD_FUENTES[f.tipo].push({nombre:f.nombre,rows:f.rows});
+      else if(PROD_FUENTES[f.tipo])PROD_FUENTES[f.tipo].push({nombre:f.nombre,rows:f.rows,updatedAt:f.updatedAt});
     });
     mergeIBR();mergeProd('A');mergeProd('B');
     log(`Recuperados datos guardados: ${fn(RAW.I.length)} reg de consumo, ${fn(RAW.A.length+RAW.B.length)} de producción`);
@@ -1352,6 +1419,9 @@ async function cargaFuentes(){
 }
 async function olvidaTodo(){
   if(!confirm('Se borrarán del navegador todos los datos cargados: consumo, producción e intercambio SPC. ¿Seguro?'))return;
+  // Esperar escrituras pendientes evita que una operación atrasada restaure
+  // información que el usuario acaba de decidir borrar explícitamente.
+  if(guardando)await guardando;
   try{const d=await abreDB();
     await new Promise(ok=>{const tx=d.transaction(DB_STORE,'readwrite');tx.objectStore(DB_STORE).clear();tx.oncomplete=ok});
     d.close();
