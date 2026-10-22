@@ -68,6 +68,10 @@ function makeSeries(label,values,color,dashed=false){
   borderDash:dashed?[5,4]:[],fill:false};
 }
 function paint(canvasId,series,labels){
+ const element=$(canvasId);
+ if(!element || element.closest('.scada-view[hidden]')){
+   charts[canvasId]?.destroy();delete charts[canvasId];return;
+ }
  if(typeof Chart==='undefined'){
   $('notice').textContent='Chart.js no está disponible: comprueba la conexión con el CDN antes de interpretar las gráficas.';
   return;
@@ -89,6 +93,76 @@ function setDevice(dotId,labelId,last,source){
 function bar(id,value,max){
  $(id).style.width=value!==null&&max>0?Math.max(0,Math.min(100,100*value/max))+'%':'0%';
 }
+const SCADA_VIEW_IDS=new Set(['general','planta','inversores','red','historicos','diagnostico']);
+function navigateView(){
+ const requested=location.hash.slice(1);
+ const chosen=SCADA_VIEW_IDS.has(requested)?requested:'general';
+ for(const panel of document.querySelectorAll('[data-view-panel]'))
+   panel.hidden=panel.dataset.viewPanel!==chosen;
+ for(const link of document.querySelectorAll('[data-view-link]')){
+   const current=link.dataset.viewLink===chosen;
+   link.classList.toggle('on',current);
+   if(current)link.setAttribute('aria-current','page');
+   else link.removeAttribute('aria-current');
+ }
+ if(day)repaint(); // reconstruye solo las gráficas visibles, nunca llama a API
+ window.scrollTo({top:0,behavior:'auto'});
+}
+function updateDetailPanels(r,labels){
+ const present=values=>values.filter(v=>v!==null).length;
+ const solarCount=present(r.series.generation);
+ const gridCount=present(r.series.import);
+ const from=r.dates[0]||'—',to=r.dates.at(-1)||'—';
+ const pvCurves=[
+   makeSeries('Generación total',r.series.generation,paints.generation),
+   makeSeries('Inversor A',r.series.a,paints.a,true),
+   makeSeries('Inversor B',r.series.b,paints.b,true)];
+ const gridCurves=[
+   makeSeries('Importación · media estimada',r.series.import,paints.import),
+   makeSeries('Exportación · media estimada',r.series.export,paints.export)];
+ const commonCurves=[
+   makeSeries('Generación',r.series.generation,paints.generation),
+   makeSeries('Consumo calculado',r.series.consumption,paints.consumption,true),
+   ...gridCurves];
+ text('plantNow',kw(r.last.generation?.value));
+ text('plantDay',kwh(r.summary.generation));
+ text('plantPoints',String(solarCount));
+ paint('plantChart',pvCurves,labels);
+ text('invDetailA',r.last.a?kw(r.last.a.value)+' · '+hh(r.last.a.key):'Sin muestra de A');
+ text('invDetailB',r.last.b?kw(r.last.b.value)+' · '+hh(r.last.b.key):'Sin muestra de B');
+ text('invCoverageA',present(r.series.a)+' muestras válidas de A en la selección.');
+ text('invCoverageB',present(r.series.b)+' muestras válidas de B en la selección.');
+ paint('inverterAChart',[makeSeries('Inversor A',r.series.a,paints.a)],labels);
+ paint('inverterBChart',[makeSeries('Inversor B',r.series.b,paints.b)],labels);
+ text('redImpDay',kwh(r.summary.import));
+ text('redExpDay',kwh(r.summary.export));
+ text('redPoints',String(gridCount));
+ const gridDay=r.gridState[to];
+ const clockVerified=gridDay?.ready===true&&gridDay.meta?.timezoneVerified===true;
+ text('redClock',clockVerified?'Zona horaria señalada como verificada':'Reloj SPC sin verificar con Solarman');
+ paint('redDetailChart',gridCurves,labels);
+ text('historyDates',from+' → '+to);
+ text('historyCoverage','En '+r.keys.length+' intervalos posibles se observan '+solarCount+
+   ' con generación simultánea, '+gridCount+' con medición derivada de KSTAR y '+
+   r.common+' con consumo calculable. Los demás quedan vacíos; no equivalen a cero.');
+ paint('historyChart',commonCurves,labels);
+ text('diagPv',String(solarCount));
+ text('diagGrid',String(gridCount));
+ text('diagCons',String(r.common));
+ text('diagClock',clockVerified?'Metadato SPC: huso horario verificado para '+to+'.':
+   'Reloj del SPC sin contrastar frente a Solarman para '+to+
+   '. El consumo horario no se confirma salvo cruce provisional explícito.');
+ const warningLines=[...r.warnings];
+ if(!r.gridState[to])warningLines.push('Sin jornada SPC con intervalos conciliados el '+to+'.');
+ if(!solarCount)warningLines.push('No coinciden los dos inversores en ningún punto de este periodo.');
+ if(!warningLines.length)warningLines.push('Sin incidencias de cobertura detectadas en el intervalo. No se supervisan alarmas de hardware.');
+ const container=$('diagWarnings');
+ container.replaceChildren();
+ for(const warning of warningLines){
+   const p=document.createElement('p');p.textContent=warning;container.appendChild(p);
+ }
+}
+
 function repaint(){
  if(!day)return;
  const r=buildSeries(stored,{date:day,range,allowProvisional:$('provisional').checked});
@@ -106,6 +180,7 @@ function repaint(){
  paint('gridChart',[makeSeries('Importación',r.series.import,paints.import),
   makeSeries('Exportación',r.series.export,paints.export)],labels);
 
+ updateDetailPanels(r,labels);
  text('powerGen',kw(r.last.generation?.value));
  text('powerCons',kw(r.last.consumption?.value));
  text('powerImp',kw(r.last.import?.value));
@@ -255,4 +330,6 @@ window.addEventListener('storage',e=>{
 });
 showQuota();
 setInterval(showQuota,60_000); // solo interfaz local, cero llamadas a la API
+window.addEventListener('hashchange',navigateView);
+navigateView();
 await reload({keepDay:false});
