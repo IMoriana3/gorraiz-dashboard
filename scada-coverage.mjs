@@ -116,3 +116,124 @@ export function pvDayDiagnosis(items,result,date){
  }
  return {date,inventory:inv,plotted,kind,message};
 }
+
+// Auditoría de los huecos FV reales, exclusivamente sobre el histórico local.
+// Se reproduce la misma asignación a casillas de cinco minutos que scada-data.
+// Distingue "sin fila en el archivo" de "hay fila pero potencia invalidada".
+// No permite deducir si una ausencia se originó en el datalogger, la nube de
+// Solarman o una respuesta incompleta del Worker: eso requiere telemetría externa.
+const pvSlot=(stamp)=>{
+ if(!stamp)return null;
+ const step=Math.round((stamp.minute+stamp.second/60)/5);
+ return step>=0&&step<288?step:null;
+};
+const pvClock=step=>String(Math.floor(step/12)).padStart(2,'0')+':'+
+  String((step%12)*5).padStart(2,'0');
+const gapTitles={
+ 'sin-A-ni-B':'No hay fila de A ni B',
+ 'sin-A':'A sin fila; B con potencia válida',
+ 'sin-B':'B sin fila; A con potencia válida',
+ 'A-invalidado':'A tiene fila sin potencia válida',
+ 'B-invalidado':'B tiene fila sin potencia válida',
+ 'ambos-invalidados':'Ambos tienen filas sin potencia válida',
+ 'A-no-valido-y-B-ausente':'A sin potencia válida y B sin fila',
+ 'B-no-valido-y-A-ausente':'B sin potencia válida y A sin fila',
+ 'mixto-sin-potencia':'No hay potencia válida conjunta',
+};
+function inverterSlotInventory(items,date,type){
+ const slots=new Map();
+ for(const src of (items||[]).filter(x=>x.tipo===type)){
+  for(const row of Array.isArray(src.rows)?src.rows:[]){
+   const stamp=invStamp(row.ts);
+   if(stamp?.date!==date)continue;
+   const position=pvSlot(stamp);
+   if(position===null)continue;
+   const cell=slots.get(position)||{rows:0,valid:false,invalid:false,
+     energyOnly:false,timestamps:new Set()};
+   cell.rows++;
+   const val=normalizeSourcePower(src,row.pot).pot;
+   const raw=numeric(row.pot),unverified=numeric(row.potSinValidar);
+   if(val!==null)cell.valid=true;
+   if(unverified!==null||(raw!==null&&val===null))cell.invalid=true;
+   if(raw===null&&unverified===null&&(numeric(row.dia)!==null||numeric(row.acum)!==null))
+    cell.energyOnly=true;
+   cell.timestamps.add(pvClock(Math.floor((stamp.minute)/5))+
+     ':'+String(stamp.second).padStart(2,'0'));
+   slots.set(position,cell);
+  }
+ }
+ return slots;
+}
+export function solarGapAudit(items,date){
+ const a=inverterSlotInventory(items,date,'A');
+ const b=inverterSlotInventory(items,date,'B');
+ const joint=[];
+ const allValid=new Set([...a.keys(),...b.keys()]);
+ for(const t of allValid)if(a.get(t)?.valid&&b.get(t)?.valid)joint.push(t);
+ joint.sort((x,y)=>x-y);
+ const range=joint.length>=2?{first:joint[0],last:joint.at(-1)}:null;
+ const totals={bothMissing:0,onlyA:0,onlyB:0,invalid:0,
+   possibleOffset:0,withinWindow:0};
+ const issues=[],reasons={};
+ if(range){
+  for(let t=range.first;t<=range.last;t++){
+   const ca=a.get(t),cb=b.get(t);
+   if(ca?.valid&&cb?.valid)continue;
+   let category;
+   if(ca?.valid){
+    if(cb?.invalid||cb?.energyOnly)category='B-invalidado';
+    else category='sin-B';
+    totals.onlyA++;
+   }else if(cb?.valid){
+    if(ca?.invalid||ca?.energyOnly)category='A-invalidado';
+    else category='sin-A';
+    totals.onlyB++;
+   }else if(!ca&&!cb){
+    category='sin-A-ni-B';totals.bothMissing++;
+   }else if(ca&&cb){
+    category='ambos-invalidados';
+   }else if(ca&&!cb){
+    category='A-no-valido-y-B-ausente';
+   }else if(cb&&!ca){
+    category='B-no-valido-y-A-ausente';
+   }else category='mixto-sin-potencia';
+   if(ca?.invalid||cb?.invalid||ca?.energyOnly||cb?.energyOnly)totals.invalid++;
+   const neighbor=Boolean(
+     (ca?.valid&&!cb?.valid&&(b.get(t-1)?.valid||b.get(t+1)?.valid))||
+     (cb?.valid&&!ca?.valid&&(a.get(t-1)?.valid||a.get(t+1)?.valid))
+   );
+   if(neighbor)totals.possibleOffset++;
+   reasons[category]=(reasons[category]||0)+1;
+   issues.push({time:pvClock(t),reason:category,
+     description:gapTitles[category],
+     a:ca?.valid?'Válido':ca?.invalid?'Potencia pendiente':
+       ca?.energyOnly?'Solo energía':ca?'Sin potencia':'Sin fila',
+     b:cb?.valid?'Válido':cb?.invalid?'Potencia pendiente':
+       cb?.energyOnly?'Solo energía':cb?'Sin potencia':'Sin fila',
+     possibleOffset:neighbor});
+  }
+  totals.withinWindow=range.last-range.first+1;
+ }
+ const countValid=map=>[...map.values()].filter(x=>x.valid).length;
+ const countOriginal=map=>map.size;
+ return {
+  date,first:range?pvClock(range.first):null,last:range?pvClock(range.last):null,
+  validA:countValid(a),validB:countValid(b),originalSlotsA:countOriginal(a),
+  originalSlotsB:countOriginal(b),joint:joint.length,totals,reasons,issues,
+  interpretation: !range?
+    'No hay dos puntos FV conjuntos para definir una ventana diurna; primero revisar la cobertura de A y B.':
+    !issues.length?
+      'No hay huecos entre las primeras y últimas muestras simultáneas. Las horas nocturnas no cuentan.':
+      'Estos son huecos de la curva construida, no prueba de caídas del datalogger. '+
+      'Los casos con «Sin fila» requieren consultar la fuente original o la respuesta API para determinar si la nube los proporcionó. '+
+      '«Posible desfase» indica lectura válida del otro inversor en la casilla adyacente, sin certificar la causa.'
+ };
+}
+export function solarGapCsv(report){
+ const head='fecha;hora;causa;inversor_A;inversor_B;posible_desfase_5min';
+ const clean=text=>String(text||'').replaceAll(';',',').replaceAll('\n',' ');
+ return '\ufeff'+head+'\r\n'+report.issues.map(x=>[
+  report.date,x.time,clean(x.description),clean(x.a),clean(x.b),
+  x.possibleOffset?'POSIBLE':'NO'].join(';')).join('\r\n')+
+  (report.issues.length?'\r\n':'');
+}
