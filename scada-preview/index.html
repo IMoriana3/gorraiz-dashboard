@@ -127,7 +127,7 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
   <button id="reload" type="button">↻ Leer histórico</button>
   <button id="updatePV" type="button" disabled title="La versión de pruebas no realiza llamadas a la API">Consultas API desactivadas</button>
   <span class="tag">Actualización automática desactivada</span>
-  <label class="check" title="Permite el cálculo aproximado del consumo con relojes SPC/Solarman sin conciliar; nunca afecta a los informes."><input id="provisional" type="checkbox"> Cruce horario provisional</label>
+  <label class="check" title="Vista de solo lectura: cálculo FV + importación − exportación, no valida relojes."><input id="provisional" type="checkbox" checked> Consumo estimado (relojes SIN validar)</label>
  </div>
  <div id="rateInfo" class="muted tiny" style="padding:0 0 12px" role="status">Prueba de solo lectura · sin consumo de llamadas a Solarman ni KSTAR.</div>
  <div style="margin-bottom:12px;padding:10px 13px;border:1px solid #647b52;background:#2a3525;border-radius:9px;color:#e2f4c0"><strong>SCADA de pruebas · SOLO LECTURA</strong> — Utiliza únicamente los datos guardados en este navegador. No accede a las APIs, no consume el cupo y no modifica producción.</div>
@@ -146,9 +146,9 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
  <section id="view-general" class="scada-view" data-view-panel="general" aria-label="Vista general del SCADA">
  <div class="cards" aria-label="Potencias del instante seleccionado">
   <div class="card" style="--c:var(--green)"><div class="cap">☀ &nbsp; Generación total</div><div class="value number" id="powerGen">—</div><div class="sub" id="subGen">kW · Solarman</div></div>
-  <div class="card" style="--c:var(--blue)"><div class="cap">⌂ &nbsp; Consumo total</div><div class="value number" id="powerCons">—</div><div class="sub" id="subCons">kW · sin sincronización</div></div>
+  <div class="card" style="--c:var(--blue)"><div class="cap">⌂ &nbsp; Consumo estimado</div><div class="value number" id="powerCons">—</div><div class="sub" id="subCons">kW · sin sincronización</div></div>
   <div class="card" style="--c:var(--red)"><div class="cap">↙ &nbsp; Importación red</div><div class="value number" id="powerImp">—</div><div class="sub" id="subImp">kW medio por intervalo</div></div>
-  <div class="card" style="--c:var(--yellow)"><div class="cap">↗ &nbsp; Exportación red</div><div class="value number" id="powerExp">—</div><div class="sub" id="subExp">kW medio por intervalo</div></div>
+  <div class="card" style="--c:var(--yellow)"><div class="cap">↗ &nbsp; Exportación red (−)</div><div class="value number" id="powerExp">—</div><div class="sub" id="subExp">kW medio por intervalo</div></div>
   <div class="card" style="--c:var(--cyan)"><div class="cap">◉ &nbsp; Autoconsumo diario</div><div class="value number" id="powerSelf">—</div><div class="sub">kWh SPC · no es potencia</div></div>
  </div>
  <div id="empty">No hay muestras guardadas en este navegador para el periodo seleccionado. Abre el <a href="../">informe Gorraiz</a> en este mismo navegador, comprueba qué fechas están disponibles y vuelve al SCADA. Esta vista no descarga datos.</div>
@@ -193,7 +193,7 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
  </div>
  <div class="charts">
   <section class="panel"><div class="ptop"><h2>Generación FV</h2><span class="muted tiny" id="miniGen">kW</span></div><div class="smallbox"><canvas id="pvChart"></canvas></div></section>
-  <section class="panel"><div class="ptop"><h2>Consumo total</h2><span class="muted tiny" id="miniCons">kW · derivado</span></div><div class="smallbox"><canvas id="consChart"></canvas></div></section>
+  <section class="panel"><div class="ptop"><h2>Consumo estimado</h2><span class="muted tiny" id="miniCons">kW · reloj no validado</span></div><div class="smallbox"><canvas id="consChart"></canvas></div></section>
   <section class="panel"><div class="ptop"><h2>Intercambio con red</h2><span class="muted tiny">kW medios estimados</span></div><div class="smallbox"><canvas id="gridChart"></canvas></div></section>
  </div>
  <section class="panel" style="margin-top:11px">
@@ -250,6 +250,6 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
    <p class="footnote">No hay funciones de mando sobre KSTAR ni confirmación de estado «en línea». Una muestra reciente o histórica no garantiza ausencia de averías.</p>
  </section>
 </main></div>
-<script type="module" src="./scada-app.mjs?v=20261022c"></script>
+<script type="module" src="./scada-app.mjs?v=20261022i"></script>
 </body>
 </html>
