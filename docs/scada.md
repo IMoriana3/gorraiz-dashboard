@@ -92,3 +92,16 @@ La nueva pestaña **Contraste FV ↔ SPC** trabaja exclusivamente con el histór
 ## Descarga KSTAR SPC por rango desde ambos paneles
 
 El Informe y el SCADA tienen controles separados «SPC desde» y «Hasta». Una operación manual admite **1–14 días cerrados inclusive** y no ejecuta Solarman. El cliente manda una petición secuencial por fecha a la ruta SPC existente, que solo acepta un día por petición. Los días completos ya conservados se omiten, los parciales pueden reconsultarse, y los fallos de una fecha no borran las anteriores. El resumen indica jornadas descargadas, ya existentes, parciales, copias en histórico central y copias guardadas solo localmente. Para más de 14 días, dividir manualmente la petición en tandas; ninguna descarga se ejecuta en segundo plano. Continúa sin cron SPC por el riesgo del enlace HTTP sin cifrar hacia el portal KSTAR. Leer o representar las muestras previamente guardadas no consume peticiones Solarman.
+
+
+## Instantánea histórica sincronizada del sinóptico (22/10/2026)
+
+En una vista semanal, la antigua implementación mezclaba tarjetas de distintas horas: por ejemplo generación FV y consumo estimado a las 19:25, con importación SPC a las 23:55. Esas lecturas se deben conservar, pero **no pueden aparecer juntas como una instantánea física de la instalación**.
+
+La vista general incluye ahora un **único cursor de cinco minutos** compartido por generación A+B, cargas estimadas, importación y exportación de red, equipos y sinóptico. Al cargar, el cursor selecciona el último punto de consumo provisional utilizable en el rango, o si no existe, el último emparejamiento FV/SPC y finalmente el último SPC o FV disponible. Las cinco tarjetas se representan en una fila cuando hay anchura suficiente.
+
+El usuario puede elegir otra casilla mediante el deslizador «Hora histórica», clic sobre la gráfica general, «Último cruce» o «Último SPC». Elegir SPC a las 23:55 mientras Solarman termina a las 19:25 mostrará SPC de las 23:55, FV **—** y consumo **—**, nunca una generación FV cero inventada ni el consumo de las 19:25. Las tres fuentes se contrastan solo en la misma **casilla temporal nominal**; el reloj SPC **NO se considera validado** por coincidir su etiqueta. La potencia SPC es una media derivada de contadores acumulados y no equivale necesariamente a la potencia instantánea Solarman.
+
+Bajo los controles se indican el día/hora de la instantánea y la última muestra FV, la última SPC y el último cruce. Se mantiene «NO EN DIRECTO» expresamente. El informe de balance diario en **kWh** sigue separado de los valores instantáneos **kW**, pero ahora se corresponde con el día de la instantánea elegida, incluso cuando se visualizan siete días. No se extrapolan noches ni se rellenan intervalos ausentes. Toda la interacción es sobre series ya cargadas: **0 consultas adicionales a Solarman o KSTAR** y ninguna escritura en las bases.
+
+La vista previa read-only es un artefacto de QA independiente; esta nueva interacción se aplica al SCADA principal, sin habilitar descargas ni sondeos en la vista previa.
