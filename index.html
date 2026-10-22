@@ -868,6 +868,7 @@ async function descargarSoloSpc(){
   const complete=SPC_FUENTES.filter(f=>f.meta?.completo===true).map(f=>f.date);
   const already=new Set(complete);
   const counts={guardados:0,parciales:0,omitidos:0,central:0,soloLocal:0,errores:[]};
+  let detenido=false;
   const total=fechas.length,button=$('btnSpcSolo');
   const resumen=()=> 'SPC '+fdmy(desde)+' → '+fdmy(hasta)+': '+
     counts.guardados+' días completos nuevos, '+counts.parciales+' parciales, '+
@@ -892,6 +893,7 @@ async function descargarSoloSpc(){
           // No repetir solicitudes con credenciales inválidas o al límite;
           // un error puntual de un día permite continuar con los siguientes.
           if(/(?:HTTP\s*|\b)(?:401|403|429)\b|clave|credencial|autorizaci[oó]n|cupo|límite de peticiones/i.test(e.message)){
+            detenido=true;
             $('spcAccion').textContent='SPC rango detenido tras '+(i+1)+
               '/'+total+' días por error de acceso o límite: '+e.message+
               '. Los datos guardados se conservan. Solarman no consultado.';
@@ -905,7 +907,7 @@ async function descargarSoloSpc(){
     }
     if(counts.guardados+counts.parciales>0)
       SPC_PRUEBA={ok:true,actualizado:new Date().toISOString()};
-    $('spcAccion').textContent='Descarga por rango completada · '+resumen()+
+    $('spcAccion').textContent=(detenido?'Descarga SPC interrumpida':'Descarga por rango completada')+' · '+resumen()+
       (counts.errores.length?' Incidencias: '+counts.errores.slice(0,3).join(' | ')+
         (counts.errores.length>3?' y '+(counts.errores.length-3)+' más':'')+'.':'')+
       (counts.soloLocal?' Reintenta «Compartir histórico ya guardado» para las copias solo locales.':'')+
