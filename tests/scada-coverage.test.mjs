@@ -170,7 +170,7 @@ test('CSV de huecos solo contiene fecha hora motivo y diagnóstico no validador'
  const b=makePV(d,'B',[{minute:600,pot:12},{minute:610,pot:13}]);
  const report=solarGapAudit([a,b],d);
  const csv=solarGapCsv(report);
- assert.match(csv,/2026-10-21;10:05;B sin fila; A con potencia válida/);
+ assert.match(csv,/2026-10-21;10:05;B sin fila, A con potencia válida;Válido;Sin fila;POSIBLE/);
  assert.equal(report.issues.length,1);
  assert.equal(csv.trim().split('\r\n').length,2);
 });
