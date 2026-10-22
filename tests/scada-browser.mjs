@@ -184,12 +184,27 @@ try {
   assert.ok(sameHour.every(t=>t==='14:20'),JSON.stringify(sameHour)+
     ': todas las tarjetas deben mostrar el mismo instante');
   assert.equal(await page.locator('#synopticTime').innerText().then(x=>x.includes('14:20')),true);
+  // Son dos sinópticos visibles, cada uno con una magnitud y un alcance propios.
+  assert.equal(await page.locator('.synoptic-duo > .panel').count(),2);
+  assert.match(await page.locator('.synoptic-duo').innerText(),/Sinóptico de potencia · kW/);
+  assert.match(await page.locator('#energyHeading').innerText(),/energía generada y balance · kWh/);
+  for(const id of ['energyMatchGen','energyMatchSelf','energyMatchLoad',
+    'energyMatchImport','energyMatchExport','energySelectedPv','energyLifetimePv']){
+    assert.match(await page.locator('#'+id).innerText(),/kWh/,
+      'el sinóptico energético debe mostrar '+id+' en kWh');
+  }
+  assert.match(await page.locator('#energyScope').innerText(),/1\/1 días comparables/);
+  assert.match(await page.locator('#energyComparable').innerText(),/1\/1 día/);
+  const firstEnergy=await page.locator('#energyMatchGen').innerText();
+
   assert.equal(await page.locator('.cards').evaluate(el=>
     getComputedStyle(el).gridTemplateColumns.trim().split(/\s+/).length),4,
     'fila de cuatro tarjetas en escritorio');
   const beforeDisable={pv:await page.locator('#powerGen').innerText(),
     imp:await page.locator('#powerImp').innerText()};
   await page.locator('#provisional').uncheck();
+  assert.equal(await page.locator('#energyMatchGen').innerText(),firstEnergy,
+    'ocultar consumo instantáneo no cambia el acumulado energético');
   assert.equal(await page.locator('#powerCons').innerText(),'—',
     'permitir ocultar la inferencia sin tocar el resto de medidas');
   assert.equal(await page.locator('#powerGen').innerText(),beforeDisable.pv);
@@ -343,6 +358,14 @@ try {
   assert.equal(requests,0,'desfasar SPC y calcular demanda no consulta Solarman');
   assert.equal(kstarCalls,3,'desfasar SPC y calcular demanda no consulta KSTAR');
   await page.locator('.scada-nav [data-view-link="general"]').click();
+  await page.locator('#seven').click();
+  assert.match(await page.locator('#energyScope').innerText(),/1\/7 días comparables/,
+    'el balance semanal no atribuye datos SPC a días sin fuentes');
+  assert.equal(await page.locator('#energyMatchGen').innerText(),firstEnergy,
+    'solo un día con balance comparable preserva su producción real');
+  assert.match(await page.locator('#energyPvCoverage').innerText(),/1\/7 días/);
+  await page.locator('#one').click();
+  assert.match(await page.locator('#energyScope').innerText(),/1\/1 días comparables/);
   await page.locator('#auto').check();
   await page.waitForTimeout(350);
   assert.equal(requests,0,'activar automático tampoco hace llamada inmediata');
