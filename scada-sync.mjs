@@ -117,17 +117,32 @@ export async function pushShared(){
  const failures=[];
  async function pushBlock(items){
   try{
-   const res=await central('/historico/guardar',{items});
-   uploaded+=res.guardadas||0;
-   unverified+=res.pendientesPotencia||0;
-   notify('Archivo central: '+uploaded+' conjuntos migrados; '+unverified+
-     ' potencias sin unidad validada. Datos locales intactos.');
+   const inspection=await central('/historico/validar',{items});
+   if(inspection.version!=='migracion-v3')
+     throw Error('Worker central desactualizado: el migrador v3 no está desplegado.');
+   const rejected=new Set((inspection.incidencias||[]).map(x=>x.tipo+'|'+x.fecha));
+   for(const reason of inspection.incidencias||[])
+     failures.push(reason.tipo+' '+reason.fecha+': '+reason.motivo);
+   const acceptable=items.filter(x=>!rejected.has(x.tipo+'|'+x.fecha));
+   if(acceptable.length){
+     const res=await central('/historico/guardar',{items:acceptable});
+     if(res.version!=='migracion-v3')
+       throw Error('Versión inesperada del archivo común; no continuar.');
+     uploaded+=res.guardadas||0;
+     unverified+=res.pendientesPotencia||0;
+     for(const reason of res.incidencias||[])
+       failures.push(reason.tipo+' '+reason.fecha+': '+reason.motivo);
+   }
+   notify('Migración v3: '+uploaded+' guardados, '+failures.length+
+     ' rechazados, '+unverified+' potencias pendientes. '+
+     (failures.length?'Primero: '+failures[0]+'. ':'')+'Sin consultar proveedores.');
   }catch(e){
-   if(items.length>1&&!/PANEL_KEY|clave de panel|SOLARMAN_QUOTA|coordinador central|credencial/i.test(e.message)){
-    const middle=Math.floor(items.length/2);
-    await pushBlock(items.slice(0,middle));
-    await pushBlock(items.slice(middle));
-    return;
+   if(items.length>1&&
+      !/PANEL_KEY|clave de panel|SOLARMAN_QUOTA|coordinador central|credencial|desactualizado|Versión inesperada/i.test(e.message)){
+     const mid=Math.floor(items.length/2);
+     await pushBlock(items.slice(0,mid));
+     await pushBlock(items.slice(mid));
+     return;
    }
    if(items.length>1)throw e;
    failures.push(items[0].tipo+' '+items[0].fecha+': '+e.message);
@@ -164,8 +179,8 @@ export async function pushShared(){
   if(!items.length){notify('No hay lecturas FV/SPC locales que subir.');return}
   items.sort((a,b)=>a.fecha.localeCompare(b.fecha));
   for(let i=0;i<items.length;i+=12)await pushBlock(items.slice(i,i+12));
-  notify('Migración terminada: '+uploaded+'/'+items.length+' conjuntos guardados, '+
-    failures.length+' pendientes de revisión y '+unverified+' potencias sin unidad fiable. '+
+  notify('Migración v3 finalizada: '+uploaded+'/'+items.length+' conjuntos guardados, '+
+    failures.length+' rechazados y '+unverified+' potencias pendientes. '+
     (failures.length?'Primera incidencia: '+failures[0]+'. ':'')+
     'No se ha consultado Solarman ni SPC.');
  }catch(e){
