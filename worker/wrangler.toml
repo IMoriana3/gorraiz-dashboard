@@ -34,6 +34,17 @@ SPC_SYNC_ENABLED = "false"
 binding = "DATOS"
 id = "060df5733aad4c61b01cbf05e4d7510b"
 
+# Cupo global para TODOS los accesos Solarman desde este Worker.
+# Durable Object SQLite, consistente entre dispositivos; no KV eventual.
+# Previews desde shim de raíz NO llevan esta vinculación ni secretos.
+[[durable_objects.bindings]]
+name = "SOLARMAN_QUOTA"
+class_name = "SolarmanQuota"
+
+[exports.SolarmanQuota]
+type = "durable-object"
+storage = "sqlite"
+
 # Activar solo después de probar HTTPS, el contador y los kWh de un día cerrado.
 # Cada ejecución actualiza el día anterior de Madrid; no requiere abrir el panel.
 # El cron usa UTC. Se repite para recoger correcciones o reintentar tras fallos.

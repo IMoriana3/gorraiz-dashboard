@@ -1235,6 +1235,91 @@ async function escribeDatos(env,cuerpo){
     registros:fuentes.reduce((n,f)=>n+((f.rows&&f.rows.length)||0),0),bytes:txt.length};
 }
 
+// ── Presupuesto Solarman compartido ─────────────────────────────────────
+// Una sola instancia Durable Object centraliza TODOS los accesos nuevos a
+// Solarman: tanto /produccion (informe/SCADA) como /solarman/diagnostico.
+// Cloudflare KV no sirve como candado por consistencia eventual. DO SQLite
+// garantiza reserva atómica y persistente, también desde otros navegadores.
+// Una operación /produccion hace varias peticiones HTTP al proveedor.
+// El límite es UN LOTE/hora, no 1 petición HTTP upstream.
+const SOLARMAN_HORA_MS=60*60*1000;
+const SOLARMAN_PRESUPUESTO='solarman:ultima_reserva';
+const SOLARMAN_ULTIMO_LOTE='solarman:ultimo_lote';
+const SOLARMAN_CACHE_MAX=1_800_000; // SQLite DO limita un valor a ~2 MB.
+const validoDia=s=>typeof s==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(s)
+  &&!Number.isNaN(Date.parse(s+'T00:00:00Z'))
+  &&new Date(s+'T00:00:00Z').toISOString().slice(0,10)===s;
+export class SolarmanQuota {
+  constructor(ctx,env){this.ctx=ctx;this.env=env;}
+  async fetch(req){
+    if(req.method!=='POST')return json({error:'Método no admitido.'},405);
+    const b=await req.json().catch(()=>({}));
+    const tipo=b.tipo,desde=b.desde,hasta=b.hasta,dia=b.dia;
+    if(tipo==='produccion'){
+      if(!validoDia(desde)||!validoDia(hasta)||desde>hasta ||
+         (Date.parse(hasta+'T00:00:00Z')-Date.parse(desde+'T00:00:00Z'))/864e5>19)
+        return json({error:'Rango Solarman inválido o superior a 20 días.'},400);
+    }else if(tipo==='diagnostico'){
+      if(!validoDia(dia))return json({error:'Día de diagnóstico inválido.'},400);
+    }else return json({error:'Operación Solarman desconocida.'},400);
+    const solicitud=tipo==='produccion'?
+      tipo+'|'+desde+'|'+hasta:tipo+'|'+dia;
+    const now=Date.now();
+    let decision;
+    try{
+      decision=await this.ctx.storage.transaction(async tx=>{
+        const last=await tx.get(SOLARMAN_PRESUPUESTO);
+        const cache=await tx.get(SOLARMAN_ULTIMO_LOTE);
+        if(cache&&cache.solicitud===solicitud&&Number.isFinite(cache.at)
+           &&now>=cache.at&&now-cache.at<SOLARMAN_HORA_MS)
+          return{cache:cache.valor};
+        if(typeof last==='number'&&Number.isFinite(last)&&now<last+SOLARMAN_HORA_MS)
+          return{retry:Math.max(1,Math.ceil((last+SOLARMAN_HORA_MS-now)/1000))};
+        if(last!==undefined&&last!==null&&(!Number.isFinite(last)||last<0))
+          return{error:'Estado persistente del presupuesto ilegible; consulta denegada.'};
+        await tx.put(SOLARMAN_PRESUPUESTO,now); // Antes de llamar a Solarman.
+        return{reserved:true};
+      });
+    }catch{
+      return json({error:'No se puede reservar el presupuesto central de Solarman; consulta bloqueada.'},503);
+    }
+    if(decision.error)return json({error:decision.error},503);
+    if(decision.cache!==undefined)
+      return json(decision.cache,200,{'X-Solarman-Cuota':'cache-compartida'});
+    if(decision.retry)
+      return json({error:'Cupo Solarman agotado: una adquisición nueva cada 60 minutos como máximo.',
+        retryAfterSeconds:decision.retry},429,{'Retry-After':String(decision.retry)});
+    try{
+      const valor=tipo==='produccion'?
+        await solarmanProduccion(this.env,desde,hasta):
+        await solarmanDiagnostico(this.env,dia);
+      const serialized=JSON.stringify(valor);
+      // Se cachea únicamente el último lote: sin crecimiento ilimitado.
+      if(serialized.length<=SOLARMAN_CACHE_MAX){
+        try{await this.ctx.storage.put(SOLARMAN_ULTIMO_LOTE,{solicitud,at:now,valor});}
+        catch{/* Fallar al guardar caché NO libera el presupuesto. */}
+      }
+      return json(valor,200,{'X-Solarman-Cuota':'origen'});
+    }catch(e){
+      // Fallar una llamada NO revierte la reserva ni habilita reintentos.
+      return json({error:e.message||'Falló una adquisición Solarman.'},502);
+    }
+  }
+}
+async function solarmanConCuota(env,operacion,headers){
+  if(!env.SOLARMAN_QUOTA)
+    return json({error:'Sin coordinador central SOLARMAN_QUOTA. Por seguridad no se consulta Solarman.'},503,headers);
+  const stub=env.SOLARMAN_QUOTA.get(env.SOLARMAN_QUOTA.idFromName('gorraiz-solarman-global-v1'));
+  const upstream=await stub.fetch('https://presupuesto-solarman.internal/solarman',{
+    method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(operacion)});
+  const respuesta=await upstream.json().catch(()=>({error:'Respuesta ilegible del coordinador Solarman'}));
+  const h={...headers};
+  const retry=upstream.headers.get('Retry-After'),cache=upstream.headers.get('X-Solarman-Cuota');
+  if(retry)h['Retry-After']=retry;
+  if(cache)h['X-Solarman-Cuota']=cache;
+  return json(respuesta,upstream.status,h);
+}
+
 // ── enrutado ─────────────────────────────────────────────────────────────
 export default{
   async fetch(req,env){
@@ -1353,12 +1438,13 @@ export default{
         return json(res,200,h);
       }
       if(ruta==='/produccion'){
+        if(req.method!=='POST')return json({error:'Producción Solarman requiere POST.'},405,h);
         if(!env.SOLARMAN_APPID)return json({error:'Solarman aún no está configurado: faltan appId y appSecret.'},501,h);
-        return json(await solarmanProduccion(env,desde,hasta),200,h);
+        return solarmanConCuota(env,{tipo:'produccion',desde,hasta},h);
       }
       if(ruta==='/solarman/diagnostico'){
         if(!env.SOLARMAN_APPID)return json({error:'Solarman aún no está configurado.'},501,h);
-        return json(await solarmanDiagnostico(env,b.dia||ymd(new Date(Date.now()-864e5))),200,h);
+        return solarmanConCuota(env,{tipo:'diagnostico',dia:b.dia||ymd(new Date(Date.now()-864e5))},h);
       }
       return json({error:'Ruta desconocida.'},404,h);
     }catch(e){
