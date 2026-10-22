@@ -167,8 +167,8 @@ input[type=file]{display:none}
     <div class="uz" id="zB" onclick="$('fB').click()"><h3>📂 Inversor B — Ficheros de producción (.xlsx)</h3><p>Selecciona uno o varios ficheros .xlsx del Inversor B</p><div class="st" id="stB"></div><input type="file" id="fB" accept=".xlsx" multiple></div>
     <div class="uz" id="zI" onclick="$('fI').click()"><h3>📂 Importación de red · i-DE (.xlsx)</h3><p>Ficheros horarios de i-DE (hoja "Horarias"). Se unen sin duplicar los días repetidos. Se usan por su <b>total diario</b>, que se contrasta con el contador KSTAR.</p><div class="st" id="stI"></div><div class="fl" id="flI"></div><input type="file" id="fI" accept=".xlsx" multiple></div>
     <div class="az" id="zAuto">
-      <h3>⚡ Descarga automática</h3>
-      <p>Trae producción FV de Solarman e importación/exportación de KSTAR SPC01. La descarga automática de i-DE/Datadis sigue archivada; sus ficheros se suben a mano arriba.</p>
+      <h3>⚡ Descarga manual de datos</h3>
+      <p>«Traer datos» consulta Solarman (máximo un lote nuevo por hora en el Worker central) y SPC, únicamente para días cerrados y cuando exista su conexión de lectura. Ambos se guardan en el mismo histórico central de Gorraiz; no se inicia ninguna descarga al abrir la página. i-DE/Datadis siguen sin consulta automática.</p>
       <div class="row">
         <label>Desde:</label><input type="date" id="aDesde">
         <label>Hasta:</label><input type="date" id="aHasta">
