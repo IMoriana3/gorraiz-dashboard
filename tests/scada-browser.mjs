@@ -203,7 +203,8 @@ try {
   await page.locator('#spcDownloadHasta').fill('2026-10-18');
   await page.locator('#spcDownloadHasta').dispatchEvent('change');
   await page.locator('#fetchSPC').click();
-  await page.waitForFunction(()=>document.querySelector('#sharedState')?.textContent.includes('SPC 2026-10-18'));
+  await page.waitForFunction(()=>document.querySelector('#sharedState')?.textContent.includes('Descarga SPC por rango finalizada') &&
+    document.querySelector('#sharedState')?.textContent.includes('SPC 2026-10-18'));
   assert.equal(kstarCalls,1,'un clic SPC provoca una sola consulta KSTAR');
   assert.equal(requests,0,'consultar SPC no consume Solarman');
   assert.equal(archive.get('S|2026-10-18')?.payload?.meta?.completo,true,
@@ -219,7 +220,8 @@ try {
   await page.locator('#spcDownloadHasta').fill('2026-10-19');
   await page.locator('#spcDownloadHasta').dispatchEvent('change');
   await page.locator('#fetchSPC').click();
-  await page.waitForFunction(()=>document.querySelector('#sharedState')?.textContent.includes('Descarga SPC por rango finalizada'));
+  await page.waitForFunction(()=>document.querySelector('#sharedState')?.textContent.includes('Descarga SPC por rango finalizada') &&
+    document.querySelector('#sharedState')?.textContent.includes('SPC 2026-10-16'));
   assert.deepEqual(kstarDates,['2026-10-18','2026-10-16','2026-10-17'],
     'solo se consulta KSTAR de los días pendientes y uno por solicitud');
   assert.equal(kstarCalls,3);
