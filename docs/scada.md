@@ -30,7 +30,9 @@ La instalación cuenta con **123,84 kWp DC** y **2 × 50 kW AC nominales**; el r
 
 - **Inicial:** IndexedDB local, que comparte el informe existente. Si no hay datos, no hay valores artificiales ni llamadas automáticas.
 - **Botón «Actualizar Solarman»:** `POST /produccion` para **un día** al Worker habitual, usando `X-Panel-Key` ya configurada en el informe; guarda únicamente dos claves `A|SCADA Solarman AAAA-MM-DD` y `B|...`. No vacía otras claves de IndexedDB.
-- **Automático FV:** opt-in cada 5 minutos, mientras la pestaña permanezca abierta/visible. No significa telemetría a segundos ni acceso al medidor de red.
+- **Control de cupo (22/10/2026):** **máximo un intento de actualizar Solarman cada 60 minutos por navegador/origen**, tanto manual como automático. Se guarda el momento del intento en `localStorage` **antes** de conectar; un error de red o proveedor no dispara reintentos inmediatos. Si no se puede guardar la reserva, se bloquea la consulta. El control se comparte entre pestañas y la reserva utiliza Web Locks cuando se encuentra disponible; sin soporte Web Locks no se habilita el modo automático.
+- **Automático FV:** *desactivado inicialmente*, opt-in cada 60 minutos y solo mientras permanezca la pestaña abierta y visible. Activarlo, abrir el SCADA, cambiar de día o recargar **no inicia una petición**. El informe de origen sigue operando por separado y puede efectuar consultas manuales fuera de este contador.
+- **Precisión del cupo:** 1 intento/h en el SCADA **no equivale a 1 llamada externa al proveedor**. El Worker de Solarman obtiene sesión, identifica estación/inversores y consulta al menos el histórico de los dos G50KT mediante varias llamadas internas. Tampoco es un límite global entre distintos dispositivos ni entre la pantalla del SCADA y el informe existente. Antes de desplegar auto-polling de producción debe verificarse el cupo real del proveedor y, si es compartido entre equipos, establecer un control centralizado de cuotas / caché de servidor.
 - **KSTAR:** únicamente histórico de **días cerrados**, previamente descargado desde el informe. No se consulta KSTAR desde la vista SCADA, ni se activa cron. La conexión SPC por HTTP hacia el proveedor sigue sin cifrado, de modo que no se autoriza un sondeo en tiempo real sin solucionar primero ese riesgo.
 - No se envían claves por URL, ni se almacenan contraseñas de proveedor en este código.
 
@@ -39,16 +41,17 @@ La instalación cuenta con **123,84 kWp DC** y **2 × 50 kW AC nominales**; el r
 1. Acreditar huso horario, retardos y resolución de SPC frente a Solarman y al portal original; especialmente un día **con exportación positiva** posterior al 20/10/2026.
 2. Validar el significado físico de `totalActivePower`, su escala, relación CT y signo, o solicitar un endpoint explícito con potencia instantánea y marcas de tiempo verificadas.
 3. Disponer de transporte cifrado / lectura local segura de solo lectura. Mientras SPC Cloud exija HTTP con credenciales/tokens, evitar polling en producción.
-4. Medir cadencia, frescura de muestras, caída de comunicaciones, alarmas y estados reales; no deducir «online» de una muestra histórica.
+4. Medir cadencia, frescura de muestras, caída de comunicaciones, alarmas y estados reales; no deducir «online» de una muestra histórica. **Cerrar el consumo anual real** de Solarman y una limitación global del Worker antes de activar el SCADA en varios equipos.
 5. Verificar el aspecto con Chromium y datos locales reales antes de solicitar merge. Mantener la PR en borrador hasta terminar.
 
 ## Pruebas
 
 ```sh
-node --test tests/scada.test.mjs
+node --test tests/scada.test.mjs tests/scada-quota.test.mjs
 node --test tests/*.test.mjs
 node --check scada-data.mjs
 node --check scada-app.mjs
+node --check scada-quota.mjs
 ```
 
 La CI también conserva la compilación / dry-run de Workers, sin despliegue. Abre `scada.html` desde el enlace **SCADA** del informe una vez fusionada la PR; mientras esté en borrador, usar una preview de la rama y comprobar que el navegador muestra las muestras existentes.
