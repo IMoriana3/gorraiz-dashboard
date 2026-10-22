@@ -320,7 +320,9 @@ try {
   assert.match(await page.locator('#coverageSPC').innerText(),/2026-10-19/);
   await page.locator('#lastSpc').click();
   assert.equal(requests,requestsBeforePreview,'la vista previa no consulta SPC');
-  for(const view of ['planta','inversores','red','cotejo','historicos','diagnostico','general']){
+  // La preview es una copia read-only preexistente: no tiene la pestaña nueva
+  // de cotejo operativo del SCADA principal y no debe simularla.
+  for(const view of ['planta','inversores','red','historicos','diagnostico','general']){
     await page.locator('.scada-nav [data-view-link="'+view+'"]').click();
     await page.waitForFunction(v=>!document.querySelector('[data-view-panel="'+v+'"]').hidden,view);
     assert.equal(requests,requestsBeforePreview,'vista previa sin peticiones al cambiar a '+view);
