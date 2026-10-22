@@ -1,3 +1,5 @@
+import {signedExportKW} from './scada-grid-sign.mjs';
+
 // Contraste FV / red de Gorraiz. Cálculo puro, sin credenciales ni proveedores.
 // Potencia FV: muestra AC instantánea de Solarman (A + B).
 // Intercambio: media sobre el intervalo de KSTAR a partir de dos acumulados.
@@ -80,13 +82,13 @@ export function contrastDay(series,{offsetMinutes=0}={}){
 }
 export function contrastCsv(data,{showLoad=false}={}){
  const rows=[
-  'fecha_hora_Madrid;FV_AC_kW_muestra;importacion_SPC_kW_media;exportacion_SPC_kW_media;consumo_estimado_kW_no_validado;desfase_aplicado_SPC_min;relojes_certificados',
+  'fecha_hora_Madrid;FV_AC_kW_muestra;importacion_SPC_kW_media;exportacion_SPC_kW_signo_negativo;consumo_estimado_kW_no_validado;desfase_aplicado_SPC_min;relojes_certificados',
  ];
  const asNumber=v=>finite(v)?v.toFixed(3):'';
  for(let i=0;i<data.keys.length;i++){
   rows.push([data.keys[i],
    asNumber(data.readings.generation[i]),asNumber(data.readings.import[i]),
-   asNumber(data.readings.export[i]),
+   asNumber(signedExportKW(data.readings.export[i])),
    showLoad?asNumber(data.readings.load[i]):'',
    String(data.offsetMinutes),'NO'].join(';'));
  }
