@@ -127,3 +127,38 @@ test('código e interfaz siguen enlazados y no representan SPC en directo',()=>{
  assert.doesNotMatch(app,/\/spc\/intercambio/);
  assert.doesNotMatch(app,/KSTAR_TEST_KEY/);
 });
+
+test('la estimación solo aparece si se solicita y las tres potencias se corresponden',()=>{
+ const items=[inv('A',[['10:05',10]]),inv('B',[['10:05',15]]),source()];
+ const off=buildSeries(items,{date:day,allowProvisional:false});
+ const on=buildSeries(items,{date:day,allowProvisional:true});
+ const i=on.keys.indexOf(day+'T10:05');
+ assert.equal(off.series.consumption[i],null);
+ assert.ok(on.series.consumption[i]>0);
+ assert.equal(on.series.export[i]>0,true,'el dato origen SPC permanece positivo');
+ assert.equal(on.provisional,true);
+ assert.equal(on.common,1);
+});
+test('intervalo FV+SPC incompatible conserva fuentes pero excluye consumo negativo',()=>{
+ const s=source(day,[
+  {saveTime:day+' 10:00',positiveActiveElec:100,reverseActiveElec:10},
+  {saveTime:day+' 10:05',positiveActiveElec:100,reverseActiveElec:10.5}
+ ],{date:day,importKWh:0,exportKWh:0.5});
+ const data=buildSeries([inv('A',[['10:05',1]]),inv('B',[['10:05',1]]),s],
+  {date:day,allowProvisional:true});
+ const i=data.keys.indexOf(day+'T10:05');
+ assert.equal(data.series.generation[i],2);
+ assert.ok(data.series.export[i]>0);
+ assert.equal(data.series.consumption[i],null);
+ assert.equal(data.negativePairs,1);
+ assert.ok(data.warnings.some(x=>x.includes('balance negativo')));
+});
+test('resumen de día parcial SPC no se declara como consumo diario de cierre',()=>{
+ const old=source(day,undefined,undefined,{completo:false});
+ const r=buildSeries([inv('A',[['10:05',10,30]]),inv('B',[['10:05',20,40]]),old],
+  {date:day,allowProvisional:true});
+ assert.equal(r.summary.generation,70);
+ assert.equal(r.summary.import,1);
+ assert.equal(r.summary.export,.2);
+ assert.equal(r.summary.consumption,null,'SPC no acredita día completo');
+});
