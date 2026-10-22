@@ -169,6 +169,34 @@ try {
   assert.equal(await page.locator('#provisional').isChecked(),true,
     'solicitud del usuario: mostrar estimación provisional por defecto');
   assert.equal(reading.labels,288);
+  assert.equal(await page.locator('.cards .card').count(),4,
+    'solo hay cuatro indicadores de kW en la parte superior');
+  assert.equal(await page.locator('#powerSelf').count(),0,
+    'autoconsumo SPC diario no es una tarjeta de potencia');
+  assert.match(await page.locator('#dailySelf').innerText(),/kWh/,
+    'el autoconsumo de SPC debe estar con los balances diarios');
+  assert.match(await page.locator('#dailyBalanceDay').innerText(),/19\/10\/2026/);
+  assert.match(await page.locator('#snapshotTitle').innerText(),/19\/10\/2026.*14:20/);
+  assert.match(await page.locator('#snapshotExplanation').innerText(),/misma casilla nominal/);
+  assert.match(await page.locator('#snapshotIndependent').innerText(),/NO comparables/);
+  const sameHour=await page.evaluate(()=>['subGen','subCons','subImp','subExp']
+    .map(id=>document.getElementById(id).textContent.match(/\d\d:\d\d/)?.[0]||null));
+  assert.ok(sameHour.every(t=>t==='14:20'),JSON.stringify(sameHour)+
+    ': todas las tarjetas deben mostrar el mismo instante');
+  assert.equal(await page.locator('#synopticTime').innerText().then(x=>x.includes('14:20')),true);
+  assert.equal(await page.locator('.cards').evaluate(el=>
+    getComputedStyle(el).gridTemplateColumns.trim().split(/\s+/).length),4,
+    'fila de cuatro tarjetas en escritorio');
+  const beforeDisable={pv:await page.locator('#powerGen').innerText(),
+    imp:await page.locator('#powerImp').innerText()};
+  await page.locator('#provisional').uncheck();
+  assert.equal(await page.locator('#powerCons').innerText(),'—',
+    'permitir ocultar la inferencia sin tocar el resto de medidas');
+  assert.equal(await page.locator('#powerGen').innerText(),beforeDisable.pv);
+  assert.equal(await page.locator('#powerImp').innerText(),beforeDisable.imp);
+  await page.locator('#provisional').check();
+  assert.notEqual(await page.locator('#powerCons').innerText(),'—');
+  assert.equal(requests,0,'cambiar el instante de representación o la estimación no consulta API');
   assert.equal(requests,0,'abrir el SCADA no debe consumir ninguna llamada API');
   // Ambos paneles usan las mismas rutas de archivo, sin consultar proveedores.
   await page.locator('#pushHistory').click();
