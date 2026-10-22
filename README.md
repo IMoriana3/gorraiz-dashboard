@@ -4,7 +4,7 @@ Dashboard de producción, intercambio con la red y valoración económica del Ed
 
 **Panel:** https://imoriana3.github.io/gorraiz-dashboard/
 
-**SCADA Gorraiz (en desarrollo, PR #53):** [scada.html](scada.html). Incluye curvas de generación FV (Solarman), intercambio medio estimado por intervalos de contadores KSTAR y consumo horario condicionado a cruce de relojes. No es telemetría instantánea KSTAR; la adquisición manual de SPC y la seguridad HTTP siguen con los mismos límites. Consulta [contrato y pendientes del SCADA](docs/scada.md).
+**SCADA Gorraiz (en desarrollo, PR #53):** [scada.html](scada.html). Incluye curvas de generación FV (Solarman), intercambio medio estimado por intervalos de contadores KSTAR y consumo horario condicionado a cruce de relojes. No es telemetría instantánea KSTAR; la adquisición manual de SPC y la seguridad HTTP siguen con los mismos límites. Consulta [contrato y pendientes del SCADA](docs/scada.md). **Actualizaciones:** Solarman a petición, con modo automático optativo y límite compartido de **un intento cada 60 minutos por navegador** (incluidos intentos manuales); ninguna petición al abrir. Cada actualización del Worker puede implicar varias llamadas internas a Solarman; no existe todavía limitación central entre equipos.
 
 ## Fuentes
 
