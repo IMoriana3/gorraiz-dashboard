@@ -51,18 +51,32 @@ try {
       rq.onsuccess=()=>resolve(rq.result);rq.onerror=()=>reject(rq.error);
     });
     const date='2026-10-19';
+    // Serie SINTÉTICA con suficientes puntos para ver curvas y probar el
+    // signo del intercambio. No representa medidas del edificio.
+    const A=[],B=[],rows=[];let imp=0,exp=0,produccionA=0,produccionB=0;
+    for(let i=0;i<=100;i++){
+      const minutes=6*60+i*5,hr=Math.floor(minutes/60),mm=minutes%60;
+      const time=String(hr).padStart(2,'0')+':'+String(mm).padStart(2,'0');
+      const sun=Math.max(0,Math.sin(Math.PI*(hr+mm/60-6)/13));
+      const gen=Math.max(0,71*sun*(0.95+0.05*Math.sin(i/5)));
+      const a=gen*.55,b=gen*.45;
+      const consumption=32+3*Math.sin(i/12);
+      const imported=Math.max(0,consumption-gen),exported=Math.max(0,gen-consumption);
+      if(i){imp+=imported/12;exp+=exported/12;produccionA+=a/12;produccionB+=b/12}
+      const dt=new Date(date+'T'+String(hr-2).padStart(2,'0')+':'+String(mm).padStart(2,'0')+':00Z');
+      A.push({ts:dt,pot:a,dia:produccionA,acum:3000+produccionA});
+      B.push({ts:dt,pot:b,dia:produccionB,acum:2500+produccionB});
+      rows.push({saveTime:date+' '+time+':00',
+        positiveActiveElec:100+imp,reverseActiveElec:10+exp});
+    }
     const entries=[
-      {id:'A|Fichero QA',tipo:'A',nombre:'Ficticio QA A',rows:[
-        {ts:new Date(date+'T08:05:00Z'),pot:21.3,dia:40,acum:3020}]},
-      {id:'B|Fichero QA',tipo:'B',nombre:'Ficticio QA B',rows:[
-        {ts:new Date(date+'T08:05:00Z'),pot:17,dia:30,acum:2540}]},
-      {id:'S|'+date,tipo:'S',fecha:date,payload:{date,
-        rows:[
-          {saveTime:date+' 10:00:00',positiveActiveElec:100,reverseActiveElec:10},
-          {saveTime:date+' 10:05:00',positiveActiveElec:100.5,reverseActiveElec:10.1},
-          {saveTime:date+' 10:10:00',positiveActiveElec:101,reverseActiveElec:10.2}],
-        daily:[{date,importKWh:1,exportKWh:.2,selfConsumptionKWh:7}],
-        meta:{completo:true,medidoresEstacion:1,timezoneVerified:true,fetchedAt:'2026-10-20T12:00:00Z'}}}
+      {id:'A|Fichero QA',tipo:'A',nombre:'SINTÉTICO QA A',rows:A},
+      {id:'B|Fichero QA',tipo:'B',nombre:'SINTÉTICO QA B',rows:B},
+      {id:'S|'+date,tipo:'S',fecha:date,payload:{date,rows,
+        daily:[{date,importKWh:imp,exportKWh:exp,
+          selfConsumptionKWh:produccionA+produccionB-exp}],
+        meta:{completo:true,medidoresEstacion:1,timezoneVerified:true,
+          fetchedAt:'2026-10-20T12:00:00Z'}}}
     ];
     await new Promise((resolve,reject)=>{
       const tx=db.transaction('fuentes','readwrite'),os=tx.objectStore('fuentes');
@@ -75,7 +89,7 @@ try {
   await page.waitForFunction(()=>{
     const el=document.getElementById('mainChart');
     return window.Chart?.getChart(el)&&
-      document.querySelector('#powerGen')?.textContent.includes('38,3');
+      document.querySelector('#powerGen')?.textContent!=='—';
   },{timeout:15000});
   const reading=await page.evaluate(()=>{
     const chart=Chart.getChart(document.getElementById('mainChart'));
@@ -86,17 +100,27 @@ try {
       series:chart.data.datasets.map(d=>({label:d.label,nonNull:d.data.filter(v=>v!==null).length})),
       labels:chart.data.labels.length}
   });
-  assert.match(reading.gen,/38,3 kW/);
-  assert.match(reading.imp,/6 kW/);
-  assert.match(reading.exp,/1,2 kW/);
-  assert.match(reading.cons,/43,1 kW/);
+  const value=v=>Number(v.replace(/[^0-9,-]/g,'').replace(',','.'));
+  const generation=value(reading.gen),consumption=value(reading.cons);
+  const imported=value(reading.imp),exported=value(reading.exp);
+  assert.ok(generation>0&&consumption>0,'potencias sintéticas válidas');
+  assert.ok(imported>=0&&exported>=0,'intercambio no negativo');
+  assert.ok(Math.abs(generation+imported-exported-consumption)<0.3,
+    'identidad consumo = generación + importación - exportación');
   assert.equal(reading.series.length,4);
-  assert.ok(reading.series.every(x=>x.nonNull>=1),JSON.stringify(reading));
+  assert.ok(reading.series.every(x=>x.nonNull>=60),JSON.stringify(reading));
   assert.equal(reading.labels,288);
   assert.equal(requests,0,'abrir el SCADA no debe consumir ninguna llamada API');
   await page.locator('#auto').check();
   await page.waitForTimeout(350);
   assert.equal(requests,0,'activar automático tampoco hace llamada inmediata');
+  // Advertencia exclusiva del artefacto de QA, nunca de la aplicación real.
+  await page.evaluate(()=>{
+    const warning=document.createElement('strong');
+    warning.textContent='PRUEBA VISUAL · DATOS SINTÉTICOS';
+    warning.style.cssText='display:inline-block;padding:5px 12px;background:#413719;color:#ffd77d;border-radius:8px;font-size:11px;margin-bottom:9px';
+    document.querySelector('main').prepend(warning);
+  });
   mkdirSync(join(root,'artifacts'),{recursive:true});
   await page.screenshot({path:join(root,'artifacts/scada-desktop-qa.png'),fullPage:true});
   await page.locator('#updatePV').click();
