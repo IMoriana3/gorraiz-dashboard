@@ -111,6 +111,21 @@ try {
   assert.ok(reading.series.every(x=>x.nonNull>=60),JSON.stringify(reading));
   assert.equal(reading.labels,288);
   assert.equal(requests,0,'abrir el SCADA no debe consumir ninguna llamada API');
+  assert.match(await page.locator('#coverageA').innerText(),/2026-10-19/);
+  assert.match(await page.locator('#coverageB').innerText(),/2026-10-19/);
+  assert.match(await page.locator('#coverageSPC').innerText(),/2026-10-19/);
+  assert.equal(await page.locator('#lastSpc').isEnabled(),true);
+  // Sin datos en otro día: explicación visible en todas las vistas afectadas.
+  await page.locator('#day').fill('2026-10-21');
+  await page.locator('#day').dispatchEvent('change');
+  await page.waitForFunction(()=>document.querySelector('#blankState')?.hidden===false);
+  assert.match(await page.locator('#blankDetail').innerText(),/No hay muestras válidas/);
+  await page.locator('.scada-nav [data-view-link="red"]').click();
+  assert.match(await page.locator('#blankDetail').innerText(),/No hay intervalos KSTAR/);
+  await page.locator('#lastSpc').click();
+  await page.waitForFunction(()=>document.querySelector('#day')?.value==='2026-10-19');
+  assert.equal(await page.locator('#blankState').isVisible(),false);
+  assert.equal(requests,0,'seleccionar último SPC no consulta al proveedor');
   const views=['planta','inversores','red','historicos','diagnostico','general'];
   const chartByView={planta:'plantChart',inversores:'inverterAChart',
     red:'redDetailChart',historicos:'historyChart',general:'mainChart'};
@@ -173,6 +188,9 @@ try {
   assert.equal(await page.locator('#auto').count(),0,
     'la preview no debe ofrecer control automático');
   assert.match(await page.locator('body').innerText(),/SOLO LECTURA/);
+  assert.match(await page.locator('#coverageSPC').innerText(),/2026-10-19/);
+  await page.locator('#lastSpc').click();
+  assert.equal(requests,requestsBeforePreview,'la vista previa no consulta SPC');
   for(const view of ['planta','inversores','red','historicos','diagnostico','general']){
     await page.locator('.scada-nav [data-view-link="'+view+'"]').click();
     await page.waitForFunction(v=>!document.querySelector('[data-view-panel="'+v+'"]').hidden,view);
