@@ -105,6 +105,16 @@ test('ventana de 7 días conserva huecos y evita rellenar curvas',()=>{
  assert.equal(r.series.generation.filter(x=>x!==null).length,0);
  assert.equal(r.series.import.filter(x=>x!==null).length,2);
 });
+test('un refresco posterior de Solarman gana al histórico anterior por updatedAt',()=>{
+ const newer=inv('A',[['10:05',19,40]]);
+ newer.updatedAt='2026-10-22T12:00:00Z';
+ const older=inv('A',[['10:05',27,55]]);
+ older.updatedAt='2026-10-20T12:00:00Z';
+ const result=buildSeries([newer,older,inv('B',[['10:05',5,30]])],{date:day});
+ const i=result.keys.indexOf(day+'T10:05');
+ assert.equal(result.series.generation[i],24);
+ assert.equal(result.summary.generation,70);
+});
 test('código e interfaz siguen enlazados y no representan SPC en directo',()=>{
  const html=readFileSync(new URL('../scada.html',import.meta.url),'utf8');
  const app=readFileSync(new URL('../scada-app.mjs',import.meta.url),'utf8');
