@@ -108,6 +108,10 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
 #connections .controls input[type=url],#connections .controls input[type=password]{font:inherit;min-width:200px;max-width:320px;flex:1;background:#192d36;color:var(--text);border:1px solid #3b525c;border-radius:7px;padding:8px}
 #connections{margin-bottom:12px}
 @media(max-width:560px){#connections .controls input[type=url],#connections .controls input[type=password]{min-width:0;width:100%;max-width:none}}
+
+.pv-day-audit{border:1px solid #5f6d73;border-left:3px solid #d3af60;border-radius:7px;background:#182a32;padding:10px 13px;margin:0 0 11px;color:#dce7e9;font-size:12px}
+.pv-day-audit strong{display:block;margin-bottom:3px;color:#f0dfb1}
+.pv-day-audit[hidden]{display:none}
 </style>
 </head>
 <body><div class="frame">
@@ -187,12 +191,13 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
   <summary id="coverageSummary">Huecos de las curvas · cobertura por día</summary>
   <div class="coverage-table-wrap">
    <table class="coverage-table">
-    <thead><tr><th>Fecha</th><th>Solarman A</th><th>Solarman B</th><th>A+B simultáneos</th><th>Huecos interiores FV</th><th>SPC (intervalos)</th><th>Estado SPC</th></tr></thead>
+    <thead><tr><th>Fecha</th><th>Solarman A</th><th>Solarman B</th><th>Originales A/B</th><th>Sin validar A/B</th><th>A+B simultáneos</th><th>Huecos interiores FV</th><th>SPC (intervalos)</th><th>Estado SPC</th></tr></thead>
     <tbody id="coverageDayRows"></tbody>
    </table>
   </div>
-  <p class="foot">Recuentos de intervalos de 5 minutos con potencia válida. «Huecos interiores FV» son intervalos ausentes entre la primera y última medida conjunta del día; no cuentan las horas nocturnas. Sin valores inventados ni interpolación. SPC no se actualiza automáticamente.</p>
+  <p class="foot">Solarman A/B y A+B son intervalos de 5 minutos con potencia válida. «Originales A/B» cuenta filas con fecha de cada inversor; «Sin validar» son potencias originales conservadas pero excluidas de las curvas. Los huecos interiores no cuentan la noche. Los datos no se interpolan; leer este diagnóstico no consulta proveedores.</p>
  </details>
+ <div id="pvDayAudit" role="status" class="pv-day-audit" hidden></div>
  <p id="notice" role="status">Leyendo señales guardadas…</p>
  <div id="blankState" class="blank-notice" role="status" hidden>
   <strong>Sin curvas completas para la selección</strong>
