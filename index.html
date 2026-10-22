@@ -851,9 +851,6 @@ async function descargarSoloSpc(){
   }
   await comprobarSpc();
 }
-$('spcDiaManual').addEventListener('change',()=>{
-  $('spcDiaManual').dataset.manualChoice='1';
-});
 async function comprobarSpc(){
   // Reconsulta SPC de forma explícita, tanto mediante Worker aislado como
   // mediante el Worker central; nunca toca el cupo de Solarman.
@@ -1943,6 +1940,9 @@ async function traerDatos(){
   encajaGraficas();
   pintaCfg();
   pintaKstarCfg();
+  $('spcDiaManual').addEventListener('change',()=>{
+    $('spcDiaManual').dataset.manualChoice='1';
+  });
   iniciaPrecios();
   ['aDesde','aHasta'].forEach(id=>$(id).addEventListener('change',pintaSpc));
   // El estado tiene que llegar antes de mirar el almacén compartido.
