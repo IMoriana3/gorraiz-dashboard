@@ -124,6 +124,15 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
 #contrastDailyRows td:nth-child(2),#contrastHourRows td:not(:first-child){text-align:right;font-variant-numeric:tabular-nums}
 #contrastShiftHint{margin:3px 14px;color:var(--dim)}
 @media(max-width:570px){.contrast-toolbar{align-items:stretch}.contrast-toolbar input[type=range]{width:100%}}
+
+.solar-gap-diagnosis{padding:12px 0 4px;border-top:1px solid var(--stroke);margin-top:11px}
+.solar-gap-top{display:flex;align-items:center;justify-content:space-between;gap:9px;flex-wrap:wrap}
+.solar-gap-top strong{color:#dce9ee;font-size:12px}
+.solar-gap-top button{font-size:11px;padding:6px 10px}
+#solarGapSummary{font-size:12px;margin:9px 0 3px}
+.solar-gap-scroll{max-height:290px;overflow:auto}
+.solar-gap-scroll thead{position:sticky;top:0;background:var(--card);z-index:1}
+.solar-gap-diagnosis td:nth-child(5){color:var(--yellow)}
 </style>
 </head>
 <body><div class="frame">
@@ -210,6 +219,18 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
    </table>
   </div>
   <p class="foot">Solarman A/B y A+B son intervalos de 5 minutos con potencia válida. «Originales A/B» cuenta filas con fecha de cada inversor; «Sin validar» son potencias originales conservadas pero excluidas de las curvas. Los huecos interiores no cuentan la noche. Los datos no se interpolan; leer este diagnóstico no consulta proveedores.</p>
+  <div class="solar-gap-diagnosis">
+   <div class="solar-gap-top"><strong>Origen de los huecos FV · inversores A / B</strong><button type="button" id="solarGapExport" title="Descarga CSV del diagnóstico local. Sin contacto con Solarman.">Exportar huecos CSV</button></div>
+   <p id="solarGapSummary" role="status">Preparando diagnóstico de huecos sin llamadas a proveedores.</p>
+   <p id="solarGapCauses" class="muted tiny"></p>
+   <div class="coverage-table-wrap solar-gap-scroll">
+    <table class="coverage-table" aria-label="Clasificación de huecos dentro del día FV">
+     <thead><tr><th>Hora</th><th>Motivo del hueco</th><th>Inversor A</th><th>Inversor B</th><th>Casilla adyacente*</th></tr></thead>
+     <tbody id="solarGapRows"></tbody>
+    </table>
+   </div>
+   <p class="foot" id="solarGapNote">* Una marca próxima no demuestra desfase. «Sin fila» significa que no hay una lectura en el histórico guardado, no necesariamente que Solarman o el datalogger hayan dejado de medir.</p>
+  </div>
  </details>
  <div id="pvDayAudit" role="status" class="pv-day-audit" hidden></div>
  <p id="notice" role="status">Leyendo señales guardadas…</p>
@@ -374,6 +395,6 @@ input[type=date]{background:#192d36;color:var(--text);border:1px solid #3b525c;b
    <p class="footnote">No hay funciones de mando sobre KSTAR ni confirmación de estado «en línea». Una muestra reciente o histórica no garantiza ausencia de averías.</p>
  </section>
 </main></div>
-<script type="module" src="./scada-app.mjs?v=20261022g"></script>
+<script type="module" src="./scada-app.mjs?v=20261022h"></script>
 </body>
 </html>
