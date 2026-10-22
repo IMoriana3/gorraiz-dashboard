@@ -1722,7 +1722,7 @@ async function subeHistoricoLocal(){
  const rechazados=[];
  const lines=['Migración '+MIGRATION_V3,'Fuentes locales: '+items.length,
    'Se conserva la copia local, aunque haya errores en Cloudflare.'];
- const errorGlobal=e=>/PANEL_KEY|clave de panel|SOLARMAN_QUOTA|coordinador central|credencial|Worker aún no sirve migrador|HTTP 401|HTTP 403|HTTP 503/i.test(e.message);
+ const errorGlobal=e=>/PANEL_KEY|clave de panel|SOLARMAN_QUOTA|coordinador central|credencial|Worker aún no sirve migrador|Ruta desconocida|HTTP 401|HTTP 403|HTTP 404|HTTP 503/i.test(e.message);
  async function enviarGrupo(packet){
   try{
    // Preflight: no escribe. El servidor señala fechas problemáticas y unidad.
