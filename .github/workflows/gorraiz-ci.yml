@@ -153,7 +153,12 @@ jobs:
 
   scada-chromium:
     name: SCADA Chromium · QA sin datos privados
-    runs-on: ubuntu-latest
+    # Imagen fijada a propósito: ubuntu-latest rodó a Ubuntu 26.04 y
+    # playwright@1.55.1 no soporta esa plataforma, así que el job moría
+    # instalando el navegador y la prueba de humo ni llegaba a ejecutarse.
+    # 24.04 tiene soporte hasta 2029. Al subir Playwright se puede volver
+    # a ubuntu-latest, pero eso cambia el navegador con el que se prueba.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - name: Obtener código
