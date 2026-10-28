@@ -1354,6 +1354,77 @@ function orientacionTexto(){
 }
 // El ratio sin su base es un porcentaje suelto: puede leerse como anual, y no
 // lo es. Va siempre con los días valorados y el rango del que salen.
+// El plazo de retorno estaba en el informe y se perdió en la integración de
+// Solarman y SPC (d4e21fa). Vuelve, pero no como número único: la cifra de
+// entonces anualizaba el ahorro realizado y lo dividía entre la inversión, y
+// eso esconde de qué depende. Con una tarifa indexada que este año ha ido de
+// 0,102 a 0,265 EUR/kWh, el precio decide el resultado más que la planta.
+//
+// Los kWh autoconsumidos son físicos y no dependen del precio: se anualizan y
+// se valoran a tres precios de LAS FACTURAS del titular —el más barato, el más
+// caro y el medio ponderado—, que acotan la horquilla sin inventar escenarios.
+// El centro es el precio realmente realizado, que es el único que ya ocurrió.
+const RETORNO_DIAS_MIN=30;
+function horquillaRetorno(energia){
+  const c=energia&&energia.coverage,t=energia&&energia.totals;
+  if(!c||!t||!(CFG.inv>0)||!(c.pricedDays>=RETORNO_DIAS_MIN))return null;
+  const ahorroDia=divide(t.savingsWithIEEUR,c.pricedDays);
+  if(!(ahorroDia>0))return null;
+  const anualReal=ahorroDia*365,aniosReal=divide(CFG.inv,anualReal);
+  const anio=d=>Number.isFinite(d)?Math.round(new Date().getFullYear()+d):null;
+  const base={dias:c.pricedDays,ahorro:t.savingsWithIEEUR,inv:CFG.inv,
+    pct:escala(divide(t.savingsWithIEEUR,CFG.inv),100),
+    anualReal,aniosReal,anoReal:anio(aniosReal)};
+  // Sin kWh autoconsumidos o sin facturas no hay con qué mover el precio: se
+  // da el realizado a secas, que es medida, y no se finge una horquilla.
+  const kWhDia=divide(t.pricedSelfKWh,c.pricedDays);
+  const tarifas=((PRECIOS&&PRECIOS.periods)||[])
+    .map(x=>({eur:divide(x.energyEUR,x.importKWh),ie:Number.isFinite(x.ie)?x.ie:0,source:x.source}))
+    .filter(x=>x.eur>0);
+  if(!(kWhDia>0)||!tarifas.length)return base;
+  const kWhAno=kWhDia*365;
+  const caso=t2=>{const anual=kWhAno*t2.eur*(1+t2.ie);
+    const anios=divide(CFG.inv,anual);
+    return{eur:t2.eur,ie:t2.ie,source:t2.source,anual,anios,ano:anio(anios)}};
+  const orden=[...tarifas].sort((a,b)=>a.eur-b.eur);
+  const kWhTot=((PRECIOS&&PRECIOS.periods)||[]).reduce((v,x)=>v+(x.importKWh||0),0);
+  const eurTot=((PRECIOS&&PRECIOS.periods)||[]).reduce((v,x)=>v+(x.energyEUR||0),0);
+  const ieMedio=tarifas.reduce((v,x)=>v+x.ie,0)/tarifas.length;
+  return{...base,kWhAno,
+    // El precio más barato da el plazo MÁS LARGO, y al revés.
+    largo:caso(orden[0]),corto:caso(orden[orden.length-1]),
+    medio:kWhTot>0?caso({eur:eurTot/kWhTot,ie:ieMedio,source:'media ponderada'}):null};
+}
+// Con un solo precio en las facturas los tres extremos coinciden, y escribir
+// «entre 2,3 y 2,3 años» es ridículo: entonces no hay horquilla que dar.
+function hayHorquilla(h){
+  return !!(h&&h.corto&&h.largo&&fd(h.corto.anios)!==fd(h.largo.anios));
+}
+function retornoTexto(h){
+  if(!h)return 'Sin proyección de plazo de retorno: hacen falta al menos '
+    +fn(RETORNO_DIAS_MIN)+' días valorados.';
+  const real=`Ahorro anual proyectado: ${euros(h.anualReal)}/año, anualizando los ${fn(h.dias)} día(s) valorados a su precio realizado. Plazo de retorno a ese ritmo: ${fd(h.aniosReal)} años (~${h.anoReal}).`;
+  if(!h.corto||!h.largo)return real+' Sin horquilla de precio: faltan los kWh autoconsumidos o las facturas con las que valorarlos.';
+  if(!hayHorquilla(h))return real+` Las facturas cargadas tienen un único precio (${fn(h.medio?h.medio.eur:h.corto.eur,4)} €/kWh), así que no hay horquilla que dar.`;
+  return real
+    +` Horquilla según el precio de la energía: entre ${fd(h.corto.anios)} y ${fd(h.largo.anios)} años`
+    +` (${fd(h.corto.anios)} al precio más caro de tus facturas, ${fn(h.corto.eur,4)} €/kWh;`
+    +` ${fd(h.largo.anios)} al más barato, ${fn(h.largo.eur,4)} €/kWh`
+    +(h.medio?`; ${fd(h.medio.anios)} al medio ponderado, ${fn(h.medio.eur,4)} €/kWh`:'')+').';
+}
+// El PDF tiene 103 mm de ancho en esa columna y las gráficas empiezan 69 mm más
+// abajo: el texto largo se les metía encima. Aquí van tres líneas cortas, y la
+// salvedad de qué NO cubre la horquilla vive en las notas técnicas.
+function retornoBreve(h){
+  if(!h)return 'Sin proyección de plazo de retorno: hacen falta al menos '+fn(RETORNO_DIAS_MIN)+' días valorados.';
+  const l=[`Ahorro anual proyectado: ${euros(h.anualReal)}/año`,
+    `Plazo de retorno: ${fd(h.aniosReal)} años (~${h.anoReal})`];
+  if(hayHorquilla(h))l.push(`Horquilla por precio: ${fd(h.corto.anios)} a ${fd(h.largo.anios)} años`);
+  return l.join('\n');
+}
+function retornoNota(){
+  return 'El plazo de retorno anualiza el ahorro ya medido y lo divide entre la inversión. La horquilla mueve solo el precio de la energía, entre el más barato y el más caro de las facturas cargadas: no descuenta degradación del generador, no supone cambios de consumo y no suma los excedentes, que lo acortarían.';
+}
 function ratioTexto(pb){
   if(!Number.isFinite(pb.pct))return '—';
   const rango=pb.desde&&pb.hasta?` (${fdmy(pb.desde)} → ${fdmy(pb.hasta)})`:'';
@@ -1458,7 +1529,7 @@ function metodoValoracionTexto(){
     ? 'Autoconsumo valorado con el precio medio mensual de factura. Las facturas traen además precios por periodo P1-P6, que la tabla de reparto por periodo usa en su columna de ahorro.'
     : 'Autoconsumo valorado con el precio medio mensual de factura, estimativo; puede incluir gestión. Las facturas cargadas no traen precios por periodo P1-P6.';
 }
-function notasTecnicas(){return [NOTAS_TECNICAS[0],NOTAS_TECNICAS[1],metodoValoracionTexto(),orientacionTexto(),...NOTAS_TECNICAS.slice(3)]}
+function notasTecnicas(){return [NOTAS_TECNICAS[0],NOTAS_TECNICAS[1],metodoValoracionTexto(),orientacionTexto(),retornoNota(),...NOTAS_TECNICAS.slice(3)]}
 const NOTAS_TECNICAS=[
   'Los acumulados de ambos inversores deben incluir el cierre del día: un Excel recortado puede estar incompleto aunque contenga registros de los dos equipos.',
   'El consumo horario no se reconstruye a partir de totales diarios.',
@@ -2424,7 +2495,33 @@ function renderP5(){
     ctx.fillText('Horas locales (Europe/Madrid)',5,H-1);
   }else{ctx.fillStyle='#9baa9f';ctx.font='12px DM Sans';ctx.fillText('Sin datos de producción horaria',20,35)}
   const pb=an.pb;
-  $('paybackBox').innerHTML=`<div style="padding:10px;font-size:11px;line-height:1.8"><b>Ahorro valorado con IE, sin IVA</b><div style="font-size:24px;color:var(--accent)">${euros(pb.ahAcum)}</div><div>${pb.dias} días valorados del histórico.</div><div>Inversión de referencia: ${euros(pb.inv)}</div><div>Relación ahorro / inversión: ${esc(ratioTexto(pb))}</div><div class="hint">${esc(textoCobertura(an.energia))} Sin proyección de plazo de retorno. Los ingresos por compensación de excedentes aún no se suman: falta confirmar su precio en factura.</div></div>`;
+  // La barra de recuperado vuelve tal y como estaba antes de d4e21fa: columna
+  // con marcas al 25/50/75/100 %, el porcentaje en grande y las cifras al lado.
+  // Lo único nuevo es que el plazo ya no es un número suelto, sino su horquilla.
+  const ret=horquillaRetorno(an.energia);
+  const fc=pb.pct>50?'#27ae60':pb.pct>25?'#d4a039':'#c0392b';
+  const fillH=Math.min(100,Math.max(0,Number.isFinite(pb.pct)?pb.pct:0));
+  $('paybackBox').innerHTML=`<div style="display:flex;gap:16px;padding:10px;align-items:stretch">
+      <div style="width:50px;position:relative;background:#f0f0f0;border:1.5px solid #ccc;border-radius:4px;min-height:180px">
+        <div style="position:absolute;bottom:0;left:0;right:0;height:${fillH}%;background:${fc};opacity:.85;border-radius:0 0 3px 3px"></div>
+        ${[25,50,75,100].map(q=>`<div style="position:absolute;bottom:${q}%;right:-22px;font-size:7px;color:#666">${q}%</div>
+          <div style="position:absolute;bottom:${q}%;left:100%;width:6px;height:1px;background:#999"></div>`).join('')}
+      </div>
+      <div style="flex:1">
+        <div style="font-size:32px;font-weight:800;color:${fc};font-family:'JetBrains Mono'">${Number.isFinite(pb.pct)?fd(pb.pct)+'%':'—'}</div>
+        <div style="font-size:11px;color:var(--dim);margin-bottom:10px">recuperado</div>
+        <div style="font-size:10px;color:var(--dim);line-height:1.8">
+          <div>Inversión: <b>${euros(pb.inv)}</b></div>
+          <div>Ahorro en ${fn(pb.dias)} días valorados: <b>${euros(pb.ahAcum)}</b></div>
+          ${ret?`<div>Ahorro anual proy.: <b>${euros(ret.anualReal)}/año</b></div>
+          <div>Plazo de retorno: <b>${fd(ret.aniosReal)} años</b></div>
+          <div>Amortización: <b>~${ret.anoReal}</b></div>
+          ${hayHorquilla(ret)?`<div>Horquilla por precio: <b>${fd(ret.corto.anios)} a ${fd(ret.largo.anios)} años</b></div>`:''}`
+          :`<div>${esc(retornoTexto(null))}</div>`}
+        </div>
+        <div class="hint" style="margin-top:8px">${esc(ratioTexto(pb))} ${esc(textoCobertura(an.energia))} Los ingresos por compensación de excedentes aún no se suman: falta confirmar su precio en factura.</div>
+      </div>
+    </div>`;
   CHARTS.c5p=new Chart($('c5perfil'),{type:'line',data:{labels:Array.from({length:24},(_,i)=>i+'h'),datasets:[
     {label:'Importación horaria de red · i-DE (L-V)',data:an.perfil.map(p=>p.red),borderColor:'#2a6b5a'},
     {label:'Producción FV · inversores (L-V)',data:an.perfil.map(p=>p.pv),borderColor:'#d4a039'},
@@ -2630,7 +2727,7 @@ async function genPDF(){
     pdfTitulo(doc,'Mapa horario de producción FV · horas locales (Europe/Madrid)',M,47);await pdfChart(doc,'c5heat',M,51,155,65);
     const pb=R.analysis.pb,px=M+164;
     pdfTitulo(doc,'Ahorro valorado del histórico',px,49);
-    pdfTexto(doc,`Con IE, sin IVA: ${euros(pb.ahAcum)}\nInversión de referencia: ${euros(pb.inv)}\nRelación ahorro / inversión:\n${ratioTexto(pb)}\nSin proyección de plazo de retorno. Excedentes sin valorar.`,px,57,ancho-164,7.5);
+    pdfTexto(doc,`Con IE, sin IVA: ${euros(pb.ahAcum)}\nInversión de referencia: ${euros(pb.inv)}\nRelación ahorro / inversión:\n${ratioTexto(pb)}\n${retornoBreve(horquillaRetorno(R.historico.energia))}`,px,57,ancho-164,7.5);
     pdfTitulo(doc,'Producción FV, importación y vertido horarios',M,126);pdfTitulo(doc,'Autoconsumo y vertido medido (MWh)',M+mitad+6,126);
     await pdfChart(doc,'c5perfil',M,130,mitad,59);await pdfChart(doc,'c5curt',M+mitad+6,130,mitad,59);
 

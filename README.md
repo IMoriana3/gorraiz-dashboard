@@ -45,6 +45,20 @@ Donde el vertido es una parte más del mismo reparto va dentro; donde cambiaría
 
 Consecuencia que conviene tener presente al leer el informe: esos kWh **salieron de verdad a la red**, así que al no restarlos el autoconsumo y el consumo de esos meses quedan por encima de lo que midió la distribuidora. Por eso el informe dice en una línea cuántos kWh ha dejado fuera en el periodo: quien lo cruce con los ficheros de i-DE tiene que poder explicar la diferencia sin pensar que hay un error.
 
+### Plazo de retorno: horquilla, no número único
+
+El informe tuvo un plazo de retorno —«Payback estimado: 5,6 años», «Amortización: ~2032»— y se perdió en la integración de Solarman y SPC (`d4e21fa`). Vuelve, pero no como cifra única.
+
+La cifra de entonces anualizaba el ahorro realizado y lo dividía entre la inversión. Es defendible como primer orden, pero esconde de qué depende: con una tarifa indexada que en un año ha ido de 0,1025 a 0,2648 €/kWh, el precio decide el resultado más que la planta.
+
+`horquillaRetorno()` separa lo físico de lo económico. Los kWh autoconsumidos no dependen del precio: se anualizan y se valoran a tres precios de **las facturas del titular** —el más barato, el más caro y el medio ponderado—, que acotan el resultado sin inventar escenarios. El centro sigue siendo el precio realmente realizado, que es el único que ya ocurrió.
+
+Qué NO cubre la horquilla, y así lo dicen las notas técnicas: degradación del generador, cambios de consumo y los ingresos por excedentes, que lo acortarían.
+
+Dos casos que el texto trata aparte: con menos de `RETORNO_DIAS_MIN` (30) días valorados no se proyecta nada, y si las facturas cargadas tienen un solo precio los tres extremos coinciden, así que se da la cifra sola en vez de escribir «entre 2,3 y 2,3 años».
+
+En el PDF va en tres líneas cortas (`retornoBreve`): esa columna tiene 103 mm y las gráficas empiezan 69 mm más abajo, así que el texto largo se les metía encima.
+
 ### Qué cuenta como histórico
 
 El rango del histórico salía de la primera y la última marca de tiempo de cualquier fichero cargado. Un registro suelto de un solo inversor, meses antes de que empezara la monitorización de verdad, arrastraba dos efectos: estiraba el eje de las cuatro gráficas del histórico con meses en blanco, y convertía todo ese arranque en «días abiertos», como si fueran lagunas de cobertura.
