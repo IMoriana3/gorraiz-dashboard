@@ -2619,6 +2619,52 @@ async function pdfChart(doc,id,x,y,w,h){
     if(ch)ch.resize();
   }
 }
+// La barra de «recuperado» es HTML con CSS, no un lienzo, así que pdfChart no
+// puede capturarla y en el PDF solo salían las líneas de texto. Aquí se dibuja
+// con vectores: queda nítida a cualquier zoom y no engorda el fichero.
+const RETORNO_COLOR=p=>p>50?[39,174,96]:p>25?[212,160,57]:[192,57,43];
+function pdfRetorno(doc,pb,ret,x,y,w){
+  const pct=Number.isFinite(pb.pct)?Math.min(100,Math.max(0,pb.pct)):null;
+  const col=RETORNO_COLOR(pct||0),bw=9,bh=42;
+  // Columna: fondo, relleno proporcional desde abajo y borde por encima.
+  doc.setFillColor(240,240,240);doc.setDrawColor(200);
+  doc.roundedRect(x,y,bw,bh,1,1,'FD');
+  if(pct>0){const h=bh*pct/100;
+    doc.setFillColor(col[0],col[1],col[2]);
+    doc.rect(x+.4,y+bh-h,bw-.8,h-.4,'F');
+  }
+  doc.setDrawColor(200);doc.roundedRect(x,y,bw,bh,1,1,'S');
+  // Marcas al 25, 50, 75 y 100 %.
+  doc.setDrawColor(150);doc.setTextColor(120);doc.setFontSize(4.6);doc.setFont(undefined,'normal');
+  for(const q of [25,50,75,100]){const yy=y+bh-bh*q/100;
+    doc.line(x+bw,yy,x+bw+1.6,yy);doc.text(q+'%',x+bw+2.2,yy+.9);
+  }
+  // El porcentaje, en grande y del color del tramo.
+  const tx=x+bw+10;
+  doc.setTextColor(col[0],col[1],col[2]);doc.setFontSize(19);doc.setFont(undefined,'bold');
+  doc.text(pct===null?'—':fd(pct)+' %',tx,y+11);
+  doc.setTextColor(110);doc.setFontSize(6);doc.setFont(undefined,'normal');
+  doc.text('recuperado',tx,y+16);
+  // Las cifras, una por línea, sin que las parta el ajuste automático.
+  const filas=[['Inversión',euros(pb.inv)],['Ahorro en '+fn(pb.dias)+' días valorados',euros(pb.ahAcum)]];
+  if(ret){
+    filas.push(['Ahorro anual proy.',euros(ret.anualReal)+'/año'],
+      ['Plazo de retorno',fd(ret.aniosReal)+' años'],
+      ['Amortización','~'+ret.anoReal]);
+    if(hayHorquilla(ret))filas.push(['Horquilla por precio',fd(ret.corto.anios)+' a '+fd(ret.largo.anios)+' años']);
+  }
+  let yy=y+22;
+  for(const [k,v] of filas){
+    doc.setTextColor(110);doc.setFontSize(6.2);doc.setFont(undefined,'normal');
+    doc.text(pdfSano(k+':'),tx,yy);
+    doc.setTextColor(35);doc.setFont(undefined,'bold');
+    doc.text(pdfSano(v),tx+34,yy);
+    yy+=4.2;
+  }
+  if(!ret){doc.setTextColor(110);doc.setFontSize(6.2);doc.setFont(undefined,'normal');
+    doc.text(doc.splitTextToSize(pdfSano(retornoTexto(null)),w-bw-12),tx,yy);yy+=8}
+  return Math.max(y+bh,yy)+2;
+}
 function pdfKpis(doc,rows,x,y,w){
   const ancho=w/rows.length;
   rows.forEach(([l,v,s],i)=>{const xx=x+i*ancho;doc.setDrawColor(185);doc.setFillColor(255);doc.roundedRect(xx,y,ancho-2,19,1,1,'FD');
@@ -2726,8 +2772,9 @@ async function genPDF(){
     pdfTexto(doc,textoCobertura(R.historico.energia),M,34,ancho,6.5);
     pdfTitulo(doc,'Mapa horario de producción FV · horas locales (Europe/Madrid)',M,47);await pdfChart(doc,'c5heat',M,51,155,65);
     const pb=R.analysis.pb,px=M+164;
-    pdfTitulo(doc,'Ahorro valorado del histórico',px,49);
-    pdfTexto(doc,`Con IE, sin IVA: ${euros(pb.ahAcum)}\nInversión de referencia: ${euros(pb.inv)}\nRelación ahorro / inversión:\n${ratioTexto(pb)}\n${retornoBreve(horquillaRetorno(R.historico.energia))}`,px,57,ancho-164,7.5);
+    pdfTitulo(doc,'Retorno de la inversión',px,49);
+    const yRet=pdfRetorno(doc,pb,horquillaRetorno(R.historico.energia),px,55,ancho-164);
+    pdfTexto(doc,`Ahorro con IE, sin IVA: ${euros(pb.ahAcum)}. Relación ahorro / inversión: ${ratioTexto(pb)}.`,px,yRet+2,ancho-164,6);
     pdfTitulo(doc,'Producción FV, importación y vertido horarios',M,126);pdfTitulo(doc,'Autoconsumo y vertido medido (MWh)',M+mitad+6,126);
     await pdfChart(doc,'c5perfil',M,130,mitad,59);await pdfChart(doc,'c5curt',M+mitad+6,130,mitad,59);
 
