@@ -2495,7 +2495,33 @@ function renderP5(){
     ctx.fillText('Horas locales (Europe/Madrid)',5,H-1);
   }else{ctx.fillStyle='#9baa9f';ctx.font='12px DM Sans';ctx.fillText('Sin datos de producción horaria',20,35)}
   const pb=an.pb;
-  $('paybackBox').innerHTML=`<div style="padding:10px;font-size:11px;line-height:1.8"><b>Ahorro valorado con IE, sin IVA</b><div style="font-size:24px;color:var(--accent)">${euros(pb.ahAcum)}</div><div>${pb.dias} días valorados del histórico.</div><div>Inversión de referencia: ${euros(pb.inv)}</div><div>Relación ahorro / inversión: ${esc(ratioTexto(pb))}</div><div style="margin-top:6px">${esc(retornoTexto(horquillaRetorno(an.energia)))}</div><div class="hint">${esc(textoCobertura(an.energia))} Los ingresos por compensación de excedentes aún no se suman: falta confirmar su precio en factura.</div></div>`;
+  // La barra de recuperado vuelve tal y como estaba antes de d4e21fa: columna
+  // con marcas al 25/50/75/100 %, el porcentaje en grande y las cifras al lado.
+  // Lo único nuevo es que el plazo ya no es un número suelto, sino su horquilla.
+  const ret=horquillaRetorno(an.energia);
+  const fc=pb.pct>50?'#27ae60':pb.pct>25?'#d4a039':'#c0392b';
+  const fillH=Math.min(100,Math.max(0,Number.isFinite(pb.pct)?pb.pct:0));
+  $('paybackBox').innerHTML=`<div style="display:flex;gap:16px;padding:10px;align-items:stretch">
+      <div style="width:50px;position:relative;background:#f0f0f0;border:1.5px solid #ccc;border-radius:4px;min-height:180px">
+        <div style="position:absolute;bottom:0;left:0;right:0;height:${fillH}%;background:${fc};opacity:.85;border-radius:0 0 3px 3px"></div>
+        ${[25,50,75,100].map(q=>`<div style="position:absolute;bottom:${q}%;right:-22px;font-size:7px;color:#666">${q}%</div>
+          <div style="position:absolute;bottom:${q}%;left:100%;width:6px;height:1px;background:#999"></div>`).join('')}
+      </div>
+      <div style="flex:1">
+        <div style="font-size:32px;font-weight:800;color:${fc};font-family:'JetBrains Mono'">${Number.isFinite(pb.pct)?fd(pb.pct)+'%':'—'}</div>
+        <div style="font-size:11px;color:var(--dim);margin-bottom:10px">recuperado</div>
+        <div style="font-size:10px;color:var(--dim);line-height:1.8">
+          <div>Inversión: <b>${euros(pb.inv)}</b></div>
+          <div>Ahorro en ${fn(pb.dias)} días valorados: <b>${euros(pb.ahAcum)}</b></div>
+          ${ret?`<div>Ahorro anual proy.: <b>${euros(ret.anualReal)}/año</b></div>
+          <div>Plazo de retorno: <b>${fd(ret.aniosReal)} años</b></div>
+          <div>Amortización: <b>~${ret.anoReal}</b></div>
+          ${hayHorquilla(ret)?`<div>Horquilla por precio: <b>${fd(ret.corto.anios)} a ${fd(ret.largo.anios)} años</b></div>`:''}`
+          :`<div>${esc(retornoTexto(null))}</div>`}
+        </div>
+        <div class="hint" style="margin-top:8px">${esc(ratioTexto(pb))} ${esc(textoCobertura(an.energia))} Los ingresos por compensación de excedentes aún no se suman: falta confirmar su precio en factura.</div>
+      </div>
+    </div>`;
   CHARTS.c5p=new Chart($('c5perfil'),{type:'line',data:{labels:Array.from({length:24},(_,i)=>i+'h'),datasets:[
     {label:'Importación horaria de red · i-DE (L-V)',data:an.perfil.map(p=>p.red),borderColor:'#2a6b5a'},
     {label:'Producción FV · inversores (L-V)',data:an.perfil.map(p=>p.pv),borderColor:'#d4a039'},
