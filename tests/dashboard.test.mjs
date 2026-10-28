@@ -37,6 +37,7 @@ function dashboard() {
       ideDiario,contrasteRed,gridDiario,horasDia,contrasteTexto,contrastePdfTexto,idePeriodos,idePeriodosNota,
       contrasteFactura,contrasteFacturaTexto,contrasteFacturaPdfTexto,diasEntre,ideHorario,
       vertidoExcluido,vertidoExcluidoTexto,cortaVertido,fiabilidadTexto,ratioTexto,rangoDias,
+      horquillaRetorno,retornoTexto,retornoBreve,hayHorquilla,RETORNO_DIAS_MIN,
       especificaInversores,especificaTexto,orientacionTexto,
       setFetch(fn){globalThis.fetch=fn},
       setKstarAccess(url,key){localStorage.setItem(KSTAR_URL_KEY,url);localStorage.setItem(KSTAR_CLAVE_KEY,key)},
@@ -860,4 +861,69 @@ test('un hueco de dentro del histórico sigue contando como día abierto', () =>
   assert.equal(r.historico.energia.coverage.expectedDays,3);
   assert.equal(r.historico.energia.coverage.completeDays,2);
   assert.equal(r.historico.energia.coverage.missingEnergyDays,1,'el hueco de dentro se sigue viendo');
+});
+
+// ── Plazo de retorno como horquilla ───────────────────────────────────────
+const energiaDe = (pricedDays,savingsWithIEEUR,pricedSelfKWh) =>
+  ({coverage:{pricedDays},totals:{savingsWithIEEUR,pricedSelfKWh}});
+
+test('el plazo de retorno sale del ahorro realizado y se acota con las facturas', () => {
+  const d=dashboard();
+  // Dos facturas: una barata y una cara, con el mismo consumo, para que la
+  // media ponderada caiga justo en medio.
+  d.setPricing({version:1,currency:'EUR',method:'invoice-average',label:'QA',periods:[
+    {from:'2026-01-01',to:'2026-01-31',importKWh:1000,energyEUR:100,ie:.05,vat:.21,source:'barata'},
+    {from:'2026-02-01',to:'2026-02-28',importKWh:1000,energyEUR:300,ie:.05,vat:.21,source:'cara'}]});
+  // inv del harness = 10.000 €. 100 días, 1.000 € ahorrados, 5.000 kWh.
+  const h=d.horquillaRetorno(energiaDe(100,1000,5000));
+  // Realizado: 10 €/día -> 3.650 €/año -> 10.000/3.650 = 2,74 años.
+  close(h.anualReal,3650);
+  close(h.aniosReal,10000/3650);
+  // Físico: 50 kWh/día -> 18.250 kWh/año, que no depende del precio.
+  close(h.kWhAno,18250);
+  // El más caro (0,30) da el plazo MÁS CORTO; el más barato (0,10), el más largo.
+  close(h.corto.eur,0.30);close(h.largo.eur,0.10);
+  close(h.corto.anual,18250*0.30*1.05);
+  close(h.corto.anios,10000/(18250*0.30*1.05));
+  close(h.largo.anios,10000/(18250*0.10*1.05));
+  assert.ok(h.corto.anios<h.largo.anios,'más caro = antes se recupera');
+  // Media ponderada: 400 € / 2.000 kWh = 0,20.
+  close(h.medio.eur,0.20);
+  const t=d.retornoTexto(h);
+  assert.match(t,/Ahorro anual proyectado: 3\.?650,00 €\/año/);   // el vm no agrupa miles
+  assert.match(t,/Plazo de retorno a ese ritmo: 2,7 años/);
+  assert.match(t,/Horquilla según el precio de la energía: entre 1,7 y 5,2 años/);
+  // La versión del PDF son tres líneas cortas: el texto largo se metía encima
+  // de las gráficas de esa página.
+  const b=d.retornoBreve(h).split('\n');
+  assert.equal(b.length,3);
+  assert.match(b[1],/^Plazo de retorno: 2,7 años \(~\d{4}\)$/);
+  assert.match(b[2],/^Horquilla por precio: 1,7 a 5,2 años$/);
+  assert.ok(b.every(l=>l.length<=52),'cada línea tiene que caber en la columna');
+});
+
+test('con un único precio en las facturas no se finge una horquilla', () => {
+  const d=dashboard();
+  d.setPricing(facturaDe('2026-01-01','2026-01-31',1000,'única'));
+  const h=d.horquillaRetorno(energiaDe(100,1000,5000));
+  // Los tres extremos coinciden, así que «entre 2,3 y 2,3 años» no se escribe.
+  assert.equal(d.hayHorquilla(h),false);
+  assert.match(d.retornoTexto(h),/un único precio .* así que no hay horquilla que dar/);
+  assert.ok(!/entre/.test(d.retornoTexto(h)));
+  assert.equal(d.retornoBreve(h).split('\n').length,2,'sin horquilla, dos líneas');
+});
+
+test('sin días suficientes o sin facturas, el retorno no se inventa', () => {
+  const d=dashboard();
+  // Por debajo del mínimo de días no se proyecta nada.
+  assert.equal(d.horquillaRetorno(energiaDe(d.RETORNO_DIAS_MIN-1,1000,5000)),null);
+  assert.match(d.retornoTexto(null),/al menos 30 días valorados/);
+  // Con días pero sin ahorro medido tampoco.
+  assert.equal(d.horquillaRetorno(energiaDe(100,null,5000)),null);
+  assert.equal(d.horquillaRetorno(energiaDe(100,0,5000)),null);
+  // Con ahorro pero sin facturas: se da el realizado y se dice que no hay horquilla.
+  const h=d.horquillaRetorno(energiaDe(100,1000,5000));
+  assert.equal(h.corto,undefined);
+  close(h.aniosReal,10000/3650);
+  assert.match(d.retornoTexto(h),/Sin horquilla de precio/);
 });
